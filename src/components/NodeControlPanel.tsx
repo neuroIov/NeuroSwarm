@@ -7,7 +7,8 @@ import {
   Clock, 
   PlusCircle,
   Power,
-  Loader2
+  Loader2,
+  Scan
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InfoTooltip } from './InfoTooltip';
@@ -19,14 +20,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { detectHardware } from '@/utils/hardwareDetection';
 
 // Node type definition
 interface NodeInfo {
   id: string;
   name: string;
-  type: 'desktop-gpu' | 'laptop-gpu' | 'laptop-integrated' | 'mobile';
+  type: 'desktop' | 'laptop' | 'tablet' | 'mobile';
   rewardTier: 'webgpu' | 'wasm' | 'webgl' | 'cpu';
   status: 'idle' | 'running' | 'offline';
+  cpuCores?: number;
+  memory?: number | string;
+  gpuInfo?: string;
 }
 
 export const NodeControlPanel = () => {
@@ -34,7 +46,7 @@ export const NodeControlPanel = () => {
     {
       id: 'node-1',
       name: 'Desktop Workstation',
-      type: 'desktop-gpu',
+      type: 'desktop',
       rewardTier: 'webgpu',
       status: 'idle'
     }
@@ -48,6 +60,9 @@ export const NodeControlPanel = () => {
   const [successRate, setSuccessRate] = useState(100);
   const [isStarting, setIsStarting] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [showScanDialog, setShowScanDialog] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStage, setScanStage] = useState('');
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) || nodes[0];
   
@@ -59,50 +74,96 @@ export const NodeControlPanel = () => {
     setNetworkUsage(0);
   };
   
-  const addNewNode = () => {
+  const startScan = () => {
+    setShowScanDialog(true);
     setIsScanning(true);
+    setScanProgress(0);
+    setScanStage('Requesting device permission...');
     
-    // Simulate hardware scanning
+    // Simulate permission request phase
     setTimeout(() => {
-      const nodeTypes = ['desktop-gpu', 'laptop-gpu', 'laptop-integrated', 'mobile'];
-      const rewardTiers = ['webgpu', 'wasm', 'webgl', 'cpu'];
+      setScanProgress(10);
+      setScanStage('Analyzing CPU capabilities...');
       
-      const randomType = nodeTypes[Math.floor(Math.random() * nodeTypes.length)] as NodeInfo['type'];
-      
-      // Assign reward tier based on device type
-      let rewardTier: NodeInfo['rewardTier'];
-      switch (randomType) {
-        case 'desktop-gpu':
-          rewardTier = 'webgpu';
-          break;
-        case 'laptop-gpu':
-          rewardTier = 'wasm';
-          break;
-        case 'laptop-integrated':
-          rewardTier = 'webgl';
-          break;
-        case 'mobile':
-          rewardTier = 'cpu';
-          break;
-        default:
-          rewardTier = 'cpu';
-      }
-      
-      const newNode: NodeInfo = {
-        id: `node-${nodes.length + 1}`,
-        name: `${randomType.charAt(0).toUpperCase() + randomType.slice(1).replace('-', ' ')} ${nodes.length + 1}`,
-        type: randomType,
-        rewardTier: rewardTier,
-        status: 'idle'
+      // Begin actual hardware scan
+      performHardwareScan();
+    }, 1000);
+  };
+  
+  const performHardwareScan = async () => {
+    try {
+      // Update progress as we go
+      const updateProgress = (progress: number, stage: string) => {
+        setScanProgress(progress);
+        setScanStage(stage);
       };
       
-      const updatedNodes = [...nodes, newNode];
-      setNodes(updatedNodes);
-      setSelectedNodeId(newNode.id);
-      setIsScanning(false);
+      // CPU detection
+      updateProgress(20, 'Analyzing CPU capabilities...');
+      await new Promise(resolve => setTimeout(resolve, 800));
       
-      toast.success(`New node detected: ${newNode.name} (${rewardTier.toUpperCase()} rewards tier)`);
-    }, 2500);
+      // Memory detection  
+      updateProgress(40, 'Checking available memory...');
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // GPU detection
+      updateProgress(60, 'Detecting GPU capabilities...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // WebGPU support
+      updateProgress(80, 'Testing WebGPU support...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Finalize scan
+      updateProgress(90, 'Determining reward tier...');
+      
+      // Perform the actual hardware detection
+      const hardwareInfo = await detectHardware();
+      
+      updateProgress(100, 'Scan complete!');
+      
+      // Create the new node
+      const newNode: NodeInfo = {
+        id: `node-${nodes.length + 1}`,
+        name: `${hardwareInfo.deviceType.charAt(0).toUpperCase() + hardwareInfo.deviceType.slice(1)} Device ${nodes.length + 1}`,
+        type: hardwareInfo.deviceType,
+        rewardTier: hardwareInfo.rewardTier,
+        status: 'idle',
+        cpuCores: hardwareInfo.cpuCores,
+        memory: hardwareInfo.deviceMemory,
+        gpuInfo: hardwareInfo.gpuInfo
+      };
+      
+      // Wait a moment to show 100% complete before closing
+      setTimeout(() => {
+        const updatedNodes = [...nodes, newNode];
+        setNodes(updatedNodes);
+        setSelectedNodeId(newNode.id);
+        setIsScanning(false);
+        setShowScanDialog(false);
+        
+        // Show appropriate message based on reward tier
+        const rewardMessages = {
+          'webgpu': 'Maximum rewards tier! This device supports advanced WebGPU acceleration.',
+          'wasm': 'High rewards tier! This device has good processing capabilities.',
+          'webgl': 'Medium rewards tier! This device supports WebGL acceleration.',
+          'cpu': 'Basic rewards tier! This device will use CPU processing.'
+        };
+        
+        toast.success(
+          `New node added: ${newNode.name} (${newNode.rewardTier.toUpperCase()} rewards tier)`, 
+          { description: rewardMessages[newNode.rewardTier] }
+        );
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Hardware scan error:', error);
+      toast.error('Hardware scan failed', { 
+        description: 'Unable to complete hardware detection. Please try again or check browser permissions.'
+      });
+      setIsScanning(false);
+      setShowScanDialog(false);
+    }
   };
   
   const toggleNodeStatus = () => {
@@ -166,7 +227,7 @@ export const NodeControlPanel = () => {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={addNewNode}
+              onClick={startScan}
               disabled={isScanning}
               className="text-swarm-accent-purple border-swarm-accent-purple/50 hover:border-swarm-accent-purple/80 hover:bg-swarm-accent-purple/20"
             >
@@ -177,8 +238,8 @@ export const NodeControlPanel = () => {
                 </>
               ) : (
                 <>
-                  <PlusCircle className="w-4 h-4 mr-1" />
-                  Add Node
+                  <Scan className="w-4 h-4 mr-1" />
+                  Scan Device
                 </>
               )}
             </Button>
@@ -270,9 +331,46 @@ export const NodeControlPanel = () => {
               {selectedNode.rewardTier === 'webgl' && "This device uses WebGL processing, earning medium NLOV token rewards."}
               {selectedNode.rewardTier === 'cpu' && "This device uses CPU processing, earning basic NLOV token rewards."}
             </div>
+            
+            {selectedNode.cpuCores && (
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <div className="text-slate-400">CPU Cores: <span className="text-white">{selectedNode.cpuCores}</span></div>
+                <div className="text-slate-400">Memory: <span className="text-white">{selectedNode.memory}</span> GB</div>
+                {selectedNode.gpuInfo && (
+                  <div className="col-span-2 text-slate-400">GPU: <span className="text-white">{selectedNode.gpuInfo}</span></div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
+      
+      <Dialog open={showScanDialog} onOpenChange={setShowScanDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Scanning Device Hardware</DialogTitle>
+            <DialogDescription>
+              Analyzing your device capabilities to determine the optimal reward tier
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="mb-2 text-sm font-medium">{scanStage}</div>
+            <div className="w-full bg-slate-800 rounded-full h-2.5">
+              <div 
+                className="bg-gradient-to-r from-purple-500 to-blue-500 h-2.5 rounded-full transition-all duration-300 ease-in-out" 
+                style={{ width: `${scanProgress}%` }}
+              ></div>
+            </div>
+            <div className="mt-4 text-sm text-slate-400">
+              {scanProgress < 100 ? 
+                "Please wait while we analyze your device. Do not close this window." : 
+                "Scan completed successfully!"
+              }
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
