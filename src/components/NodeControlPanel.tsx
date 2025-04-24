@@ -5,13 +5,24 @@ import {
   HardDrive, 
   Activity, 
   Clock, 
-  PlusCircle,
-  Power,
   Loader2,
-  ScanLine
+  Power,
+  ScanLine,
+  Laptop,
+  ServerCrash,
+  AlertTriangle,
+  Check
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InfoTooltip } from './InfoTooltip';
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   Select,
   SelectContent,
@@ -20,9 +31,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from 'sonner';
-import { detectHardware, RewardTier, getRewardMultiplier } from '@/utils/hardwareDetection';
+import { detectHardware, RewardTier, getRewardMultiplier, requestDevicePermission, DeviceInfo } from '@/utils/hardwareDetection';
+import { useNodes } from '@/contexts/NodeContext';
+import { Progress } from '@/components/ui/progress';
 
-// Node type definition
+// Node type definition compatible with NodeContext
 interface NodeInfo {
   id: string;
   name: string;
@@ -32,10 +45,17 @@ interface NodeInfo {
 }
 
 export const NodeControlPanel = () => {
-  const [nodes, setNodes] = useState<NodeInfo[]>([]);
+  // Use the NodeContext
+  const { nodes, addNode, updateNodeStatus } = useNodes();
+  
+  // Local state
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [isScanning, setIsScanning] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanPhase, setScanPhase] = useState("");
+  const [showPermissionDialog, setShowPermissionDialog] = useState(false);
+  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
   
   // Stats state
   const [cpuUsage, setCpuUsage] = useState(0);
@@ -43,33 +63,80 @@ export const NodeControlPanel = () => {
   const [networkUsage, setNetworkUsage] = useState(0);
   
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
-  
-  const scanForNewDevice = async () => {
+
+  // Handle scanning process and device detection
+  const performScan = async () => {
     setIsScanning(true);
+    setScanProgress(0);
+    setScanPhase("Requesting device permission...");
+    
     try {
-      const deviceInfo = await detectHardware();
-      const newNode: NodeInfo = {
+      // Request permission first
+      const permissionGranted = await requestDevicePermission();
+      
+      if (!permissionGranted) {
+        toast.error("Permission denied. Cannot scan device without access.");
+        setIsScanning(false);
+        return;
+      }
+      
+      // Simulate scanning phases with real detection
+      const scanSteps = [
+        { phase: "Checking CPU capabilities...", progress: 20 },
+        { phase: "Detecting GPU architecture...", progress: 40 },
+        { phase: "Testing WebGPU support...", progress: 60 },
+        { phase: "Checking WebGL compatibility...", progress: 75 },
+        { phase: "Evaluating WASM performance...", progress: 90 },
+        { phase: "Finalizing device profile...", progress: 95 }
+      ];
+      
+      // Run through scanning phases
+      for (const step of scanSteps) {
+        setScanPhase(step.phase);
+        setScanProgress(step.progress);
+        await new Promise(r => setTimeout(r, 500)); // Simulate processing time
+      }
+      
+      // Get actual device info
+      const deviceDetails = await detectHardware(true);
+      setDeviceInfo(deviceDetails);
+      
+      // Complete scan
+      setScanProgress(100);
+      setScanPhase("Scan complete!");
+      
+      // Create new node from detected hardware
+      const newNode = {
         id: `node-${Date.now()}`,
-        name: deviceInfo.name,
-        rewardTier: deviceInfo.rewardTier,
-        status: 'idle',
-        multiplier: getRewardMultiplier(deviceInfo.rewardTier)
+        name: deviceDetails.name,
+        rewardTier: deviceDetails.rewardTier,
+        status: 'idle' as const,
+        multiplier: getRewardMultiplier(deviceDetails.rewardTier)
       };
       
-      setNodes(prev => [...prev, newNode]);
+      // Add to nodes collection
+      addNode(newNode);
       setSelectedNodeId(newNode.id);
       
       toast.success(
-        `New device detected: ${newNode.name}\n` +
+        `Device added: ${newNode.name}\n` +
         `Reward Tier: ${newNode.rewardTier.toUpperCase()} (${newNode.multiplier}x rewards)`
       );
       
     } catch (error) {
-      toast.error('Failed to scan device');
       console.error('Scan error:', error);
+      toast.error('Failed to scan device. Please try again.');
     } finally {
-      setIsScanning(false);
+      setTimeout(() => {
+        setIsScanning(false);
+        setScanProgress(0);
+      }, 1000);
     }
+  };
+  
+  // Start scan flow with permission request
+  const scanForNewDevice = () => {
+    setShowPermissionDialog(true);
   };
   
   const handleNodeSelect = (value: string) => {
@@ -84,11 +151,7 @@ export const NodeControlPanel = () => {
     if (!selectedNode) return;
     
     if (selectedNode.status === 'running') {
-      setNodes(nodes.map(node => 
-        node.id === selectedNodeId 
-          ? { ...node, status: 'idle' } 
-          : node
-      ));
+      updateNodeStatus(selectedNodeId, 'idle');
       
       // Reset statistics
       setCpuUsage(0);
@@ -102,11 +165,7 @@ export const NodeControlPanel = () => {
       
       // Simulate starting delay
       setTimeout(() => {
-        setNodes(nodes.map(node => 
-          node.id === selectedNodeId 
-            ? { ...node, status: 'running' } 
-            : node
-        ));
+        updateNodeStatus(selectedNodeId, 'running');
         
         // Simulate some initial usage
         setCpuUsage(Math.random() * 30 + 10);
@@ -118,6 +177,31 @@ export const NodeControlPanel = () => {
       }, 2000);
     }
   };
+  
+  // Start usage simulation for running nodes
+  React.useEffect(() => {
+    if (selectedNode?.status === 'running') {
+      const interval = setInterval(() => {
+        // Simulate fluctuating resource usage
+        setCpuUsage(prev => {
+          const delta = (Math.random() * 10) - 5; // -5 to +5
+          return Math.max(5, Math.min(95, prev + delta));
+        });
+        
+        setMemoryUsage(prev => {
+          const delta = (Math.random() * 8) - 4; // -4 to +4
+          return Math.max(5, Math.min(90, prev + delta));
+        });
+        
+        setNetworkUsage(prev => {
+          const delta = (Math.random() * 2) - 0.5; // -0.5 to +1.5
+          return Math.max(0.1, Math.min(20, prev + delta));
+        });
+      }, 3000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [selectedNode]);
   
   return (
     <div className="stat-card">
@@ -239,6 +323,77 @@ export const NodeControlPanel = () => {
           </>
         )}
       </div>
+      
+      {/* Permission Request Dialog */}
+      <Dialog open={showPermissionDialog} onOpenChange={setShowPermissionDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Device Scan Permission</DialogTitle>
+            <DialogDescription>
+              Swarm Network needs to access your device hardware information to determine its capabilities and assign the appropriate reward tier.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="flex flex-col space-y-4">
+              <div className="flex items-center space-x-2">
+                <Cpu className="w-5 h-5 text-blue-400" />
+                <span>CPU information</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Laptop className="w-5 h-5 text-green-400" />
+                <span>GPU capabilities</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <HardDrive className="w-5 h-5 text-amber-400" />
+                <span>Memory capacity</span>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter className="flex justify-between sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowPermissionDialog(false);
+                toast.error("Permission denied. Device cannot be added.");
+              }}
+            >
+              Deny
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowPermissionDialog(false);
+                performScan();
+              }}
+            >
+              Allow & Scan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Scanning Dialog */}
+      <Dialog open={isScanning && !showPermissionDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Device Scanning in Progress</DialogTitle>
+            <DialogDescription>
+              {scanPhase}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <Progress value={scanProgress} max={100} className="h-2" />
+            <div className="flex justify-between mt-1 text-xs text-slate-500">
+              <span>Scanning...</span>
+              <span>{scanProgress}%</span>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

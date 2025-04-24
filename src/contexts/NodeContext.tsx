@@ -42,6 +42,24 @@ export const NodeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ));
   };
   
+  // Automatically accumulate earnings for running nodes
+  useEffect(() => {
+    const runningNodes = nodes.filter(node => node.status === 'running');
+    if (runningNodes.length === 0) return;
+    
+    const interval = setInterval(() => {
+      runningNodes.forEach(node => {
+        // Base earning rate per minute, adjusted by node multiplier
+        const baseRate = 0.05; // NLOV tokens per minute
+        const earned = baseRate * node.multiplier;
+        
+        updateNodeEarnings(node.id, earned);
+      });
+    }, 60000); // Every minute
+    
+    return () => clearInterval(interval);
+  }, [nodes]);
+  
   return (
     <NodeContext.Provider value={{
       nodes,

@@ -5,33 +5,87 @@ interface DeviceCapabilities {
   webgl: boolean;
   wasm: boolean;
   cpu: { cores: number };
+  gpu: {
+    vendor: string;
+    renderer: string;
+  } | null;
+  userAgent: string;
+  platform: string;
+  memory: number | null;
 }
 
 export type RewardTier = 'webgpu' | 'wasm' | 'webgl' | 'cpu';
 
-interface DeviceInfo {
+export interface DeviceInfo {
   name: string;
   rewardTier: RewardTier;
   capabilities: DeviceCapabilities;
+  permissionGranted: boolean;
 }
 
-export const detectHardware = async (): Promise<DeviceInfo> => {
+// Function to request device information permission
+export const requestDevicePermission = async (): Promise<boolean> => {
+  // We'll simulate permission request for device information
+  try {
+    // Request permission for sensors (this is a proxy for device permission)
+    if ('DeviceOrientationEvent' in window && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const permissionState = await DeviceOrientationEvent.requestPermission();
+      return permissionState === 'granted';
+    }
+    
+    // For browsers that don't support the above API, we'll use a dialog
+    return new Promise(resolve => {
+      setTimeout(() => resolve(true), 1500); // Simulate permission dialog
+    });
+  } catch (error) {
+    console.error('Error requesting permission:', error);
+    return false;
+  }
+};
+
+export const detectHardware = async (permissionGranted: boolean): Promise<DeviceInfo> => {
   const capabilities: DeviceCapabilities = {
     webgpu: false,
     webgl2: false,
     webgl: false,
     wasm: typeof WebAssembly !== 'undefined',
-    cpu: { cores: navigator.hardwareConcurrency || 1 }
+    cpu: { cores: navigator.hardwareConcurrency || 1 },
+    gpu: null,
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    memory: navigator.deviceMemory as number || null
   };
+  
+  if (!permissionGranted) {
+    return {
+      name: "Unknown Device (Permission Required)",
+      rewardTier: 'cpu',
+      capabilities,
+      permissionGranted: false
+    };
+  }
   
   // Check WebGPU support
   capabilities.webgpu = 'gpu' in navigator;
   
-  // Check WebGL support
+  // Check WebGL support and get GPU info
   try {
     const canvas = document.createElement('canvas');
-    capabilities.webgl2 = !!canvas.getContext('webgl2');
-    capabilities.webgl = !!canvas.getContext('webgl') || !!canvas.getContext('experimental-webgl');
+    const gl2 = canvas.getContext('webgl2');
+    capabilities.webgl2 = !!gl2;
+    
+    const gl = gl2 || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    capabilities.webgl = !!gl;
+    
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        capabilities.gpu = {
+          vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || 'Unknown',
+          renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || 'Unknown'
+        };
+      }
+    }
   } catch (e) {
     console.error('Error detecting WebGL support:', e);
   }
@@ -48,15 +102,34 @@ export const detectHardware = async (): Promise<DeviceInfo> => {
     rewardTier = 'cpu';
   }
   
-  // Generate device name
-  const deviceType = capabilities.webgpu ? 'GPU Workstation' : 
-                    capabilities.wasm ? 'WASM Compatible Device' :
-                    capabilities.webgl ? 'WebGL Device' : 'CPU Device';
-                    
+  // Generate detailed device name
+  let deviceName = '';
+  
+  if (capabilities.gpu && capabilities.gpu.renderer) {
+    // Extract meaningful GPU name
+    const gpuName = capabilities.gpu.renderer
+      .replace(/ANGLE \(|\) /g, '')
+      .replace(/Direct3D.+/g, '')
+      .replace(/OpenGL.+/g, '')
+      .replace(/Metal.+/g, '')
+      .trim();
+    
+    deviceName = `${gpuName} (${capabilities.cpu.cores} cores)`;
+  } else {
+    // Fallback device naming
+    const platform = capabilities.platform || 'Unknown Platform';
+    deviceName = `${platform} Device (${capabilities.cpu.cores} cores)`;
+  }
+  
+  const deviceType = capabilities.webgpu ? 'GPU Accelerated' : 
+                   capabilities.wasm && capabilities.webgl2 ? 'WASM Compatible' :
+                   capabilities.webgl ? 'WebGL Compatible' : 'CPU Only';
+                   
   return {
-    name: `${deviceType} (${capabilities.cpu.cores} cores)`,
+    name: `${deviceType}: ${deviceName}`,
     rewardTier,
-    capabilities
+    capabilities,
+    permissionGranted: true
   };
 };
 

@@ -1,148 +1,208 @@
 
-import React, { useState, useEffect } from 'react';
-import { Wallet, TrendingUp, Calendar, ArrowUpRight } from 'lucide-react';
+import React from 'react';
+import { Wallet, ArrowUpRight, Award, Clock } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
-import { Button } from '@/components/ui/button';
+import { Progress } from "@/components/ui/progress";
 import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { toast } from 'sonner';
-
-type TimeRange = 'daily' | 'weekly' | 'monthly' | 'all-time';
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  Tooltip as RechartsTooltip, 
+  ResponsiveContainer 
+} from 'recharts';
+import { useNodes } from '@/contexts/NodeContext';
 
 export const EarningsDashboard = () => {
-  const [timeRange, setTimeRange] = useState<TimeRange>('daily');
-  const [totalEarnings, setTotalEarnings] = useState(0);
-  const [projectedEarnings, setProjectedEarnings] = useState(0);
-  const [dailyAverage, setDailyAverage] = useState(0);
-  const [walletConnected, setWalletConnected] = useState(false);
+  const { nodes, totalEarnings } = useNodes();
   
-  // Simulate earnings accumulation
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTotalEarnings(prev => {
-        const newValue = prev + 0.00001;
-        return parseFloat(newValue.toFixed(5));
-      });
-    }, 5000);
+  // Generate fake historical earnings data
+  const getEarningsData = () => {
+    const days = 14; // Show last 14 days
+    const data = [];
     
-    return () => clearInterval(timer);
-  }, []);
-  
-  // Update projected earnings when total changes
-  useEffect(() => {
-    setProjectedEarnings(totalEarnings * 30);
-    setDailyAverage(totalEarnings / 10);
-  }, [totalEarnings]);
-  
-  const handleTimeRangeChange = (value: string) => {
-    setTimeRange(value as TimeRange);
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      
+      // Start lower and gradually increase, with some randomness
+      const factor = 1 + ((days - i) / days); // Gradual increase factor
+      const baseAmount = 2 + (Math.random() * 0.5); // Base amount
+      
+      data.push({
+        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        amount: +(baseAmount * factor).toFixed(2)
+      });
+    }
+    
+    return data;
   };
   
-  const handleWithdraw = () => {
-    toast.info("Withdrawals will be available after mainnet launch");
+  const earningsData = getEarningsData();
+  
+  // Format number with 2 decimal places
+  const formatNumber = (num: number) => {
+    return num.toFixed(2);
   };
+  
+  // Get the daily average from the earnings data
+  const dailyAverage = earningsData.reduce((sum, day) => sum + day.amount, 0) / earningsData.length;
+  
+  // Custom tooltip for the chart
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-slate-800 p-2 border border-slate-700 rounded text-sm">
+          <p className="text-white font-semibold">{label}</p>
+          <p className="text-green-400">NLOV: {payload[0].value}</p>
+        </div>
+      );
+    }
+    return null;
+  };
+  
+  // Calculate projected earnings based on current nodes and reward tiers
+  const getProjectedEarnings = () => {
+    const activeNodes = nodes.filter(node => node.status === 'running');
+    if (activeNodes.length === 0) return 0;
+    
+    const hourlyRate = activeNodes.reduce((sum, node) => {
+      // Base hourly rate * node multiplier
+      return sum + (3 * node.multiplier);
+    }, 0);
+    
+    return +(hourlyRate * 24 * 30).toFixed(2); // Monthly projection
+  };
+  
+  const projectedMonthlyEarnings = getProjectedEarnings();
   
   return (
     <div className="stat-card">
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col space-y-6">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-semibold">Earnings Dashboard</h2>
-          <InfoTooltip content="Track your NLOV token earnings from completed tasks" />
-        </div>
-        <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-          <SelectTrigger className="w-[120px] bg-slate-800/50">
-            <SelectValue placeholder="Time Range" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="daily">Daily</SelectItem>
-            <SelectItem value="weekly">Weekly</SelectItem>
-            <SelectItem value="monthly">Monthly</SelectItem>
-            <SelectItem value="all-time">All Time</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="flex flex-col p-4 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center text-slate-400 mb-1 text-sm">
-            <Wallet className="w-4 h-4 mr-2" /> Total Earnings
-          </div>
-          <div className="text-3xl font-bold">{totalEarnings.toFixed(5)} NLOV</div>
+          <InfoTooltip content="Track your NLOV token earnings and projections" />
         </div>
         
-        <div className="flex flex-col p-4 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center text-slate-400 mb-1 text-sm">
-            <TrendingUp className="w-4 h-4 mr-2" /> Projected Monthly
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-800/30 p-4 rounded-lg">
+            <h3 className="text-sm text-slate-400 mb-1 flex items-center">
+              <Wallet className="w-4 h-4 mr-1" /> Total Earnings
+            </h3>
+            <div className="text-2xl font-bold">
+              {formatNumber(totalEarnings)} NLOV
+            </div>
+            <Progress 
+              value={Math.min(100, totalEarnings * 10)} 
+              max={100} 
+              className="h-1 mt-2" 
+            />
           </div>
-          <div className="text-3xl font-bold">{projectedEarnings.toFixed(5)} NLOV</div>
+          
+          <div className="bg-slate-800/30 p-4 rounded-lg">
+            <h3 className="text-sm text-slate-400 mb-1 flex items-center">
+              <Award className="w-4 h-4 mr-1" /> Daily Average
+            </h3>
+            <div className="text-2xl font-bold">
+              {formatNumber(dailyAverage)} NLOV
+            </div>
+            <div className="flex items-center mt-2 text-xs">
+              <ArrowUpRight className="w-3 h-3 text-green-400 mr-1" />
+              <span className="text-green-400">+4.2%</span>
+              <span className="text-slate-400 ml-1">from previous week</span>
+            </div>
+          </div>
+          
+          <div className="bg-slate-800/30 p-4 rounded-lg">
+            <h3 className="text-sm text-slate-400 mb-1 flex items-center">
+              <Clock className="w-4 h-4 mr-1" /> Monthly Projection
+            </h3>
+            <div className="text-2xl font-bold">
+              {formatNumber(projectedMonthlyEarnings)} NLOV
+            </div>
+            <div className="flex items-center mt-2 text-xs text-slate-400">
+              Based on {nodes.filter(n => n.status === 'running').length} active nodes
+            </div>
+          </div>
         </div>
         
-        <div className="flex flex-col p-4 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center text-slate-400 mb-1 text-sm">
-            <Calendar className="w-4 h-4 mr-2" /> Daily Average
+        <div>
+          <h3 className="text-sm text-slate-400 mb-3">Earnings History (14-day)</h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={earningsData}
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
+                <XAxis 
+                  dataKey="date" 
+                  stroke="#475569" 
+                  tick={{ fill: '#94a3b8' }} 
+                  axisLine={{ stroke: '#334155' }}
+                />
+                <YAxis 
+                  stroke="#475569" 
+                  tick={{ fill: '#94a3b8' }} 
+                  axisLine={{ stroke: '#334155' }}
+                />
+                <RechartsTooltip content={<CustomTooltip />} />
+                <Line 
+                  type="monotone" 
+                  dataKey="amount" 
+                  stroke="#10b981" 
+                  activeDot={{ r: 8 }} 
+                  strokeWidth={2}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
-          <div className="text-3xl font-bold">{dailyAverage.toFixed(5)} NLOV</div>
         </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-4 bg-slate-800/30 rounded-lg flex flex-col justify-between min-h-[240px]">
+
+        {/* Per-device earnings breakdown */}
+        {nodes.length > 0 && (
           <div>
-            <h3 className="text-lg font-medium mb-3">Earnings History</h3>
-            <div className="flex items-center justify-center h-32 text-slate-400 text-sm">
-              <Clock className="w-16 h-16 text-slate-600 mr-2" />
-              <p>Earnings history will be available after Mainnet</p>
+            <h3 className="text-sm text-slate-400 mb-3">Per-Device Earnings</h3>
+            <div className="overflow-hidden bg-slate-800/20 rounded-lg">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="border-b border-slate-700">
+                    <th className="py-3 px-4 text-left text-xs font-medium text-slate-400">Device</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium text-slate-400">Status</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium text-slate-400">Reward Tier</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium text-slate-400">Earnings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nodes.map((node) => (
+                    <tr key={node.id} className="border-b border-slate-800">
+                      <td className="py-2 px-4 text-sm">{node.name}</td>
+                      <td className="py-2 px-4">
+                        <span className={`inline-block w-2 h-2 rounded-full mr-2 ${
+                          node.status === 'running' ? 'bg-green-500' : 
+                          node.status === 'idle' ? 'bg-amber-500' : 'bg-red-500'
+                        }`}></span>
+                        <span className="text-xs capitalize">{node.status}</span>
+                      </td>
+                      <td className="py-2 px-4">
+                        <span className="text-xs bg-purple-900/50 text-purple-300 py-1 px-2 rounded-full">
+                          {node.rewardTier.toUpperCase()} ({node.multiplier}x)
+                        </span>
+                      </td>
+                      <td className="py-2 px-4 font-medium">
+                        {node.earnings.toFixed(2)} NLOV
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-800/50">
+                    <td colSpan={3} className="py-2 px-4 font-semibold text-sm">Total Earnings</td>
+                    <td className="py-2 px-4 font-bold text-green-400">{totalEarnings.toFixed(2)} NLOV</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
-        </div>
-        
-        <div className="p-4 bg-slate-800/30 rounded-lg">
-          <h3 className="text-lg font-medium mb-3">Payout Details</h3>
-          <div className="space-y-4">
-            <div>
-              <div className="text-sm text-slate-400 mb-1">Wallet Address</div>
-              <div className="font-medium">
-                {walletConnected ? "0x3a5e...4952" : "Not connected"}
-              </div>
-            </div>
-            
-            <div>
-              <div className="text-sm text-slate-400 mb-1">Network</div>
-              <div className="font-medium">Solana</div>
-            </div>
-            
-            <div>
-              <div className="text-sm text-slate-400 mb-1">Minimum Payout</div>
-              <div className="font-medium">10 NLOV</div>
-            </div>
-            
-            <div>
-              <div className="text-sm text-slate-400 mb-1">Next Payout Date</div>
-              <div className="font-medium">1st of next month</div>
-            </div>
-            
-            <Button 
-              className="w-full bg-blue-600 hover:bg-blue-700 mt-2"
-              onClick={handleWithdraw}
-            >
-              Withdraw (Coming Soon)
-            </Button>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
 };
-
-// Clock icon for the earnings history placeholder
-const Clock = ({ className }: { className?: string }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"></circle>
-    <polyline points="12 6 12 12 16 14"></polyline>
-  </svg>
-);
