@@ -1,48 +1,51 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Wallet, CheckCircle } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useWalletConnection } from '@/hooks/useWalletConnection';
+import { toast } from 'sonner';
 
 export const WalletButton = () => {
-  const { walletInfo, connectPhantom, connectMetamask, disconnect } = useWalletConnection();
+  const [connected, setConnected] = useState(false);
+  const [address, setAddress] = useState("");
   
-  if (walletInfo?.connected) {
-    return (
-      <Button 
-        variant="outline" 
-        onClick={disconnect}
-        className="bg-green-900/20 text-green-400 hover:bg-green-900/30 border-green-800"
-      >
-        <CheckCircle className="w-4 h-4" />
-        <span className="hidden sm:inline">{walletInfo.address.slice(0, 6)}...{walletInfo.address.slice(-4)}</span>
-        <span className="sm:hidden">Connected</span>
-      </Button>
-    );
-  }
+  const connectWallet = () => {
+    if (connected) {
+      setConnected(false);
+      setAddress("");
+      toast.success("Wallet disconnected");
+      return;
+    }
+    
+    // Simulate wallet connection
+    setTimeout(() => {
+      const mockAddress = "0x" + Math.random().toString(16).slice(2, 14);
+      setAddress(mockAddress);
+      setConnected(true);
+      toast.success("Wallet connected successfully");
+    }, 1000);
+  };
   
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button className="bg-swarm-accent-purple text-white hover:bg-swarm-accent-purple/90">
+    <Button 
+      variant={connected ? "outline" : "default"} 
+      onClick={connectWallet}
+      className={`
+        flex items-center gap-2 font-medium
+        ${connected ? 'bg-green-900/20 text-green-400 hover:bg-green-900/30 border-green-800' : 'bg-swarm-accent-purple text-white hover:bg-swarm-accent-purple/90'}
+      `}
+    >
+      {connected ? (
+        <>
+          <CheckCircle className="w-4 h-4" />
+          <span className="hidden sm:inline">{address.slice(0, 6)}...{address.slice(-4)}</span>
+          <span className="sm:hidden">Connected</span>
+        </>
+      ) : (
+        <>
           <Wallet className="w-4 h-4" />
           <span>Connect Wallet</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={connectPhantom}>
-          Connect Phantom
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={connectMetamask}>
-          Connect MetaMask
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </>
+      )}
+    </Button>
   );
 };
