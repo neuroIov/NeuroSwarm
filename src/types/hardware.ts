@@ -25,3 +25,22 @@ export interface NodeInfo {
   memory?: number | string;
   gpuInfo?: string;
 }
+
+export interface GlobalTask {
+  id: string;
+  type: 'gpt-4';
+  subtype: 'text';
+  prompt: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  timestamp: Date;
+}
+
+export interface Task {
+  id: string;
+  type: 'gpt-4' | 'compute' | 'storage';
+  subtype: 'text' | 'image' | 'video' | 'data';
+  prompt: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  timeRemaining?: number;
+  timestamp: Date;
+}

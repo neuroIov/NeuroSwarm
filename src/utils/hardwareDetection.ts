@@ -137,9 +137,13 @@ const determineRewardTier = async (
   if (webgpuSupport) return 'webgpu';
   
   // Next, check for high-performance system that can do WASM well
+  const cpuCores = getCPUCores();
+  const deviceMemory = getDeviceMemory();
+  
+  // Check if we have at least 4 cores and enough memory
   const isHighPerformance = 
-    getCPUCores() >= 4 && 
-    (getDeviceMemory() !== 'Unknown' && typeof getDeviceMemory() === 'number' && getDeviceMemory() >= 4);
+    cpuCores >= 4 && 
+    (typeof deviceMemory === 'number' && deviceMemory >= 4);
   
   if (isHighPerformance && (deviceType === 'desktop' || deviceType === 'laptop')) {
     return 'wasm';

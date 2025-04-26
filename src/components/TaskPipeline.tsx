@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle, 
@@ -42,7 +41,7 @@ export const TaskPipeline = () => {
       "Suggest three names for a cafe in Paris."
     ];
     
-    const initialTasks = prompts.map((prompt, index) => ({
+    const initialTasks: Task[] = prompts.map((prompt, index) => ({
       id: `task-${index + 1}`,
       type: 'gpt-4',
       subtype: 'text',
