@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Activity, Clock, Users, Server, RefreshCw, FileCode } from 'lucide-react';
+import { Activity, Clock, Users, Server, RefreshCw, FileCode, Wallet } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';

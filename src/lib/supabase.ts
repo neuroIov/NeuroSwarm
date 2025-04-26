@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js';
 
 // These are placeholder values, users will need to replace with their own
@@ -53,8 +52,7 @@ export const loginWithWallet = async (walletAddress: string, signature: string) 
         wallet_address: walletAddress,
         last_seen_at: new Date().toISOString()
       }, { 
-        onConflict: 'wallet_address',
-        returning: 'minimal'
+        onConflict: 'wallet_address'
       });
     
     if (error) throw error;
