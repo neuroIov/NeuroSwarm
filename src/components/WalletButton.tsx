@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Wallet, CheckCircle, ChevronDown } from 'lucide-react';
+import { Wallet, CheckCircle, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWallet } from '@/contexts/WalletContext';
 import {
@@ -32,17 +32,26 @@ export const WalletButton = () => {
   
   if (isConnected) {
     return (
-      <Button 
-        variant="outline" 
-        onClick={() => disconnectWallet()}
-        className="bg-green-900/20 text-green-400 hover:bg-green-900/30 border-green-800 flex items-center gap-2 font-medium"
-      >
-        <CheckCircle className="w-4 h-4" />
-        <span className="hidden sm:inline">
-          {walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}
-        </span>
-        <span className="sm:hidden">Connected</span>
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button 
+            variant="outline" 
+            className="bg-green-900/20 text-green-400 hover:bg-green-900/30 border-green-800 flex items-center gap-2 font-medium"
+          >
+            <CheckCircle className="w-4 h-4" />
+            <span className="hidden sm:inline">
+              {walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)}
+            </span>
+            <span className="sm:hidden">Connected</span>
+            <ChevronDown className="w-4 h-4 opacity-70" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => disconnectWallet()}>
+            Disconnect Wallet
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   }
   
@@ -54,7 +63,7 @@ export const WalletButton = () => {
           className="bg-swarm-accent-purple text-white hover:bg-swarm-accent-purple/90 flex items-center gap-2"
           disabled={isConnecting}
         >
-          <Wallet className="w-4 h-4" />
+          {isConnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
           {isConnecting ? 'Connecting...' : 'Connect Wallet'}
           <ChevronDown className="w-4 h-4 opacity-70" />
         </Button>

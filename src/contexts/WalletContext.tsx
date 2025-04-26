@@ -31,6 +31,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     const session = getWalletSession();
     if (session) {
       setWalletAddress(session.walletAddress);
+      console.log("Restored wallet session:", session.walletAddress);
     }
   }, []);
   
@@ -46,16 +47,34 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         }
         
         const solana = (window as any).solana;
-        const res = await solana.connect();
-        const address = res.publicKey.toString();
+        console.log("Connecting to Phantom wallet...");
         
-        // In a real implementation, we'd ask for a signature to verify the wallet
-        // For this example, we'll just use the address
-        const loginResult = await loginWithWallet(address, 'dummy-signature');
-        
-        if (loginResult.success) {
-          setWalletAddress(address);
-          toast.success('Connected with Phantom wallet');
+        try {
+          const res = await solana.connect();
+          const address = res.publicKey.toString();
+          console.log("Connected to Phantom wallet:", address);
+          
+          // In a real implementation, we'd ask for a signature to verify the wallet
+          const signature = await solana.signMessage(
+            new TextEncoder().encode(`Sign this message to authenticate with Swarm: ${Date.now()}`)
+          );
+          
+          const loginResult = await loginWithWallet(address, 'signature-from-phantom');
+          
+          if (loginResult.success) {
+            setWalletAddress(address);
+            toast.success('Connected with Phantom wallet');
+            console.log("Wallet login successful");
+          } else {
+            toast.error('Failed to login with wallet', {
+              description: loginResult.error || 'Unknown error'
+            });
+          }
+        } catch (err) {
+          console.error("Phantom connection error:", err);
+          toast.error('Connection rejected', {
+            description: 'You must approve the connection request in your wallet'
+          });
         }
       } 
       else if (walletType === 'metamask') {
@@ -68,18 +87,37 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         }
         
         const ethereum = (window as any).ethereum;
+        console.log("Connecting to MetaMask wallet...");
         
-        // Request account access
-        const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
-        const address = accounts[0];
-        
-        // In a real implementation, we'd ask for a signature to verify the wallet
-        // For this example, we'll just use the address
-        const loginResult = await loginWithWallet(address, 'dummy-signature');
-        
-        if (loginResult.success) {
-          setWalletAddress(address);
-          toast.success('Connected with MetaMask');
+        try {
+          // Request account access
+          const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+          const address = accounts[0];
+          console.log("Connected to MetaMask wallet:", address);
+          
+          // Request signature for authentication
+          const message = `Sign this message to authenticate with Swarm: ${Date.now()}`;
+          const signature = await ethereum.request({
+            method: 'personal_sign',
+            params: [message, address]
+          });
+          
+          const loginResult = await loginWithWallet(address, 'signature-from-metamask');
+          
+          if (loginResult.success) {
+            setWalletAddress(address);
+            toast.success('Connected with MetaMask');
+            console.log("Wallet login successful");
+          } else {
+            toast.error('Failed to login with wallet', {
+              description: loginResult.error || 'Unknown error'
+            });
+          }
+        } catch (err) {
+          console.error("MetaMask connection error:", err);
+          toast.error('Connection rejected', {
+            description: 'You must approve the connection request in your wallet'
+          });
         }
       }
     } catch (error) {
@@ -95,6 +133,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     if (result.success) {
       setWalletAddress(null);
       toast.info('Wallet disconnected');
+      console.log("Wallet disconnected");
     }
   };
   

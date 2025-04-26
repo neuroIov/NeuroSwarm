@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 // These are placeholder values, users will need to replace with their own
@@ -45,6 +46,8 @@ export interface SwarmTask {
 // Helper functions for wallet authentication
 export const loginWithWallet = async (walletAddress: string, signature: string) => {
   try {
+    console.log("Attempting to login with wallet:", walletAddress);
+    
     // In a real implementation, you would verify the signature on the server
     const { data, error } = await supabase
       .from('wallet_profiles')
@@ -55,10 +58,16 @@ export const loginWithWallet = async (walletAddress: string, signature: string) 
         onConflict: 'wallet_address'
       });
     
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase login error:", error);
+      throw error;
+    }
+    
+    console.log("Wallet login successful, setting session");
     
     // Set session data in local storage
     localStorage.setItem('swarm_wallet_address', walletAddress);
+    localStorage.setItem('swarm_wallet_login_time', new Date().toISOString());
     
     return { success: true, walletAddress };
   } catch (error) {
@@ -68,13 +77,23 @@ export const loginWithWallet = async (walletAddress: string, signature: string) 
 };
 
 export const logoutWallet = () => {
+  console.log("Removing wallet session from storage");
   localStorage.removeItem('swarm_wallet_address');
+  localStorage.removeItem('swarm_wallet_login_time');
   return { success: true };
 };
 
 export const getWalletSession = () => {
   const walletAddress = localStorage.getItem('swarm_wallet_address');
-  return walletAddress ? { walletAddress } : null;
+  const loginTime = localStorage.getItem('swarm_wallet_login_time');
+  
+  if (walletAddress) {
+    console.log("Found existing wallet session:", walletAddress);
+    return { walletAddress, loginTime };
+  }
+  
+  console.log("No existing wallet session found");
+  return null;
 };
 
 // Data fetching functions

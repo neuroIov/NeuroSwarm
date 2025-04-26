@@ -1,376 +1,341 @@
-
-import React, { useState } from 'react';
-import { 
-  Cpu, 
-  HardDrive, 
-  Activity, 
-  Clock, 
-  PlusCircle,
-  Power,
-  Loader2,
-  Scan
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Power, Server, AlertTriangle, Plus, Edit, Trash2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { InfoTooltip } from './InfoTooltip';
-import { 
+import { useWallet } from '@/contexts/WalletContext';
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { detectHardware } from '@/utils/hardwareDetection';
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { toast } from 'sonner';
+import { registerNode, fetchUserNodes } from '@/lib/supabase';
 
-// Node type definition
-interface NodeInfo {
-  id: string;
+type NodeStatus = 'online' | 'idle' | 'offline';
+
+type Node = {
+  id?: string;
   name: string;
   type: 'desktop' | 'laptop' | 'tablet' | 'mobile';
   rewardTier: 'webgpu' | 'wasm' | 'webgl' | 'cpu';
-  status: 'idle' | 'running' | 'offline';
-  cpuCores?: number;
-  memory?: number | string;
-  gpuInfo?: string;
-}
+  status: NodeStatus;
+  cpuCores: number;
+  memory: string;
+  gpuInfo: string;
+};
 
 export const NodeControlPanel = () => {
-  const [nodes, setNodes] = useState<NodeInfo[]>([
-    {
-      id: 'node-1',
-      name: 'Desktop Workstation',
-      type: 'desktop',
-      rewardTier: 'webgpu',
-      status: 'idle'
-    }
-  ]);
+  const { walletAddress, isConnected } = useWallet();
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditingNode, setIsEditingNode] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [nodeForm, setNodeForm] = useState<Node>({
+    name: '',
+    type: 'desktop',
+    rewardTier: 'webgpu',
+    status: 'offline',
+    cpuCores: 4,
+    memory: '8GB',
+    gpuInfo: 'NVIDIA GeForce RTX 3070',
+  });
   
-  const [selectedNodeId, setSelectedNodeId] = useState<string>(nodes[0].id);
-  const [cpuUsage, setCpuUsage] = useState(0);
-  const [memoryUsage, setMemoryUsage] = useState(0);
-  const [networkUsage, setNetworkUsage] = useState(0);
-  const [tasksCompleted, setTasksCompleted] = useState(0);
-  const [successRate, setSuccessRate] = useState(100);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [showScanDialog, setShowScanDialog] = useState(false);
-  const [scanProgress, setScanProgress] = useState(0);
-  const [scanStage, setScanStage] = useState('');
-
-  const selectedNode = nodes.find(n => n.id === selectedNodeId) || nodes[0];
-  
-  const handleNodeSelect = (value: string) => {
-    setSelectedNodeId(value);
-    // Reset usage stats when switching nodes
-    setCpuUsage(0);
-    setMemoryUsage(0);
-    setNetworkUsage(0);
-  };
-  
-  const startScan = () => {
-    setShowScanDialog(true);
-    setIsScanning(true);
-    setScanProgress(0);
-    setScanStage('Requesting device permission...');
-    
-    // Simulate permission request phase
-    setTimeout(() => {
-      setScanProgress(10);
-      setScanStage('Analyzing CPU capabilities...');
-      
-      // Begin actual hardware scan
-      performHardwareScan();
-    }, 1000);
-  };
-  
-  const performHardwareScan = async () => {
-    try {
-      // Update progress as we go
-      const updateProgress = (progress: number, stage: string) => {
-        setScanProgress(progress);
-        setScanStage(stage);
-      };
-      
-      // CPU detection
-      updateProgress(20, 'Analyzing CPU capabilities...');
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // Memory detection  
-      updateProgress(40, 'Checking available memory...');
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // GPU detection
-      updateProgress(60, 'Detecting GPU capabilities...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // WebGPU support
-      updateProgress(80, 'Testing WebGPU support...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Finalize scan
-      updateProgress(90, 'Determining reward tier...');
-      
-      // Perform the actual hardware detection
-      const hardwareInfo = await detectHardware();
-      
-      updateProgress(100, 'Scan complete!');
-      
-      // Create the new node
-      const newNode: NodeInfo = {
-        id: `node-${nodes.length + 1}`,
-        name: `${hardwareInfo.deviceType.charAt(0).toUpperCase() + hardwareInfo.deviceType.slice(1)} Device ${nodes.length + 1}`,
-        type: hardwareInfo.deviceType,
-        rewardTier: hardwareInfo.rewardTier,
-        status: 'idle',
-        cpuCores: hardwareInfo.cpuCores,
-        memory: hardwareInfo.deviceMemory,
-        gpuInfo: hardwareInfo.gpuInfo
-      };
-      
-      // Wait a moment to show 100% complete before closing
-      setTimeout(() => {
-        const updatedNodes = [...nodes, newNode];
-        setNodes(updatedNodes);
-        setSelectedNodeId(newNode.id);
-        setIsScanning(false);
-        setShowScanDialog(false);
-        
-        // Show appropriate message based on reward tier
-        const rewardMessages = {
-          'webgpu': 'Maximum rewards tier! This device supports advanced WebGPU acceleration.',
-          'wasm': 'High rewards tier! This device has good processing capabilities.',
-          'webgl': 'Medium rewards tier! This device supports WebGL acceleration.',
-          'cpu': 'Basic rewards tier! This device will use CPU processing.'
-        };
-        
-        toast.success(
-          `New node added: ${newNode.name} (${newNode.rewardTier.toUpperCase()} rewards tier)`, 
-          { description: rewardMessages[newNode.rewardTier] }
-        );
-      }, 1000);
-      
-    } catch (error) {
-      console.error('Hardware scan error:', error);
-      toast.error('Hardware scan failed', { 
-        description: 'Unable to complete hardware detection. Please try again or check browser permissions.'
-      });
-      setIsScanning(false);
-      setShowScanDialog(false);
-    }
-  };
-  
-  const toggleNodeStatus = () => {
-    if (selectedNode.status === 'running') {
-      // Stop the node
-      setNodes(nodes.map(node => 
-        node.id === selectedNodeId 
-          ? { ...node, status: 'idle' } 
-          : node
-      ));
-      
-      // Reset statistics
-      setCpuUsage(0);
-      setMemoryUsage(0);
-      setNetworkUsage(0);
-      
-      toast.info(`Node "${selectedNode.name}" stopped`);
-      
+  useEffect(() => {
+    if (isConnected && walletAddress) {
+      loadUserNodes();
     } else {
-      // Start the node
-      setIsStarting(true);
+      setNodes([]);
+    }
+  }, [isConnected, walletAddress]);
+  
+  const loadUserNodes = async () => {
+    if (!walletAddress) return;
+    
+    try {
+      const userNodes = await fetchUserNodes(walletAddress);
       
-      // Simulate starting delay
-      setTimeout(() => {
-        setNodes(nodes.map(node => 
-          node.id === selectedNodeId 
-            ? { ...node, status: 'running' } 
-            : node
-        ));
-        
-        // Simulate some initial usage
-        setCpuUsage(Math.random() * 30 + 10);
-        setMemoryUsage(Math.random() * 20 + 5);
-        setNetworkUsage(Math.random() * 5 + 0.5);
-        
-        setIsStarting(false);
-        toast.success(`Node "${selectedNode.name}" started and ready for tasks`);
-      }, 2000);
+      // Map the database data to the Node type
+      const formattedNodes = userNodes.map(node => ({
+        id: node.id,
+        name: node.device_name,
+        type: node.device_type,
+        rewardTier: node.reward_tier,
+        status: node.status as NodeStatus,
+        cpuCores: node.cpu_cores,
+        memory: node.memory,
+        gpuInfo: node.gpu_info,
+      }));
+      
+      setNodes(formattedNodes);
+    } catch (error) {
+      console.error("Error fetching user nodes:", error);
+      toast.error("Failed to load your nodes.");
     }
   };
   
-  const getRewardTierLabel = (tier: NodeInfo['rewardTier']) => {
-    switch (tier) {
-      case 'webgpu': return 'WebGPU (Maximum Rewards)';
-      case 'wasm': return 'WASM (High Rewards)';
-      case 'webgl': return 'WebGL (Medium Rewards)';
-      case 'cpu': return 'CPU (Basic Rewards)';
-      default: return tier.toUpperCase();
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setNodeForm(prev => ({ ...prev, [name]: value }));
+  };
+  
+  const handleNodeSubmit = async () => {
+    if (!walletAddress) {
+      toast.error("Please connect your wallet first.");
+      return;
     }
+    
+    try {
+      const newNode = {
+        device_name: nodeForm.name,
+        device_type: nodeForm.type,
+        reward_tier: nodeForm.rewardTier,
+        status: nodeForm.status,
+        cpu_cores: nodeForm.cpuCores,
+        memory: nodeForm.memory,
+        gpu_info: nodeForm.gpuInfo,
+        device_id: `swarm-node-${Date.now()}` // Generate a unique device ID
+      };
+      
+      const result = await registerNode(walletAddress, newNode);
+      
+      if (result.success) {
+        toast.success("Node registered successfully!");
+        setIsDialogOpen(false);
+        loadUserNodes(); // Refresh node list
+      } else {
+        toast.error(`Failed to register node: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Error registering node:", error);
+      toast.error("Failed to register node. Please try again.");
+    }
+  };
+  
+  const handleEditNode = (node: Node) => {
+    setIsEditingNode(true);
+    setSelectedNode(node);
+    setNodeForm({
+      name: node.name,
+      type: node.type,
+      rewardTier: node.rewardTier,
+      status: node.status,
+      cpuCores: node.cpuCores,
+      memory: node.memory,
+      gpuInfo: node.gpuInfo,
+    });
+    setIsDialogOpen(true);
+  };
+  
+  const handleDeleteNode = (nodeId: string) => {
+    // Implement delete node logic here
+    toast.info(`Node with ID ${nodeId} will be deleted (not implemented yet)`);
+  };
+  
+  const handlePowerAction = (nodeId: string, action: 'start' | 'stop') => {
+    // Implement start/stop node logic here
+    toast.info(`Node with ID ${nodeId} will be ${action}ed (not implemented yet)`);
   };
   
   return (
     <div className="stat-card">
-      <div className="flex flex-col space-y-4">
-        <div className="flex justify-between items-center mb-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold">Node Control Panel</h2>
-            <InfoTooltip content="Manage your computing nodes, start or stop them, and view performance metrics" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={startScan}
-              disabled={isScanning}
-              className="text-swarm-accent-purple border-swarm-accent-purple/50 hover:border-swarm-accent-purple/80 hover:bg-swarm-accent-purple/20"
-            >
-              {isScanning ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  Scanning...
-                </>
-              ) : (
-                <>
-                  <Scan className="w-4 h-4 mr-1" />
-                  Scan Device
-                </>
-              )}
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-semibold">Node Control Panel</h2>
+          <InfoTooltip content="Manage your Swarm Network nodes and their status" />
+        </div>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" className="bg-slate-700/50 border-slate-600">
+              <Plus className="w-4 h-4 mr-2" />
+              Register Node
             </Button>
-          </div>
-        </div>
-        
-        <div className="flex flex-col sm:flex-row gap-4 sm:items-center mb-2">
-          <div className="flex-1">
-            <Select value={selectedNodeId} onValueChange={handleNodeSelect}>
-              <SelectTrigger className="w-full bg-slate-800/50">
-                <SelectValue placeholder="Select a node" />
-              </SelectTrigger>
-              <SelectContent>
-                {nodes.map(node => (
-                  <SelectItem key={node.id} value={node.id}>
-                    {node.name} ({getRewardTierLabel(node.rewardTier)})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <Button 
-            variant={selectedNode.status === 'running' ? "destructive" : "default"}
-            disabled={isStarting}
-            onClick={toggleNodeStatus}
-            className={selectedNode.status !== 'running' ? "bg-green-600 hover:bg-green-700" : ""}
-          >
-            {isStarting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Starting...
-              </>
-            ) : (
-              <>
-                <Power className="w-4 h-4 mr-2" />
-                {selectedNode.status === 'running' ? 'Stop Node' : 'Start Node'}
-              </>
-            )}
-          </Button>
-        </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <Cpu className="w-4 h-4 mr-2" /> CPU Usage
-            </div>
-            <div className="text-2xl font-bold">{cpuUsage.toFixed(1)}%</div>
-          </div>
-          
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <HardDrive className="w-4 h-4 mr-2" /> Memory
-            </div>
-            <div className="text-2xl font-bold">{memoryUsage.toFixed(1)}%</div>
-          </div>
-          
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <Activity className="w-4 h-4 mr-2" /> Network
-            </div>
-            <div className="text-2xl font-bold">{networkUsage.toFixed(1)} MB/s</div>
-          </div>
-          
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <Clock className="w-4 h-4 mr-2" /> Tasks Completed
-            </div>
-            <div className="text-2xl font-bold">{tasksCompleted}</div>
-          </div>
-          
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg col-span-1 sm:col-span-2 lg:col-span-1">
-            <div className="flex items-center text-slate-400 mb-1">
-              <Clock className="w-4 h-4 mr-2" /> Success Rate
-            </div>
-            <div className="text-2xl font-bold">{successRate.toFixed(1)}%</div>
-          </div>
-          
-          <div className="col-span-1 sm:col-span-2 lg:col-span-3 p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <div className="flex-1">Reward Tier</div>
-              <div className="flex items-center text-xs bg-purple-900/50 text-purple-300 py-1 px-2 rounded-full">
-                {selectedNode.rewardTier.toUpperCase()}
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px] bg-slate-900 border border-slate-800">
+            <DialogHeader>
+              <DialogTitle>{isEditingNode ? 'Edit Node' : 'Register New Node'}</DialogTitle>
+              <DialogDescription>
+                {isEditingNode
+                  ? 'Update the settings for your selected node.'
+                  : 'Fill in the details below to register a new node to the Swarm Network.'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-right">
+                  Node Name
+                </Label>
+                <Input
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={nodeForm.name}
+                  onChange={handleInputChange}
+                  className="col-span-3 bg-slate-700 border-slate-600"
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="type" className="text-right">
+                  Device Type
+                </Label>
+                <Select value={nodeForm.type} onValueChange={(value) => handleInputChange({ target: { name: 'type', value } } as any)}>
+                  <SelectTrigger className="col-span-3 bg-slate-700 border-slate-600">
+                    <SelectValue placeholder="Select device type" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border border-slate-700">
+                    <SelectItem value="desktop">Desktop</SelectItem>
+                    <SelectItem value="laptop">Laptop</SelectItem>
+                    <SelectItem value="tablet">Tablet</SelectItem>
+                    <SelectItem value="mobile">Mobile</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="rewardTier" className="text-right">
+                  Reward Tier
+                </Label>
+                <Select value={nodeForm.rewardTier} onValueChange={(value) => handleInputChange({ target: { name: 'rewardTier', value } } as any)}>
+                  <SelectTrigger className="col-span-3 bg-slate-700 border-slate-600">
+                    <SelectValue placeholder="Select reward tier" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border border-slate-700">
+                    <SelectItem value="webgpu">WebGPU</SelectItem>
+                    <SelectItem value="wasm">WASM</SelectItem>
+                    <SelectItem value="webgl">WebGL</SelectItem>
+                    <SelectItem value="cpu">CPU</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="cpuCores" className="text-right">
+                  CPU Cores
+                </Label>
+                <Input
+                  type="number"
+                  id="cpuCores"
+                  name="cpuCores"
+                  value={nodeForm.cpuCores}
+                  onChange={handleInputChange}
+                  className="col-span-3 bg-slate-700 border-slate-600"
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="memory" className="text-right">
+                  Memory
+                </Label>
+                <Input
+                  type="text"
+                  id="memory"
+                  name="memory"
+                  value={nodeForm.memory}
+                  onChange={handleInputChange}
+                  className="col-span-3 bg-slate-700 border-slate-600"
+                />
+              </div>
+              
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="gpuInfo" className="text-right">
+                  GPU Info
+                </Label>
+                <Input
+                  type="text"
+                  id="gpuInfo"
+                  name="gpuInfo"
+                  value={nodeForm.gpuInfo}
+                  onChange={handleInputChange}
+                  className="col-span-3 bg-slate-700 border-slate-600"
+                />
               </div>
             </div>
-            <div className="mt-1 text-slate-300 text-sm">
-              {selectedNode.rewardTier === 'webgpu' && "This device supports WebGPU acceleration, earning maximum NLOV token rewards."}
-              {selectedNode.rewardTier === 'wasm' && "This device uses WASM processing, earning high NLOV token rewards."}
-              {selectedNode.rewardTier === 'webgl' && "This device uses WebGL processing, earning medium NLOV token rewards."}
-              {selectedNode.rewardTier === 'cpu' && "This device uses CPU processing, earning basic NLOV token rewards."}
-            </div>
-            
-            {selectedNode.cpuCores && (
-              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                <div className="text-slate-400">CPU Cores: <span className="text-white">{selectedNode.cpuCores}</span></div>
-                <div className="text-slate-400">Memory: <span className="text-white">{selectedNode.memory}</span> GB</div>
-                {selectedNode.gpuInfo && (
-                  <div className="col-span-2 text-slate-400">GPU: <span className="text-white">{selectedNode.gpuInfo}</span></div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={() => setIsDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" onClick={handleNodeSubmit}>
+                {isEditingNode ? 'Update Node' : 'Register Node'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       
-      <Dialog open={showScanDialog} onOpenChange={setShowScanDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Scanning Device Hardware</DialogTitle>
-            <DialogDescription>
-              Analyzing your device capabilities to determine the optimal reward tier
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-4">
-            <div className="mb-2 text-sm font-medium">{scanStage}</div>
-            <div className="w-full bg-slate-800 rounded-full h-2.5">
-              <div 
-                className="bg-gradient-to-r from-purple-500 to-blue-500 h-2.5 rounded-full transition-all duration-300 ease-in-out" 
-                style={{ width: `${scanProgress}%` }}
-              ></div>
+      {nodes.length > 0 ? (
+        <div className="space-y-3">
+          {nodes.map(node => (
+            <div key={node.id} className="task-card">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <Server className="w-5 h-5 mr-3 text-slate-400" />
+                  <div>
+                    <h3 className="font-medium">{node.name}</h3>
+                    <p className="text-sm text-slate-400">
+                      {node.type} - {node.rewardTier}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handlePowerAction(node.id || '', 'start')}
+                  >
+                    <Power className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEditNode(node)}
+                  >
+                    <Edit className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDeleteNode(node.id || '')}
+                  >
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                  </Button>
+                  <span className="text-sm text-slate-400">Status:</span>
+                  <div className="relative">
+                    <Switch id={`node-status-${node.id}`} defaultChecked={node.status === 'online'} />
+                    <Label
+                      htmlFor={`node-status-${node.id}`}
+                      className="absolute left-0 top-0 w-full h-full rounded-md peer-checked:bg-green-500 peer-checked:text-green-900 text-transparent"
+                    >
+                      {node.status}
+                    </Label>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="mt-4 text-sm text-slate-400">
-              {scanProgress < 100 ? 
-                "Please wait while we analyze your device. Do not close this window." : 
-                "Scan completed successfully!"
-              }
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          ))}
+        </div>
+      ) : (
+        <div className="p-6 text-center border border-dashed border-slate-700 rounded-lg">
+          <AlertTriangle className="w-12 h-12 text-slate-500 mx-auto mb-2" />
+          <h3 className="text-lg font-medium mb-1">No Nodes Registered</h3>
+          <p className="text-slate-400">
+            Register your first node to start contributing to the Swarm Network.
+          </p>
+        </div>
+      )}
     </div>
   );
 };
