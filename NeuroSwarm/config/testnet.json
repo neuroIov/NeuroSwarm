@@ -1,0 +1,86 @@
+{
+    "network": {
+        "rpcEndpoint": "https://api.testnet.solana.com",
+        "wsEndpoint": "wss://api.testnet.solana.com",
+        "programId": "SwarmNetwork11111111111111111111111111111111",
+        "tokenMint": "TokenMint111111111111111111111111111111111111"
+    },
+    "tokenomics": {
+        "totalSupply": "500000000000000000",
+        "initialCirculating": "90000000000000000",
+        "decimals": 9,
+        "distributions": {
+            "team": {
+                "amount": "60000000000000000",
+                "cliff": 15552000,
+                "vesting": 31104000
+            },
+            "airdrop": {
+                "amount": "90000000000000000",
+                "recipients": 2000,
+                "lockup": 2592000
+            },
+            "marketing": {
+                "amount": "40000000000000000",
+                "vesting": 15552000
+            },
+            "strategic": {
+                "amount": "25000000000000000",
+                "cliff": 7776000,
+                "vesting": 15552000
+            }
+        }
+    },
+    "staking": {
+        "minStake": "1000000000000",
+        "maxStake": "100000000000000",
+        "lockupDuration": 604800,
+        "slashingPenalty": 0.1
+    },
+    "compute": {
+        "minComplexity": 1,
+        "maxComplexity": 2000,
+        "targetBlockTime": 400,
+        "maxRetries": 3,
+        "taskTimeout": 300000
+    },
+    "security": {
+        "rateLimits": {
+            "taskSubmission": {
+                "maxRequests": 100,
+                "windowMs": 3600000
+            },
+            "staking": {
+                "maxRequests": 5,
+                "windowMs": 86400000
+            },
+            "nodeRegistration": {
+                "maxRequests": 1,
+                "windowMs": 86400000
+            }
+        },
+        "validation": {
+            "minNodeScore": 50,
+            "banThreshold": 10,
+            "banDuration": 86400000
+        }
+    },
+    "monitoring": {
+        "metrics": {
+            "updateInterval": 60000,
+            "retentionDays": 7
+        },
+        "alerts": {
+            "networkHealthThreshold": 0.95,
+            "securityHealthThreshold": 0.9,
+            "economicHealthThreshold": 0.85
+        }
+    },
+    "rewards": {
+        "baseReward": "100000000000",
+        "complexityMultiplier": 1.5,
+        "stakingMultiplier": 2.0,
+        "performanceMultiplier": 1.2,
+        "epochDuration": 86400
+    }
+}

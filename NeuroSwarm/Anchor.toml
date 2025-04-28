@@ -1,0 +1,18 @@
+[programs.localnet]
+swarm_network = "Cxkf3LNezaq4NiHMaXom1KiKDUPky1o8xL2WXgfHWxWN"
+
+[programs.devnet]
+swarm_network = "Cxkf3LNezaq4NiHMaXom1KiKDUPky1o8xL2WXgfHWxWN"
+
+[programs.testnet]
+swarm_network = "Cxkf3LNezaq4NiHMaXom1KiKDUPky1o8xL2WXgfHWxWN"
+
+[registry]
+url = "https://anchor.projectserum.com"
+
+[features]
+seeds = true
+
+[provider]
+cluster = "testnet"
+wallet = "~/.config/solana/id.json"

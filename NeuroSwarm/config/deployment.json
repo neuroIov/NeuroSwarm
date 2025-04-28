@@ -1,0 +1,34 @@
+{
+    "testnet": {
+        "network": "testnet",
+        "cluster": "https://api.testnet.solana.com",
+        "programs": {
+            "device": {
+                "programId": "SwarmNetwork11111111111111111111111111111111",
+                "idl": "./target/idl/device.json"
+            },
+            "task": {
+                "programId": "TaskProgram11111111111111111111111111111111",
+                "idl": "./target/idl/task.json"
+            },
+            "reward": {
+                "programId": "RewardProgram1111111111111111111111111111111",
+                "idl": "./target/idl/reward.json"
+            },
+            "staking": {
+                "programId": "StakingProgram111111111111111111111111111111",
+                "idl": "./target/idl/staking.json"
+            },
+            "gpu": {
+                "programId": "GpuProgram111111111111111111111111111111111",
+                "idl": "./target/idl/gpu.json"
+            }
+        },
+        "tokenMint": "TokenMint111111111111111111111111111111111111",
+        "deploymentSettings": {
+            "confirmations": 1,
+            "commitment": "confirmed",
+            "preflightCommitment": "processed"
+        }
+    }
+}
