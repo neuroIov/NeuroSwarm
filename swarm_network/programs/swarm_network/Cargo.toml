@@ -1,0 +1,20 @@
+[package]
+name = "swarm-network"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+no-program-error = []
+no-borsh-deserialize = []
+no-borsh-serialize = []
+
+[dependencies]
+anchor-lang = "0.30.0"
+anchor-spl = "0.30.0"
+borsh = "0.10.3"

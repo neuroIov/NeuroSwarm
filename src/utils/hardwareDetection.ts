@@ -1,16 +1,143 @@
-
 /**
  * Hardware detection utility
  * Uses browser APIs to detect device capabilities
  */
 
-type HardwareInfo = {
+type DeviceGroup = 'desktop_laptop' | 'mobile_tablet';
+
+interface DeviceBrand {
+  name: string;
+  models: string[];
+}
+
+type DeviceCategory = {
+  type: 'desktop' | 'laptop' | 'tablet' | 'mobile';
+  brands: DeviceBrand[];
+  requiresSpecs?: boolean;
+};
+
+const deviceCategories: Record<DeviceGroup, Record<string, DeviceCategory>> = {
+  desktop_laptop: {
+    desktop: {
+      type: 'desktop',
+      requiresSpecs: true,
+      brands: [
+        {
+          name: 'HP',
+          models: ['Pavilion', 'OMEN', 'EliteDesk', 'ProDesk', 'Other']
+        },
+        {
+          name: 'Dell',
+          models: ['XPS Desktop', 'Alienware', 'OptiPlex', 'Precision', 'Other']
+        },
+        {
+          name: 'Lenovo',
+          models: ['ThinkCentre', 'Legion Tower', 'IdeaCentre', 'Other']
+        },
+        {
+          name: 'Apple',
+          models: ['Mac Studio', 'Mac Pro', 'iMac', 'Mac Mini', 'Other']
+        },
+        {
+          name: 'Custom Build',
+          models: ['Gaming PC', 'Workstation', 'Home Desktop', 'Other']
+        }
+      ]
+    },
+    laptop: {
+      type: 'laptop',
+      brands: [
+        {
+          name: 'HP',
+          models: ['Pavilion', 'OMEN', 'Envy', 'EliteBook', 'ProBook', 'Other']
+        },
+        {
+          name: 'Dell',
+          models: ['XPS', 'Alienware', 'Latitude', 'Precision', 'Inspiron', 'Other']
+        },
+        {
+          name: 'Lenovo',
+          models: ['ThinkPad', 'Legion', 'IdeaPad', 'Yoga', 'Other']
+        },
+        {
+          name: 'Apple',
+          models: ['MacBook Pro', 'MacBook Air', 'Other']
+        },
+        {
+          name: 'Acer',
+          models: ['Predator', 'Nitro', 'Swift', 'Aspire', 'Other']
+        },
+        {
+          name: 'ASUS',
+          models: ['ROG', 'TUF', 'ZenBook', 'VivoBook', 'Other']
+        },
+        {
+          name: 'MSI',
+          models: ['Titan', 'Raider', 'Stealth', 'Katana', 'Other']
+        }
+      ]
+    }
+  },
+  mobile_tablet: {
+    tablet: {
+      type: 'tablet',
+      brands: [
+        {
+          name: 'Apple',
+          models: ['iPad Pro', 'iPad Air', 'iPad Mini', 'iPad', 'Other']
+        },
+        {
+          name: 'Samsung',
+          models: ['Galaxy Tab S', 'Galaxy Tab A', 'Other']
+        },
+        {
+          name: 'Microsoft',
+          models: ['Surface Pro', 'Surface Go', 'Other']
+        },
+        {
+          name: 'Lenovo',
+          models: ['Tab P', 'Tab M', 'Other']
+        }
+      ]
+    },
+    mobile: {
+      type: 'mobile',
+      brands: [
+        {
+          name: 'Apple',
+          models: ['iPhone 15', 'iPhone 14', 'iPhone 13', 'iPhone 12', 'Other']
+        },
+        {
+          name: 'Samsung',
+          models: ['Galaxy S24', 'Galaxy S23', 'Galaxy A', 'Galaxy M', 'Other']
+        },
+        {
+          name: 'Google',
+          models: ['Pixel 8', 'Pixel 7', 'Pixel 6', 'Other']
+        },
+        {
+          name: 'OnePlus',
+          models: ['12', '11', 'Nord', 'Other']
+        }
+      ]
+    }
+  }
+};
+
+interface HardwareInfo {
   cpuCores: number;
   deviceMemory: number | string;
   gpuInfo: string;
-  deviceType: 'desktop' | 'laptop' | 'tablet' | 'mobile';
+  deviceGroup: DeviceGroup;
+  deviceType?: 'desktop' | 'laptop' | 'tablet' | 'mobile';
+  deviceBrand?: string;
+  deviceModel?: string;
+  customSpecs?: {
+    cpu?: string;
+    gpu?: string;
+  };
   rewardTier: 'webgpu' | 'wasm' | 'webgl' | 'cpu';
-};
+}
 
 // Check if the device supports WebGPU
 const hasWebGPU = async (): Promise<boolean> => {
@@ -24,24 +151,6 @@ const hasWebGPU = async (): Promise<boolean> => {
     }
   }
   return false;
-};
-
-// Check if device orientation is available (for mobile detection)
-const checkDeviceOrientation = async (): Promise<boolean> => {
-  return new Promise((resolve) => {
-    const handleOrientation = (event: DeviceOrientationEvent) => {
-      window.removeEventListener('deviceorientation', handleOrientation);
-      resolve(event && (event.alpha !== null || event.beta !== null || event.gamma !== null));
-    };
-    
-    window.addEventListener('deviceorientation', handleOrientation, { once: true });
-    
-    // Timeout after 1 second if no orientation events
-    setTimeout(() => {
-      window.removeEventListener('deviceorientation', handleOrientation);
-      resolve(false);
-    }, 1000);
-  });
 };
 
 // Detect WebGL support and capabilities
@@ -63,28 +172,53 @@ const detectWebGLCapabilities = (): { supported: boolean, version: number } => {
   }
 };
 
-// Determine device type based on screen size and user agent
-const detectDeviceType = (): 'desktop' | 'laptop' | 'tablet' | 'mobile' => {
-  const ua = navigator.userAgent;
+// Get available device types for a device group
+export const getDeviceTypesForGroup = (group: DeviceGroup): string[] => {
+  return Object.keys(deviceCategories[group]);
+};
+
+// Get available brands for a device type
+export const getDeviceBrands = (group: DeviceGroup, type: 'desktop' | 'laptop' | 'tablet' | 'mobile'): string[] => {
+  return deviceCategories[group][type]?.brands.map(b => b.name) || [];
+};
+
+// Get available models for a device brand
+export const getDeviceModels = (
+  group: DeviceGroup,
+  type: 'desktop' | 'laptop' | 'tablet' | 'mobile',
+  brand: string
+): string[] => {
+  const category = deviceCategories[group][type];
+  const brandInfo = category?.brands.find(b => b.name === brand);
+  return brandInfo?.models || [];
+};
+
+// Check if device type requires custom specs
+export const requiresCustomSpecs = (
+  group: DeviceGroup,
+  type: 'desktop' | 'laptop' | 'tablet' | 'mobile'
+): boolean => {
+  return deviceCategories[group][type]?.requiresSpecs || false;
+};
+
+// Get available device series for a device type
+export const getDeviceSeries = (group: DeviceGroup, type: 'desktop' | 'laptop' | 'tablet' | 'mobile'): string[] => {
+  return [];
+};
+
+// Basic device group detection based on screen and OS
+const detectDeviceGroup = (): DeviceGroup => {
+  const ua = navigator.userAgent.toLowerCase();
   const width = window.innerWidth;
   
-  // Check for mobile devices
-  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
-    if (width > 768) {
-      return 'tablet';
-    }
-    return 'mobile';
+  // Check for mobile/tablet indicators
+  if (width <= 1024 || 
+      /mobile|android|iphone|ipad|ipod|windows phone/i.test(ua)) {
+    return 'mobile_tablet';
   }
   
-  // Check for laptop vs desktop (rough estimation)
-  if (/Macintosh|MacIntel|MacPPC|Mac68K|Windows NT/i.test(ua)) {
-    // Laptops typically have smaller screens
-    if (window.screen.width <= 1440) {
-      return 'laptop';
-    }
-  }
-  
-  return 'desktop';
+  // Otherwise assume desktop/laptop
+  return 'desktop_laptop';
 };
 
 // Get approximate memory
@@ -120,28 +254,26 @@ const getGPUInfo = async (): Promise<string> => {
   }
   
   // Fallback - make an educated guess based on device type
-  const deviceType = detectDeviceType();
-  if (deviceType === 'desktop') return 'Desktop GPU';
-  if (deviceType === 'laptop') return 'Laptop GPU';
-  if (deviceType === 'tablet') return 'Tablet GPU';
-  return 'Mobile GPU';
+  const deviceGroup = detectDeviceGroup();
+  if (deviceGroup === 'desktop_laptop') return 'Desktop/Laptop GPU';
+  return 'Mobile/Tablet GPU';
 };
 
 // Determines reward tier based on device capabilities
 const determineRewardTier = async (
   webgpuSupport: boolean,
   webglCapabilities: { supported: boolean, version: number },
-  deviceType: 'desktop' | 'laptop' | 'tablet' | 'mobile',
 ): Promise<'webgpu' | 'wasm' | 'webgl' | 'cpu'> => {
   // WebGPU is the highest tier
   if (webgpuSupport) return 'webgpu';
   
   // Next, check for high-performance system that can do WASM well
+  const deviceMemory = getDeviceMemory();
   const isHighPerformance = 
     getCPUCores() >= 4 && 
-    (getDeviceMemory() !== 'Unknown' && typeof getDeviceMemory() === 'number' && getDeviceMemory() >= 4);
+    (typeof deviceMemory === 'number' && deviceMemory >= 4);
   
-  if (isHighPerformance && (deviceType === 'desktop' || deviceType === 'laptop')) {
+  if (isHighPerformance) {
     return 'wasm';
   }
   
@@ -158,50 +290,41 @@ const determineRewardTier = async (
 export const detectHardware = async (): Promise<HardwareInfo> => {
   console.log('Starting real hardware detection...');
   
-  // Request permission to access hardware info
-  const permissionRequest = async (): Promise<boolean> => {
-    try {
-      // Try to request microphone access as a way to trigger permission dialog
-      const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-      return permissionStatus.state === 'granted';
-    } catch (e) {
-      console.log('Permission API not supported, proceeding without explicit permission');
-      return true;
-    }
-  };
-  
-  // Wait for permission
-  const hasPermission = await permissionRequest();
-  if (!hasPermission) {
-    console.log('Hardware detection permission denied');
-    throw new Error('Permission to access device information was denied');
+  try {
+    console.log('Detecting device hardware...');
+    
+    // Run all detection in parallel
+    const [webgpuSupport, webglCapabilities, gpuInfo] = await Promise.all([
+      hasWebGPU(),
+      detectWebGLCapabilities(),
+      getGPUInfo(),
+    ]);
+    
+    // First just detect the device group
+    const deviceGroup = detectDeviceGroup();
+    
+    const rewardTier = await determineRewardTier(webgpuSupport, webglCapabilities);
+    
+    const hardwareInfo: HardwareInfo = {
+      cpuCores: getCPUCores(),
+      deviceMemory: getDeviceMemory(),
+      gpuInfo,
+      deviceGroup,
+      rewardTier,
+    };
+    
+    console.log('Hardware detection complete:', hardwareInfo);
+    return hardwareInfo;
+  } catch (e) {
+    console.error('Hardware detection error:', e);
+    const deviceGroup = detectDeviceGroup();
+    const fallbackInfo: HardwareInfo = {
+      cpuCores: 1,
+      deviceMemory: 'Unknown',
+      gpuInfo: 'Basic GPU',
+      deviceGroup,
+      rewardTier: 'cpu'
+    };
+    return fallbackInfo;
   }
-  
-  console.log('Detecting device hardware...');
-  
-  // Run all detection in parallel
-  const [webgpuSupport, webglCapabilities, gpuInfo] = await Promise.all([
-    hasWebGPU(),
-    detectWebGLCapabilities(),
-    getGPUInfo(),
-  ]);
-  
-  const deviceType = detectDeviceType();
-  const isMobile = await checkDeviceOrientation();
-  
-  // Override device type if orientation sensor is detected
-  const finalDeviceType = isMobile && deviceType === 'desktop' ? 'mobile' : deviceType;
-  
-  const rewardTier = await determineRewardTier(webgpuSupport, webglCapabilities, finalDeviceType);
-  
-  const hardwareInfo: HardwareInfo = {
-    cpuCores: getCPUCores(),
-    deviceMemory: getDeviceMemory(),
-    gpuInfo,
-    deviceType: finalDeviceType,
-    rewardTier,
-  };
-  
-  console.log('Hardware detection complete:', hardwareInfo);
-  return hardwareInfo;
 };
