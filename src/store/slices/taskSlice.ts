@@ -13,6 +13,7 @@ export interface TasksState {
     currentTask: AITask | null;
     isLoading: boolean;
     error: string | null;
+    lastFetchTime: number;
 }
 
 const initialState: TasksState = {
@@ -21,62 +22,120 @@ const initialState: TasksState = {
     currentTask: null,
     isLoading: false,
     error: null,
+    lastFetchTime: 0
+};
+
+// Cache to prevent duplicate requests during debounce period
+let fetchTasksDebounceTimer: NodeJS.Timeout | null = null;
+const DEBOUNCE_TIME = 1500; // 1.5 seconds
+
+// Function to check if we should fetch tasks or use cached data
+const shouldFetchTasks = (state: TasksState, forceRefresh: boolean = false): boolean => {
+    const now = Date.now();
+    const timeSinceLastFetch = now - state.lastFetchTime;
+    const hasTasks = state.allTasks.length > 0;
+
+    // Always fetch if forced, no tasks, or last fetch was more than 15 seconds ago
+    return forceRefresh || !hasTasks || timeSinceLastFetch > 15000;
 };
 
 // Async thunks
 export const fetchTasks = createAsyncThunk(
     'tasks/fetchTasks',
-    async (_, { rejectWithValue }) => {
-        try {
-            // Use fetchAndConvertTasks from swarmTaskService to get tasks from all sources
-            const tasks = await getRecentTasks(50);
+    async ({ forceRefresh = false }: { forceRefresh?: boolean } = {}, { getState, rejectWithValue }) => {
+        const state = getState() as { tasks: TasksState };
 
-            // Log details for debugging
-            console.log(`Tasks fetched from getRecentTasks: ${tasks.length}`);
+        // Check if we should fetch tasks or use cached data
+        if (!forceRefresh && !shouldFetchTasks(state.tasks, forceRefresh)) {
+            console.log('Using cached tasks - fetch skipped');
+            return state.tasks.allTasks;
+        }
 
-            // If we only got a few tasks, try to fetch directly using fetchAndConvertTasks
-            if (tasks.length <= 1) {
-                const { fetchAndConvertTasks } = await import('@/services/swarmTaskService');
-                console.log('Trying to fetch tasks directly with fetchAndConvertTasks');
-                const directTasks = await fetchAndConvertTasks(50);
-                console.log(`Directly fetched tasks: ${directTasks.length}`);
-                return directTasks;
+        // Debounce fetch requests to prevent hammering the server
+        return new Promise<AITask[]>((resolve, reject) => {
+            if (fetchTasksDebounceTimer) {
+                clearTimeout(fetchTasksDebounceTimer);
             }
 
-            return tasks;
-        } catch (error) {
-            return rejectWithValue((error as Error).message);
-        }
+            fetchTasksDebounceTimer = setTimeout(async () => {
+                try {
+                    // Use fetchAndConvertTasks from swarmTaskService to get tasks from all sources
+                    const tasks = await getRecentTasks(50);
+
+                    // Log details for debugging
+                    console.log(`Tasks fetched from getRecentTasks: ${tasks.length}`);
+                    console.log(`Task types: Image=${tasks.filter(t => t.type === 'image').length}, Text=${tasks.filter(t => t.type === 'text').length}`);
+
+                    // If we only got a few tasks, try to fetch directly using fetchAndConvertTasks
+                    if (tasks.length <= 1) {
+                        const { fetchAndConvertTasks } = await import('@/services/swarmTaskService');
+                        console.log('Trying to fetch tasks directly with fetchAndConvertTasks');
+                        const directTasks = await fetchAndConvertTasks(50);
+                        console.log(`Directly fetched tasks: ${directTasks.length}`);
+                        resolve(directTasks);
+                        return;
+                    }
+
+                    resolve(tasks);
+                } catch (error) {
+                    reject(rejectWithValue((error as Error).message));
+                }
+            }, DEBOUNCE_TIME);
+        });
     }
 );
 
+// Debounce for assign tasks requests too
+let assignTasksDebounceTimer: NodeJS.Timeout | null = null;
+
 export const fetchAndAssignTasks = createAsyncThunk(
     'tasks/fetchAndAssignTasks',
-    async (nodeId: string, { rejectWithValue }) => {
-        try {
-            // Try to refresh tasks from source tables first
-            await refreshTasks(20);
+    async (nodeId: string, { getState, rejectWithValue }) => {
+        const state = getState() as { tasks: TasksState };
+        const pendingTasks = state.tasks.assignedTasks.filter(t => t.status === 'pending');
 
-            // Use the swarmTaskService to assign tasks to node (strict limit of 5)
-            const assignedTasks = await assignTasksToNode(nodeId, 5);
+        // If we already have enough pending tasks, don't fetch more
+        if (pendingTasks.length >= 3) {
+            console.log(`Already have ${pendingTasks.length} pending tasks, skipping fetch`);
+            return pendingTasks;
+        }
 
-            // If no tasks were assigned, try fallback to regular pending tasks
-            if (assignedTasks.length === 0) {
-                // Get pending tasks from regular task service
-                const pendingTasks = await getPendingTasks(5);
-
-                // Create assigned tasks
-                return pendingTasks.map(task => ({
-                    ...task,
-                    node_id: nodeId,
-                    status: 'pending' as TaskStatus
-                }));
+        // Debounce assign requests
+        return new Promise<AITask[]>((resolve, reject) => {
+            if (assignTasksDebounceTimer) {
+                clearTimeout(assignTasksDebounceTimer);
             }
 
-            return assignedTasks;
-        } catch (error) {
-            return rejectWithValue((error as Error).message);
-        }
+            assignTasksDebounceTimer = setTimeout(async () => {
+                try {
+                    // Try to refresh tasks from source tables first
+                    await refreshTasks(20);
+
+                    // Use the swarmTaskService to assign tasks to node (strict limit of 5)
+                    const assignedTasks = await assignTasksToNode(nodeId, 5);
+
+                    // If no tasks were assigned, try fallback to regular pending tasks
+                    if (assignedTasks.length === 0) {
+                        // Get pending tasks from regular task service
+                        const pendingTasks = await getPendingTasks(5);
+
+                        // Create assigned tasks
+                        const tasksWithNodeId = pendingTasks.map(task => ({
+                            ...task,
+                            node_id: nodeId,
+                            status: 'pending' as TaskStatus
+                        }));
+
+                        resolve(tasksWithNodeId);
+                        return;
+                    }
+
+                    resolve(assignedTasks);
+                } catch (error) {
+                    reject(rejectWithValue((error as Error).message));
+                }
+            }, DEBOUNCE_TIME);
+        });
     }
 );
 
@@ -169,6 +228,8 @@ export const taskSlice = createSlice({
             })
             .addCase(fetchTasks.fulfilled, (state, action) => {
                 state.isLoading = false;
+                state.lastFetchTime = Date.now();
+
                 // Only add tasks that are not already in the completed assigned tasks
                 const completedAssignedTaskIds = state.assignedTasks
                     .filter(t => t.status === 'completed' || t.status === 'failed')
@@ -189,6 +250,7 @@ export const taskSlice = createSlice({
             .addCase(fetchTasks.rejected, (state, action) => {
                 state.isLoading = false;
                 state.error = action.payload as string;
+                // Don't clear existing tasks on error
             })
 
             // Fetch and assign tasks cases

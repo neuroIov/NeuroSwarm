@@ -11,6 +11,11 @@ import { convertToAITask } from './taskService';
 export const fetchAndConvertTasks = async (limit: number = 20): Promise<AITask[]> => {
     try {
         const taskClient = getTaskSupabase();
+        if (!taskClient) {
+            logger.error('Task client is not initialized');
+            return [];
+        }
+
         const swarmClient = getSwarmSupabase();
         let convertedTasks: AITask[] = [];
 
@@ -23,7 +28,11 @@ export const fetchAndConvertTasks = async (limit: number = 20): Promise<AITask[]
                 .order('created_at', { ascending: false })
                 .limit(50); // Fetch up to 50
 
-            if (!freedomAIError && freedomAIData && freedomAIData.length > 0) {
+            if (freedomAIError) {
+                logger.error('Error fetching freedomai_messages:', freedomAIError);
+            }
+
+            if (freedomAIData && freedomAIData.length > 0) {
                 logger.log(`Found ${freedomAIData.length} tasks in freedomai_messages table`);
                 logger.log(`Found ${freedomAIData.length} tasks in freedomai_messages table of tasks project`);
                 const aiTasks = freedomAIData.map(item => convertToAITask(item, 'freedomai_messages'));
@@ -37,15 +46,26 @@ export const fetchAndConvertTasks = async (limit: number = 20): Promise<AITask[]
         let imageTasks: AITask[] = [];
         try {
             // Get all available tasks from img_gen_messages
+            logger.log('Attempting to fetch image tasks from img_gen_messages table');
+
             const { data: imageGenData, error: imageGenError } = await taskClient
                 .from('img_gen_messages')
                 .select('*')
                 .order('created_at', { ascending: false })
-                .limit(50); // Fetch up to 50
+                .limit(50);
 
-            if (!imageGenError && imageGenData && imageGenData.length > 0) {
+
+            if (imageGenError) {
+                logger.error('Error fetching from img_gen_messages table:', imageGenError);
+            }
+
+            if (!imageGenData) {
+                logger.error('No imageGenData returned from query');
+            } else if (imageGenData.length === 0) {
+                logger.log('No image tasks found in img_gen_messages table');
+            } else {
                 logger.log(`Found ${imageGenData.length} tasks in img_gen_messages table`);
-                logger.log(`Raw imageGenData: ${JSON.stringify(imageGenData.slice(0, 2))}`);
+                logger.log(`Raw imageGenData sample: ${JSON.stringify(imageGenData[0])}`);
 
                 // Map image tasks without duplication
                 imageTasks = imageGenData.map(item => convertToAITask(item, 'img_gen_messages'));
@@ -68,18 +88,20 @@ export const fetchAndConvertTasks = async (limit: number = 20): Promise<AITask[]
         logger.log(`Task type distribution: Image=${convertedTasks.filter(t => t.type === 'image').length}, Text=${convertedTasks.filter(t => t.type === 'text').length}`);
 
         // Separate image and text tasks
+        const imageTasks2 = convertedTasks.filter(task => task.type === 'image');
         const textTasks = convertedTasks.filter(task => task.type === 'text');
 
         // Sort all by creation date
         textTasks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        imageTasks2.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
         // Make sure we always include the image tasks, and fill the rest with text tasks
-        const textTasksToInclude = limit - imageTasks.length > 0 ?
-            textTasks.slice(0, limit - imageTasks.length) :
+        const textTasksToInclude = limit - imageTasks2.length > 0 ?
+            textTasks.slice(0, limit - imageTasks2.length) :
             [];
 
         // Combine with priority for image tasks
-        const finalTasks = [...imageTasks, ...textTasksToInclude];
+        const finalTasks = [...imageTasks2, ...textTasksToInclude];
 
         // Final sort by date
         finalTasks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());

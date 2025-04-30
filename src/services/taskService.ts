@@ -44,19 +44,19 @@ export const convertToAITask = (item: Record<string, unknown>, sourceTable: stri
     if (sourceTable === 'freedomai_conversations') {
         content = (item.title || item.content || 'AI Conversation') as string;
         type = 'text';
-        model = 'gpt-4';
+        model = 'freedom-ai';
     } else if (sourceTable === 'freedomai_messages') {
         content = (item.content || item.message || 'AI Message') as string;
         type = 'text';
-        model = (item.model || 'gpt-4') as string;
+        model = (item.model || 'freedom-ai') as string;
     } else if (sourceTable === 'img_gen_messages') {
         content = (item.prompt || item.content || 'Image Generation') as string;
         type = 'image';
-        model = (item.model || 'dalle-3') as string;
+        model = (item.model || 'neuro-image-gen') as string;
     } else if (sourceTable === 'music_gen_messages') {
         content = (item.prompt || item.content || 'Music Generation') as string;
         type = 'inference';
-        model = (item.model || 'musicgen') as string;
+        model = (item.model || 'neuro-music-gen') as string;
     } else if (item.content) {
         content = item.content as string;
     } else if (item.message) {
