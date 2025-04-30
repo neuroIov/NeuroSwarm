@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Cpu, 
@@ -8,7 +7,11 @@ import {
   PlusCircle,
   Power,
   Loader2,
-  Scan
+  Scan,
+  Laptop,
+  Monitor,
+  Tablet,
+  Smartphone
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InfoTooltip } from './InfoTooltip';
@@ -26,14 +29,29 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import { detectHardware } from '@/utils/hardwareDetection';
+import { 
+  detectHardware, 
+  getDeviceTypesForGroup, 
+  getDeviceBrands,
+  getDeviceModels,
+  requiresCustomSpecs
+} from '@/utils/hardwareDetection';
+import { Input } from "@/components/ui/input";
 
-// Node type definition
+type DeviceGroup = 'desktop_laptop' | 'mobile_tablet';
+
 interface NodeInfo {
   id: string;
   name: string;
   type: 'desktop' | 'laptop' | 'tablet' | 'mobile';
+  brand?: string;
+  model?: string;
+  customSpecs?: {
+    cpu?: string;
+    gpu?: string;
+  };
   rewardTier: 'webgpu' | 'wasm' | 'webgl' | 'cpu';
   status: 'idle' | 'running' | 'offline';
   cpuCores?: number;
@@ -42,17 +60,8 @@ interface NodeInfo {
 }
 
 export const NodeControlPanel = () => {
-  const [nodes, setNodes] = useState<NodeInfo[]>([
-    {
-      id: 'node-1',
-      name: 'Desktop Workstation',
-      type: 'desktop',
-      rewardTier: 'webgpu',
-      status: 'idle'
-    }
-  ]);
-  
-  const [selectedNodeId, setSelectedNodeId] = useState<string>(nodes[0].id);
+  const [nodes, setNodes] = useState<NodeInfo[]>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string>('');
   const [cpuUsage, setCpuUsage] = useState(0);
   const [memoryUsage, setMemoryUsage] = useState(0);
   const [networkUsage, setNetworkUsage] = useState(0);
@@ -63,111 +72,111 @@ export const NodeControlPanel = () => {
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStage, setScanStage] = useState('');
-
-  const selectedNode = nodes.find(n => n.id === selectedNodeId) || nodes[0];
+  
+  // Device selection state
+  const [showDeviceTypeDialog, setShowDeviceTypeDialog] = useState(false);
+  const [detectedHardware, setDetectedHardware] = useState<any>(null);
+  const [deviceGroup, setDeviceGroup] = useState<DeviceGroup>('desktop_laptop');
+  const [selectedDeviceType, setSelectedDeviceType] = useState<'desktop' | 'laptop' | 'tablet' | 'mobile'>('desktop');
+  const [selectedBrand, setSelectedBrand] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [customSpecs, setCustomSpecs] = useState<{ cpu?: string; gpu?: string }>({});
+  
+  const selectedNode = nodes.find(n => n.id === selectedNodeId);
   
   const handleNodeSelect = (value: string) => {
     setSelectedNodeId(value);
-    // Reset usage stats when switching nodes
     setCpuUsage(0);
     setMemoryUsage(0);
     setNetworkUsage(0);
+  };
+
+  const getDeviceIcon = (type: 'desktop' | 'laptop' | 'tablet' | 'mobile') => {
+    switch (type) {
+      case 'desktop': return <Monitor className="w-6 h-6" />;
+      case 'laptop': return <Laptop className="w-6 h-6" />;
+      case 'tablet': return <Tablet className="w-6 h-6" />;
+      case 'mobile': return <Smartphone className="w-6 h-6" />;
+    }
   };
   
   const startScan = () => {
     setShowScanDialog(true);
     setIsScanning(true);
     setScanProgress(0);
-    setScanStage('Requesting device permission...');
+    setScanStage('Detecting device type...');
     
-    // Simulate permission request phase
     setTimeout(() => {
       setScanProgress(10);
-      setScanStage('Analyzing CPU capabilities...');
-      
-      // Begin actual hardware scan
       performHardwareScan();
     }, 1000);
   };
   
   const performHardwareScan = async () => {
     try {
-      // Update progress as we go
       const updateProgress = (progress: number, stage: string) => {
         setScanProgress(progress);
         setScanStage(stage);
       };
       
-      // CPU detection
-      updateProgress(20, 'Analyzing CPU capabilities...');
+      updateProgress(20, 'Analyzing system capabilities...');
       await new Promise(resolve => setTimeout(resolve, 800));
       
-      // Memory detection  
-      updateProgress(40, 'Checking available memory...');
+      updateProgress(40, 'Checking hardware specs...');
       await new Promise(resolve => setTimeout(resolve, 800));
       
-      // GPU detection
-      updateProgress(60, 'Detecting GPU capabilities...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // WebGPU support
-      updateProgress(80, 'Testing WebGPU support...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Finalize scan
-      updateProgress(90, 'Determining reward tier...');
-      
-      // Perform the actual hardware detection
+      updateProgress(60, 'Determining device category...');
       const hardwareInfo = await detectHardware();
+      setDetectedHardware(hardwareInfo);
+      setDeviceGroup(hardwareInfo.deviceGroup);
       
-      updateProgress(100, 'Scan complete!');
+      updateProgress(100, 'Initial scan complete!');
+      setIsScanning(false);
       
-      // Create the new node
-      const newNode: NodeInfo = {
-        id: `node-${nodes.length + 1}`,
-        name: `${hardwareInfo.deviceType.charAt(0).toUpperCase() + hardwareInfo.deviceType.slice(1)} Device ${nodes.length + 1}`,
-        type: hardwareInfo.deviceType,
-        rewardTier: hardwareInfo.rewardTier,
-        status: 'idle',
-        cpuCores: hardwareInfo.cpuCores,
-        memory: hardwareInfo.deviceMemory,
-        gpuInfo: hardwareInfo.gpuInfo
-      };
-      
-      // Wait a moment to show 100% complete before closing
+      // Close scan dialog and open device selection
       setTimeout(() => {
-        const updatedNodes = [...nodes, newNode];
-        setNodes(updatedNodes);
-        setSelectedNodeId(newNode.id);
-        setIsScanning(false);
         setShowScanDialog(false);
-        
-        // Show appropriate message based on reward tier
-        const rewardMessages = {
-          'webgpu': 'Maximum rewards tier! This device supports advanced WebGPU acceleration.',
-          'wasm': 'High rewards tier! This device has good processing capabilities.',
-          'webgl': 'Medium rewards tier! This device supports WebGL acceleration.',
-          'cpu': 'Basic rewards tier! This device will use CPU processing.'
-        };
-        
-        toast.success(
-          `New node added: ${newNode.name} (${newNode.rewardTier.toUpperCase()} rewards tier)`, 
-          { description: rewardMessages[newNode.rewardTier] }
-        );
+        setShowDeviceTypeDialog(true);
+        // Reset selection state
+        setSelectedDeviceType('desktop');
+        setSelectedBrand('');
+        setSelectedModel('');
+        setCustomSpecs({});
       }, 1000);
       
     } catch (error) {
       console.error('Hardware scan error:', error);
-      toast.error('Hardware scan failed', { 
-        description: 'Unable to complete hardware detection. Please try again or check browser permissions.'
-      });
-      setIsScanning(false);
+      toast.error('Failed to scan hardware. Please try again.');
       setShowScanDialog(false);
+      setIsScanning(false);
     }
   };
   
+  const confirmDeviceType = () => {
+    if (!detectedHardware || !selectedDeviceType || !selectedBrand || !selectedModel) return;
+    
+    const newNode: NodeInfo = {
+      id: `node-${nodes.length + 1}`,
+      name: `${selectedBrand} ${selectedModel}`,
+      type: selectedDeviceType,
+      brand: selectedBrand,
+      model: selectedModel,
+      customSpecs: requiresCustomSpecs(deviceGroup, selectedDeviceType) ? customSpecs : undefined,
+      rewardTier: detectedHardware.rewardTier,
+      status: 'idle',
+      cpuCores: detectedHardware.cpuCores,
+      memory: detectedHardware.deviceMemory,
+      gpuInfo: detectedHardware.gpuInfo
+    };
+    
+    setNodes([...nodes, newNode]);
+    setSelectedNodeId(newNode.id);
+    setShowDeviceTypeDialog(false);
+    toast.success('Device added successfully!');
+  };
+
   const toggleNodeStatus = () => {
-    if (selectedNode.status === 'running') {
+    if (selectedNode && selectedNode.status === 'running') {
       // Stop the node
       setNodes(nodes.map(node => 
         node.id === selectedNodeId 
@@ -182,7 +191,7 @@ export const NodeControlPanel = () => {
       
       toast.info(`Node "${selectedNode.name}" stopped`);
       
-    } else {
+    } else if (selectedNode) {
       // Start the node
       setIsStarting(true);
       
@@ -214,7 +223,7 @@ export const NodeControlPanel = () => {
       default: return tier.toUpperCase();
     }
   };
-  
+
   return (
     <div className="stat-card">
       <div className="flex flex-col space-y-4">
@@ -263,10 +272,10 @@ export const NodeControlPanel = () => {
           </div>
           
           <Button 
-            variant={selectedNode.status === 'running' ? "destructive" : "default"}
+            variant={selectedNode && selectedNode.status === 'running' ? "destructive" : "default"}
             disabled={isStarting}
             onClick={toggleNodeStatus}
-            className={selectedNode.status !== 'running' ? "bg-green-600 hover:bg-green-700" : ""}
+            className={selectedNode && selectedNode.status !== 'running' ? "bg-green-600 hover:bg-green-700" : ""}
           >
             {isStarting ? (
               <>
@@ -276,7 +285,7 @@ export const NodeControlPanel = () => {
             ) : (
               <>
                 <Power className="w-4 h-4 mr-2" />
-                {selectedNode.status === 'running' ? 'Stop Node' : 'Start Node'}
+                {selectedNode && selectedNode.status === 'running' ? 'Stop Node' : 'Start Node'}
               </>
             )}
           </Button>
@@ -322,17 +331,17 @@ export const NodeControlPanel = () => {
             <div className="flex items-center text-slate-400 mb-1">
               <div className="flex-1">Reward Tier</div>
               <div className="flex items-center text-xs bg-purple-900/50 text-purple-300 py-1 px-2 rounded-full">
-                {selectedNode.rewardTier.toUpperCase()}
+                {selectedNode && selectedNode.rewardTier.toUpperCase()}
               </div>
             </div>
             <div className="mt-1 text-slate-300 text-sm">
-              {selectedNode.rewardTier === 'webgpu' && "This device supports WebGPU acceleration, earning maximum NLOV token rewards."}
-              {selectedNode.rewardTier === 'wasm' && "This device uses WASM processing, earning high NLOV token rewards."}
-              {selectedNode.rewardTier === 'webgl' && "This device uses WebGL processing, earning medium NLOV token rewards."}
-              {selectedNode.rewardTier === 'cpu' && "This device uses CPU processing, earning basic NLOV token rewards."}
+              {selectedNode && selectedNode.rewardTier === 'webgpu' && "This device supports WebGPU acceleration, earning maximum NLOV token rewards."}
+              {selectedNode && selectedNode.rewardTier === 'wasm' && "This device uses WASM processing, earning high NLOV token rewards."}
+              {selectedNode && selectedNode.rewardTier === 'webgl' && "This device uses WebGL processing, earning medium NLOV token rewards."}
+              {selectedNode && selectedNode.rewardTier === 'cpu' && "This device uses CPU processing, earning basic NLOV token rewards."}
             </div>
             
-            {selectedNode.cpuCores && (
+            {selectedNode && selectedNode.cpuCores && (
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                 <div className="text-slate-400">CPU Cores: <span className="text-white">{selectedNode.cpuCores}</span></div>
                 <div className="text-slate-400">Memory: <span className="text-white">{selectedNode.memory}</span> GB</div>
@@ -369,6 +378,128 @@ export const NodeControlPanel = () => {
               }
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={showDeviceTypeDialog} onOpenChange={setShowDeviceTypeDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {deviceGroup === 'desktop_laptop' ? 'Desktop & Laptop Setup' : 'Mobile & Tablet Setup'}
+            </DialogTitle>
+            <DialogDescription>
+              {deviceGroup === 'desktop_laptop' 
+                ? "We detected a desktop or laptop device. Please specify your exact device type."
+                : "We detected a mobile or tablet device. Please specify your exact device type."
+              }
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="space-y-4">
+              <Select
+                value={selectedDeviceType}
+                onValueChange={(value: 'desktop' | 'laptop' | 'tablet' | 'mobile') => {
+                  setSelectedDeviceType(value);
+                  setSelectedBrand('');
+                  setSelectedModel('');
+                  setCustomSpecs({});
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select device type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getDeviceTypesForGroup(deviceGroup).map((type) => (
+                    <SelectItem key={type} value={type}>
+                      <div className="flex items-center">
+                        {getDeviceIcon(type as any)}
+                        <span className="ml-2">
+                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              {selectedDeviceType && (
+                <Select
+                  value={selectedBrand}
+                  onValueChange={(value: string) => {
+                    setSelectedBrand(value);
+                    setSelectedModel('');
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select brand" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getDeviceBrands(deviceGroup, selectedDeviceType).map((brand) => (
+                      <SelectItem key={brand} value={brand}>
+                        {brand}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              
+              {selectedBrand && (
+                <Select
+                  value={selectedModel}
+                  onValueChange={setSelectedModel}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getDeviceModels(deviceGroup, selectedDeviceType, selectedBrand).map((model) => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              
+              {requiresCustomSpecs(deviceGroup, selectedDeviceType) && selectedModel && (
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="cpu" className="block text-sm font-medium mb-1">
+                      CPU Model
+                    </label>
+                    <Input
+                      id="cpu"
+                      placeholder="e.g. Intel Core i7-12700K"
+                      value={customSpecs.cpu || ''}
+                      onChange={(e) => setCustomSpecs(prev => ({ ...prev, cpu: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="gpu" className="block text-sm font-medium mb-1">
+                      GPU Model
+                    </label>
+                    <Input
+                      id="gpu"
+                      placeholder="e.g. NVIDIA RTX 4070"
+                      value={customSpecs.gpu || ''}
+                      onChange={(e) => setCustomSpecs(prev => ({ ...prev, gpu: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              onClick={confirmDeviceType}
+              disabled={!selectedDeviceType || !selectedBrand || !selectedModel || 
+                (requiresCustomSpecs(deviceGroup, selectedDeviceType) && (!customSpecs.cpu || !customSpecs.gpu))}
+            >
+              Confirm Device
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
