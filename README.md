@@ -1,73 +1,152 @@
-# Welcome to your Lovable project
+# neuroSwarm
 
-## Project info
+A decentralized AI compute network on Solana blockchain.
 
-**URL**: https://lovable.dev/projects/4c7f2ec0-2cee-4356-97df-4d1f1b8ac23a
+## Overview
 
-## How can I edit this code?
+neuroSwarm is a "connect-to-earn" platform that enables users to contribute their computational resources to a decentralized network and earn rewards. The platform leverages Solana blockchain for fast and low-cost transactions, ensuring efficient reward distribution and transparent operations.
 
-There are several ways of editing your application.
+## Features
 
-**Use Lovable**
+- **Dashboard**: Interactive dashboard to monitor network statistics, tasks, devices, and earnings
+- **Wallet Integration**: Connect your Solana wallet to participate in the network
+- **Device Management**: Register and manage your compute devices
+- **Task Scheduling**: Accept and complete AI compute tasks to earn rewards
+- **Earnings Tracking**: Monitor your earnings and view historical data
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/4c7f2ec0-2cee-4356-97df-4d1f1b8ac23a) and start prompting.
+## Project Structure
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+.
+├── FAQ.md                 # Frequently asked questions
+├── YELLOW_PAPER.md        # Technical overview and protocol design
+├── NeuroSwarm/            # Web app (front-end & back-end)
+│   ├── src/               # React components, core logic & config
+│   │   ├── core/          # Node stores & ComputeNode class
+│   │   ├── components/    # UI components (EarningsPanel, etc.)
+│   │   ├── services/      # Solana & Supabase integration services
+│   │   ├── hooks/         # Custom React hooks (e.g. useReferralCode)
+│   │   ├── providers/     # Context providers (NetworkProvider)
+│   │   ├── utils/         # Utility modules (logger)
+│   │   └── config/        # Environment & app configuration
+│   ├── public/            # Static assets (images, icons, etc.)
+│   ├── server/            # Server code & database connection (db.ts)
+│   ├── index.html         # HTML entry point for the app
+│   ├── package.json       # App dependencies & scripts
+│   └── tsconfig.json      # TypeScript config for the app
+├── swarm_network/         # On-chain Anchor smart contract project
+│   ├── programs/          # Rust programs for Solana
+│   ├── migrations/        # Anchor migrations
+│   ├── idl.json           # Program IDL (JSON)
+│   ├── tests/             # Smart contract tests
+│   └── package.json       # Anchor project config
+└── README.md              # This README file
 ```
 
-**Edit a file directly in GitHub**
+## Getting Started
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Prerequisites
 
-**Use GitHub Codespaces**
+- Node.js (for development)
+- Python 3.x (for the server)
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Installation
 
-## What technologies are used for this project?
+1. Clone the repository:
+   ```
+   git clone https://github.com/yourusername/neuroSwarm.git
+   cd neuroSwarm
+   ```
 
-This project is built with:
+2. Install dependencies:
+   ```
+   npm install
+   ```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+3. Set up environment variables in a `.env` file:
+   ```
+   VITE_NETWORK=testnet
+   VITE_PROGRAM_ID=ComputeNtwrk11111111111111111111111111111
+   VITE_SUPABASE_URL=your_supabase_url
+   VITE_SUPABASE_KEY=your_supabase_key
+   PORT=5173
+   ```
 
-## How can I deploy this project?
+### Running the Application
 
-Simply open [Lovable](https://lovable.dev/projects/4c7f2ec0-2cee-4356-97df-4d1f1b8ac23a) and click on Share -> Publish.
+#### Local Development
+1. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-## Can I connect a custom domain to my Lovable project?
+#### Testnet Deployment
+1. Configure your Solana wallet:
+   ```bash
+   solana config set --url https://api.testnet.solana.com
+   solana config set --keypair path/to/your/keypair.json
+   ```
 
-Yes, you can!
+2. Set up environment variables:
+   ```bash
+   cp .env.testnet .env
+   # Edit .env with your specific configuration
+   ```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+3. Build and deploy programs:
+   ```bash
+   # Build programs
+   cd programs
+   cargo build-bpf
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+   # Deploy programs
+   solana program deploy target/deploy/device.so
+   solana program deploy target/deploy/task.so
+   solana program deploy target/deploy/reward.so
+   solana program deploy target/deploy/staking.so
+   solana program deploy target/deploy/gpu.so
+   ```
+
+4. Update program IDs:
+   - Copy the program IDs from the deployment output
+   - Update them in `.env` and `config/deployment.json`
+
+5. Deploy frontend:
+   ```bash
+   npm run build
+   npm run deploy:testnet
+   ```
+
+6. Initialize program state:
+   ```bash
+   npm run init:testnet
+   ```
+
+7. Verify deployment:
+   ```bash
+   npm run verify:testnet
+   ```
+
+2. Open your browser and navigate to:
+   ```
+   http://localhost:5173
+   ```
+
+
+
+
+
+
+## Development
+
+### Building for Production
+
+```
+npm run build
+```
+
+
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
