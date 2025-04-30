@@ -162,7 +162,7 @@ const detectWebGLCapabilities = (): { supported: boolean, version: number } => {
     if (gl) {
       return { supported: true, version: 2 };
     }
-    
+
     // Fall back to WebGL 1
     gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl') as WebGLRenderingContext;
     return { supported: !!gl, version: gl ? 1 : 0 };
@@ -210,13 +210,13 @@ export const getDeviceSeries = (group: DeviceGroup, type: 'desktop' | 'laptop' |
 const detectDeviceGroup = (): DeviceGroup => {
   const ua = navigator.userAgent.toLowerCase();
   const width = window.innerWidth;
-  
+
   // Check for mobile/tablet indicators
-  if (width <= 1024 || 
-      /mobile|android|iphone|ipad|ipod|windows phone/i.test(ua)) {
+  if (width <= 1024 ||
+    /mobile|android|iphone|ipad|ipod|windows phone/i.test(ua)) {
     return 'mobile_tablet';
   }
-  
+
   // Otherwise assume desktop/laptop
   return 'desktop_laptop';
 };
@@ -240,7 +240,7 @@ const getGPUInfo = async (): Promise<string> => {
   try {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl') as WebGLRenderingContext;
-    
+
     if (gl) {
       const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
       if (debugInfo) {
@@ -252,7 +252,7 @@ const getGPUInfo = async (): Promise<string> => {
   } catch (e) {
     console.error('Error getting GPU info:', e);
   }
-  
+
   // Fallback - make an educated guess based on device type
   const deviceGroup = detectDeviceGroup();
   if (deviceGroup === 'desktop_laptop') return 'Desktop/Laptop GPU';
@@ -266,22 +266,22 @@ const determineRewardTier = async (
 ): Promise<'webgpu' | 'wasm' | 'webgl' | 'cpu'> => {
   // WebGPU is the highest tier
   if (webgpuSupport) return 'webgpu';
-  
+
   // Next, check for high-performance system that can do WASM well
   const deviceMemory = getDeviceMemory();
-  const isHighPerformance = 
-    getCPUCores() >= 4 && 
+  const isHighPerformance =
+    getCPUCores() >= 4 &&
     (typeof deviceMemory === 'number' && deviceMemory >= 4);
-  
+
   if (isHighPerformance) {
     return 'wasm';
   }
-  
+
   // Check WebGL support
   if (webglCapabilities.supported) {
     return 'webgl';
   }
-  
+
   // Fallback to CPU
   return 'cpu';
 };
@@ -289,22 +289,22 @@ const determineRewardTier = async (
 // Main function to detect hardware capabilities
 export const detectHardware = async (): Promise<HardwareInfo> => {
   console.log('Starting real hardware detection...');
-  
+
   try {
     console.log('Detecting device hardware...');
-    
+
     // Run all detection in parallel
     const [webgpuSupport, webglCapabilities, gpuInfo] = await Promise.all([
       hasWebGPU(),
       detectWebGLCapabilities(),
       getGPUInfo(),
     ]);
-    
+
     // First just detect the device group
     const deviceGroup = detectDeviceGroup();
-    
+
     const rewardTier = await determineRewardTier(webgpuSupport, webglCapabilities);
-    
+
     const hardwareInfo: HardwareInfo = {
       cpuCores: getCPUCores(),
       deviceMemory: getDeviceMemory(),
@@ -312,7 +312,7 @@ export const detectHardware = async (): Promise<HardwareInfo> => {
       deviceGroup,
       rewardTier,
     };
-    
+
     console.log('Hardware detection complete:', hardwareInfo);
     return hardwareInfo;
   } catch (e) {
