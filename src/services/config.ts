@@ -12,18 +12,18 @@ export const TASK_PROCESSING_CONFIG = {
 
     // Ideal distribution percentages for different task types
     DISTRIBUTION: {
-        image: 0.4, // 40% image tasks
-        text: 0.6   // 60% text tasks
+        image: 0.4,
+        text: 0.6
     },
 
     // Cache and debounce settings
-    CACHE_TTL: 30000, // 30 seconds
-    DEBOUNCE_TIME: 1500, // 1.5 seconds
+    CACHE_TTL: 30000,
+    DEBOUNCE_TIME: 1500,
 
     // Request limits
     REQUEST_LIMITS: {
         batch_size: 50,
-        min_refresh_interval: 15000 // 15 seconds
+        min_refresh_interval: 15000
     }
 };
 
