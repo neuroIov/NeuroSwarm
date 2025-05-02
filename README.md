@@ -53,12 +53,14 @@ neuroSwarm is a "connect-to-earn" platform that enables users to contribute thei
 ### Installation
 
 1. Clone the repository:
+
    ```
    git clone https://github.com/yourusername/neuroSwarm.git
    cd neuroSwarm
    ```
 
 2. Install dependencies:
+
    ```
    npm install
    ```
@@ -75,25 +77,30 @@ neuroSwarm is a "connect-to-earn" platform that enables users to contribute thei
 ### Running the Application
 
 #### Local Development
+
 1. Start the development server:
    ```bash
    npm run dev
    ```
 
 #### Testnet Deployment
+
 1. Configure your Solana wallet:
+
    ```bash
    solana config set --url https://api.testnet.solana.com
    solana config set --keypair path/to/your/keypair.json
    ```
 
 2. Set up environment variables:
+
    ```bash
    cp .env.testnet .env
    # Edit .env with your specific configuration
    ```
 
 3. Build and deploy programs:
+
    ```bash
    # Build programs
    cd programs
@@ -108,34 +115,33 @@ neuroSwarm is a "connect-to-earn" platform that enables users to contribute thei
    ```
 
 4. Update program IDs:
+
    - Copy the program IDs from the deployment output
    - Update them in `.env` and `config/deployment.json`
 
 5. Deploy frontend:
+
    ```bash
    npm run build
    npm run deploy:testnet
    ```
 
 6. Initialize program state:
+
    ```bash
    npm run init:testnet
    ```
 
 7. Verify deployment:
+
    ```bash
    npm run verify:testnet
    ```
 
-2. Open your browser and navigate to:
+8. Open your browser and navigate to:
    ```
    http://localhost:5173
    ```
-
-
-
-
-
 
 ## Development
 
@@ -145,8 +151,63 @@ neuroSwarm is a "connect-to-earn" platform that enables users to contribute thei
 npm run build
 ```
 
-
-
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+# NeuroSwarm Task Optimization
+
+This project has been optimized to reduce API calls and prevent unnecessary re-rendering.
+
+## Key Improvements
+
+1. **Task Caching System**
+
+   - Implemented a local storage-based task cache to store and retrieve tasks
+   - Cache prevents redundant API calls by storing tasks locally
+   - Tasks are only fetched from the server when the cache is stale
+
+2. **Timestamp-Based Task Fetching**
+
+   - Only fetch new tasks since the last fetch time
+   - Drastically reduces the number of tasks processed during each cycle
+   - Avoids duplicate task creation by checking timestamps
+
+3. **Task Polling Service**
+
+   - Centralized polling mechanism that checks for new tasks every 20 seconds
+   - Polling is handled by a background service instead of UI components
+   - Prevents multiple components from making redundant API calls
+
+4. **Optimized Task Duplication Prevention**
+
+   - Better prompt checking to avoid creating duplicate tasks
+   - Normalized prompts for more accurate duplicate detection
+   - Batch processing to reduce the number of database queries
+
+5. **Redux Integration**
+   - The task cache is integrated with Redux for centralized state management
+   - Components receive updates through Redux instead of making their own API calls
+   - TaskSlice is optimized to use the cache when appropriate
+
+## Getting Started
+
+1. The caching system is automatically initialized when the application starts
+2. No configuration is needed - the system uses sensible defaults
+3. Tasks are automatically refreshed in the background without causing UI stuttering
+
+## Configuration
+
+Timing parameters can be adjusted in `src/services/config.ts`:
+
+- `POLLING_INTERVAL`: How often to check for new tasks (default: 20 seconds)
+- `CACHE_TTL`: How long to consider the cache valid (default: 30 seconds)
+- `DISTRIBUTION`: The ratio of image vs text tasks (default: 40% images, 60% text)
+
+## Architecture
+
+- `taskCacheService.ts`: Manages local storage of tasks
+- `taskPollingService.ts`: Background service for task polling
+- `startupService.ts`: Initializes all services on application startup
+- Modified `swarmTaskService.ts`: Uses cache and timestamp-based fetching
+- Modified `taskSlice.ts`: Integrates with cache for Redux state management
