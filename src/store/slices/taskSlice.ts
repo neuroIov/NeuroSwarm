@@ -1,11 +1,17 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, PayloadAction, Dispatch, AnyAction } from '@reduxjs/toolkit';
 import { AITask, TaskStatus } from '@/services/types';
 import {
     getRecentTasks,
     updateTaskStatus,
     getPendingTasks
 } from '@/services/taskService';
-import { assignTasksToNode, refreshTasks } from '@/services/swarmTaskService';
+import { assignTasksToNode, refreshAndStoreTasks } from '@/services/swarmTaskService';
+import { taskCache } from '@/services/taskCacheService';
+import { taskPollingService } from '@/services/taskPollingService';
+import { TASK_PROCESSING_CONFIG } from '@/services/config';
+import { AppDispatch } from '@/store';
+import { getSwarmSupabase } from '@/lib/supabase-client';
+import { logger } from '@/utils/logger';
 
 export interface TasksState {
     allTasks: AITask[];
@@ -25,117 +31,176 @@ const initialState: TasksState = {
     lastFetchTime: 0
 };
 
-// Cache to prevent duplicate requests during debounce period
-let fetchTasksDebounceTimer: NodeJS.Timeout | null = null;
-const DEBOUNCE_TIME = 1500; // 1.5 seconds
-
 // Function to check if we should fetch tasks or use cached data
 const shouldFetchTasks = (state: TasksState, forceRefresh: boolean = false): boolean => {
     const now = Date.now();
     const timeSinceLastFetch = now - state.lastFetchTime;
     const hasTasks = state.allTasks.length > 0;
 
-    // Always fetch if forced, no tasks, or last fetch was more than 15 seconds ago
-    return forceRefresh || !hasTasks || timeSinceLastFetch > 15000;
+    // Always fetch if forced, no tasks, or last fetch was more than polling interval
+    return forceRefresh || !hasTasks || timeSinceLastFetch > TASK_PROCESSING_CONFIG.POLLING_INTERVAL;
+};
+
+// Initialize polling service
+let pollingInitialized = false;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const initPollingService = (dispatch: any) => {
+    if (pollingInitialized) return;
+
+    taskPollingService.setCallbacks({
+        onNewTasks: (tasks) => {
+            dispatch(addNewTasks(tasks));
+        },
+        onTasksFetched: (count) => {
+            if (count > 0) {
+                dispatch(fetchTasks({ forceRefresh: false }));
+            }
+        },
+        onError: (error) => {
+            console.error('Task polling error:', error);
+        }
+    });
+
+    taskPollingService.start();
+    pollingInitialized = true;
+};
+
+// Local helper function for task fetching  
+const fetchAndConvertTasks = async (limit: number): Promise<AITask[]> => {
+    // Just use getRecentTasks directly now that it fetches from the main tasks table
+    return await getRecentTasks(limit);
 };
 
 // Async thunks
 export const fetchTasks = createAsyncThunk(
     'tasks/fetchTasks',
-    async ({ forceRefresh = false }: { forceRefresh?: boolean } = {}, { getState, rejectWithValue }) => {
-        const state = getState() as { tasks: TasksState };
+    async ({ forceRefresh = false }: { forceRefresh?: boolean } = {}, { getState, dispatch, rejectWithValue }) => {
+        try {
+            // Initialize polling service if not already done
+            initPollingService(dispatch);
 
-        // Check if we should fetch tasks or use cached data
-        if (!forceRefresh && !shouldFetchTasks(state.tasks, forceRefresh)) {
-            console.log('Using cached tasks - fetch skipped');
-            return state.tasks.allTasks;
-        }
+            const state = getState() as { tasks: TasksState };
 
-        // Debounce fetch requests to prevent hammering the server
-        return new Promise<AITask[]>((resolve, reject) => {
-            if (fetchTasksDebounceTimer) {
-                clearTimeout(fetchTasksDebounceTimer);
+            // Check if we should fetch tasks or use cached data
+            if (!forceRefresh && !shouldFetchTasks(state.tasks, forceRefresh)) {
+                // Reduce logging frequency
+                if (Math.random() < 0.1) {
+                    console.log('Using cached tasks - fetch skipped');
+                }
+                return taskCache.tasks.slice(0, 20);
             }
 
-            fetchTasksDebounceTimer = setTimeout(async () => {
-                try {
-                    // Use fetchAndConvertTasks from swarmTaskService to get tasks from all sources
-                    const tasks = await getRecentTasks(50);
-
-                    // Log details for debugging
-                    console.log(`Tasks fetched from getRecentTasks: ${tasks.length}`);
-                    console.log(`Task types: Image=${tasks.filter(t => t.type === 'image').length}, Text=${tasks.filter(t => t.type === 'text').length}`);
-
-                    // If we only got a few tasks, try to fetch directly using fetchAndConvertTasks
-                    if (tasks.length <= 1) {
-                        const { fetchAndConvertTasks } = await import('@/services/swarmTaskService');
-                        console.log('Trying to fetch tasks directly with fetchAndConvertTasks');
-                        const directTasks = await fetchAndConvertTasks(50);
-                        console.log(`Directly fetched tasks: ${directTasks.length}`);
-                        resolve(directTasks);
-                        return;
-                    }
-
-                    resolve(tasks);
-                } catch (error) {
-                    reject(rejectWithValue((error as Error).message));
+            // Use the cached tasks if available
+            if (taskCache.tasks.length > 0 && !taskCache.isStale && !forceRefresh) {
+                // Reduce logging frequency
+                if (Math.random() < 0.2) {
+                    console.log(`Using ${taskCache.tasks.length} cached tasks`);
                 }
-            }, DEBOUNCE_TIME);
-        });
+                return taskCache.tasks.slice(0, 20);
+            }
+
+            // Fetch new tasks using our optimized function
+            const tasks = await fetchAndConvertTasks(20);
+
+            // Only log task fetching if we actually got new tasks or on occasion
+            if (tasks.length > 0 || Math.random() < 0.2) {
+                console.log(`Fetched ${tasks.length} tasks total`);
+
+                // More detailed logs less frequently
+                if (Math.random() < 0.3) {
+                    console.log(`Image tasks: ${tasks.filter(t => t.type === "image").length}`);
+                    console.log(`Text tasks: ${tasks.filter(t => t.type === "text").length}`);
+                }
+            }
+
+            return tasks;
+        } catch (error) {
+            return rejectWithValue((error as Error).message);
+        }
     }
 );
 
-// Debounce for assign tasks requests too
-let assignTasksDebounceTimer: NodeJS.Timeout | null = null;
-
 export const fetchAndAssignTasks = createAsyncThunk(
     'tasks/fetchAndAssignTasks',
-    async (nodeId: string, { getState, rejectWithValue }) => {
-        const state = getState() as { tasks: TasksState };
-        const pendingTasks = state.tasks.assignedTasks.filter(t => t.status === 'pending');
+    async (nodeId: string, { getState, rejectWithValue, dispatch }) => {
+        try {
+            // Initialize polling service if not already done
+            initPollingService(dispatch);
 
-        // If we already have enough pending tasks, don't fetch more
-        if (pendingTasks.length >= 3) {
-            console.log(`Already have ${pendingTasks.length} pending tasks, skipping fetch`);
-            return pendingTasks;
-        }
+            // Get the current user ID from the session state
+            const state = getState() as { session: { userProfile: { id: string } } };
+            const userId = state.session?.userProfile?.id;
 
-        // Debounce assign requests
-        return new Promise<AITask[]>((resolve, reject) => {
-            if (assignTasksDebounceTimer) {
-                clearTimeout(assignTasksDebounceTimer);
+            if (!userId) {
+                logger.warn('No user ID available for task assignment');
             }
 
-            assignTasksDebounceTimer = setTimeout(async () => {
-                try {
-                    // Try to refresh tasks from source tables first
-                    await refreshTasks(20);
+            // Try to refresh tasks from source if needed (this is an efficient operation)
+            await refreshAndStoreTasks();
 
-                    // Use the swarmTaskService to assign tasks to node (strict limit of 5)
-                    const assignedTasks = await assignTasksToNode(nodeId, 5);
+            // Use the swarmTaskService to assign tasks to node and user (with specified limit and proper distribution)
+            const assignedTasks = await assignTasksToNode(nodeId, 5, userId);
 
-                    // If no tasks were assigned, try fallback to regular pending tasks
-                    if (assignedTasks.length === 0) {
-                        // Get pending tasks from regular task service
-                        const pendingTasks = await getPendingTasks(5);
+            // If we successfully assigned tasks, return them
+            if (assignedTasks.length > 0) {
+                logger.log(`Successfully assigned ${assignedTasks.length} tasks to node ${nodeId} and user ${userId || 'guest'}`);
+                return assignedTasks;
+            }
 
-                        // Create assigned tasks
-                        const tasksWithNodeId = pendingTasks.map(task => ({
-                            ...task,
-                            node_id: nodeId,
-                            status: 'pending' as TaskStatus
-                        }));
+            // If no tasks were assigned, try fallback to pending tasks as a last resort
+            logger.log('No tasks assigned through primary method, trying fallback');
 
-                        resolve(tasksWithNodeId);
-                        return;
-                    }
+            // Get pending tasks from regular task service (limit to 5)
+            const pendingTasks = await getPendingTasks(5);
 
-                    resolve(assignedTasks);
-                } catch (error) {
-                    reject(rejectWithValue((error as Error).message));
-                }
-            }, DEBOUNCE_TIME);
-        });
+            if (pendingTasks.length === 0) {
+                logger.log('No pending tasks available for assignment');
+                return [];
+            }
+
+            // Create assigned tasks with user_id and node_id
+            const tasksWithNodeId = pendingTasks.map(task => ({
+                ...task,
+                node_id: nodeId,
+                user_id: userId || task.user_id,
+                status: 'pending' as TaskStatus
+            }));
+
+            if (tasksWithNodeId.length === 0) {
+                return [];
+            }
+
+            // Update all tasks in a single batch operation to reduce API calls
+            // Create a batch update object for all tasks
+            const client = getSwarmSupabase();
+            const taskIds = tasksWithNodeId.map(task => task.id);
+            const timestamp = new Date().toISOString();
+
+            // Single update operation for all tasks
+            const { error: updateError } = await client
+                .from('tasks')
+                .update({
+                    user_id: userId,
+                    node_id: nodeId,
+                    updated_at: timestamp
+                })
+                .in('id', taskIds);
+
+            if (updateError) {
+                logger.error('Error updating tasks in batch:', updateError);
+                return rejectWithValue('Failed to update tasks');
+            }
+
+            logger.log(`Successfully assigned ${tasksWithNodeId.length} tasks via fallback method`);
+
+            // Return properly formatted tasks
+            return tasksWithNodeId.map(task => ({
+                ...task,
+                updated_at: timestamp
+            }));
+        } catch (error) {
+            return rejectWithValue((error as Error).message);
+        }
     }
 );
 
@@ -152,6 +217,10 @@ export const updateTask = createAsyncThunk(
     }, { rejectWithValue }) => {
         try {
             await updateTaskStatus(taskId, status, result);
+
+            // Update the task in the cache
+            taskCache.updateTask(taskId, { status, result });
+
             return { taskId, status, result };
         } catch (error) {
             return rejectWithValue((error as Error).message);

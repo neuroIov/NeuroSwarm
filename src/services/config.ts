@@ -17,13 +17,21 @@ export const TASK_PROCESSING_CONFIG = {
     },
 
     // Cache and debounce settings
-    CACHE_TTL: 30000,
+    CACHE_TTL: 30000, // 30 seconds
     DEBOUNCE_TIME: 1500,
+    POLLING_INTERVAL: 20000, // 20 seconds for checking new tasks
 
     // Request limits
     REQUEST_LIMITS: {
         batch_size: 50,
         min_refresh_interval: 15000
+    },
+
+    // Local storage keys
+    STORAGE_KEYS: {
+        CACHED_TASKS: 'neuroswarm_cached_tasks',
+        LAST_FETCH_TIMESTAMP: 'neuroswarm_last_fetch_timestamp',
+        ADDED_TO_SWARM: 'neuroswarm_tasks_added_to_swarm'
     }
 };
 

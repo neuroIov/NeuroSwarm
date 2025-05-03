@@ -99,118 +99,107 @@ export const convertToAITask = (item: Record<string, unknown>, sourceTable: stri
     };
 };
 
-export const getRecentTasks = async (limit: number = 50, offset: number = 0): Promise<AITask[]> => {
+export const getRecentTasks = async (limit: number = 20, offset: number = 0): Promise<AITask[]> => {
     try {
-        const tasksClient = getTaskSupabase();
-        let allTasks: AITask[] = [];
-
-        if (tasksClient) {
-            try {
-                // Collect tasks from all tables
-                for (const table of TASK_TABLES) {
-                    try {
-                        const { data, error } = await tasksClient
-                            .from(table)
-                            .select('*')
-                            .order('created_at', { ascending: false })
-                            .limit(limit);
-
-                        if (!error && data && data.length > 0) {
-                            logger.log(`Found ${data.length} tasks in ${table} table of tasks project`);
-                            const convertedTasks = data.map(item => convertToAITask(item, table));
-                            allTasks = [...allTasks, ...convertedTasks];
-                        }
-                    } catch (tableError) {
-                        logger.warn(`Error accessing '${table}' table in tasks project:`, tableError);
-                    }
-                }
-
-                // If we collected tasks from multiple sources, return them
-                if (allTasks.length > 0) {
-                    // Sort by creation date
-                    allTasks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-                    // Get pending tasks - these should be prioritized
-                    const pendingTasks = allTasks.filter(task => task.status === 'pending');
-                    logger.log(`Found ${pendingTasks.length} pending tasks from external sources`);
-
-                    // Ensure at least one image task is included if available
-                    const imageTasks = allTasks.filter(task => task.type === 'image');
-                    const pendingImageTasks = imageTasks.filter(task => task.status === 'pending');
-
-                    const textTasks = allTasks.filter(task => task.type === 'text');
-                    const pendingTextTasks = textTasks.filter(task => task.status === 'pending');
-
-                    // Build the final list with priority for pending tasks
-                    let finalTasks: AITask[] = [];
-
-                    // First add pending image tasks (up to 5)
-                    finalTasks = [...finalTasks, ...pendingImageTasks.slice(0, 5)];
-
-                    // Then add pending text tasks (up to 15)
-                    finalTasks = [...finalTasks, ...pendingTextTasks.slice(0, 15)];
-
-                    // If we still have room, add other tasks
-                    const remainingSlots = limit - finalTasks.length;
-                    if (remainingSlots > 0) {
-                        // Add any remaining tasks, prioritizing recent ones
-                        const otherTasks = allTasks.filter(
-                            task => !finalTasks.some(t => t.id === task.id)
-                        );
-                        finalTasks = [...finalTasks, ...otherTasks.slice(0, remainingSlots)];
-                    }
-
-                    // Re-sort by creation date
-                    finalTasks.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-                    logger.log(`Final tasks count: ${finalTasks.length} (Pending: ${finalTasks.filter(t => t.status === 'pending').length})`);
-                    logger.log(`Final task type distribution: Image=${finalTasks.filter(t => t.type === 'image').length}, Text=${finalTasks.filter(t => t.type === 'text').length}`);
-
-                    return finalTasks.slice(0, limit);
-                }
-            } catch (tasksError) {
-                logger.error('Error fetching from tasks project:', tasksError);
-            }
-        }
-
-        // Fallback to swarm tasks table if no tasks were found
+        // We only need to fetch from the tasks table now
         const client = getSwarmSupabase();
 
-        // Get pending tasks first (higher priority)
-        const { data: pendingTaskData, error: pendingTaskError } = await client
+        // Calculate image and text task limits with 40/60 ratio
+        const imageTaskLimit = Math.ceil(limit * 0.4); // 40% image tasks
+        const textTaskLimit = limit - imageTaskLimit;   // 60% text tasks
+
+        // First, get unassigned pending text tasks
+        const { data: pendingTextTasks, error: textError } = await client
             .from('tasks')
             .select('*')
             .eq('status', 'pending')
+            .is('user_id', null)
+            .eq('type', 'text')
             .order('created_at', { ascending: false })
-            .limit(Math.ceil(limit * 0.7)); // 70% of the limit for pending tasks
+            .limit(textTaskLimit);
 
-        let combinedTasks: AITask[] = [];
-
-        if (!pendingTaskError && pendingTaskData && pendingTaskData.length > 0) {
-            combinedTasks = [...pendingTaskData as AITask[]];
+        if (textError) {
+            logger.error('Error fetching pending text tasks:', textError);
         }
 
-        // Fill remaining slots with other tasks (completed, processing, etc.)
-        const remainingSlots = limit - combinedTasks.length;
-        if (remainingSlots > 0) {
-            const { data: otherTaskData, error: otherTaskError } = await client
-                .from('tasks')
-                .select('*')
-                .not('status', 'eq', 'pending')
-                .order('created_at', { ascending: false })
-                .limit(remainingSlots);
+        // Get unassigned pending image tasks
+        const { data: pendingImageTasks, error: imageError } = await client
+            .from('tasks')
+            .select('*')
+            .eq('status', 'pending')
+            .is('user_id', null)
+            .eq('type', 'image')
+            .order('created_at', { ascending: false })
+            .limit(imageTaskLimit);
 
-            if (!otherTaskError && otherTaskData && otherTaskData.length > 0) {
-                combinedTasks = [...combinedTasks, ...(otherTaskData as AITask[])];
+        if (imageError) {
+            logger.error('Error fetching pending image tasks:', imageError);
+        }
+
+        // Create arrays with proper null checks
+        const textTasks = pendingTextTasks || [];
+        const imageTasks = pendingImageTasks || [];
+
+        logger.log(`Found ${textTasks.length} unassigned text tasks and ${imageTasks.length} unassigned image tasks`);
+
+        // If we don't have enough tasks of one type, get more of the other type
+        let finalTextLimit = textTasks.length;
+        let finalImageLimit = imageTasks.length;
+
+        if (textTasks.length < textTaskLimit && imageTasks.length > imageTaskLimit) {
+            // Get more image tasks if we don't have enough text tasks
+            finalImageLimit = Math.min(imageTasks.length, imageTaskLimit + (textTaskLimit - textTasks.length));
+        } else if (imageTasks.length < imageTaskLimit && textTasks.length > textTaskLimit) {
+            // Get more text tasks if we don't have enough image tasks
+            finalTextLimit = Math.min(textTasks.length, textTaskLimit + (imageTaskLimit - imageTasks.length));
+        }
+
+        // Interleave tasks for balanced distribution
+        const finalTasks: AITask[] = [];
+        const maxTasks = Math.max(finalTextLimit, finalImageLimit);
+
+        for (let i = 0; i < maxTasks; i++) {
+            // Add image task first (if available) to maintain 40/60 distribution 
+            if (i < finalImageLimit) {
+                finalTasks.push(imageTasks[i] as AITask);
+            }
+
+            // Add text task (if available)
+            if (i < finalTextLimit) {
+                finalTasks.push(textTasks[i] as AITask);
             }
         }
 
-        if (combinedTasks.length > 0) {
-            logger.log(`Fetched ${combinedTasks.length} tasks from swarm tasks table (Pending: ${combinedTasks.filter(t => t.status === 'pending').length})`);
-            return combinedTasks;
+        // If we still need more tasks to reach our limit, get assigned tasks
+        const remainingSlots = limit - finalTasks.length;
+
+        if (remainingSlots > 0) {
+            const { data: assignedTasks, error: assignedError } = await client
+                .from('tasks')
+                .select('*')
+                .not('user_id', 'is', null)
+                .order('created_at', { ascending: false })
+                .limit(remainingSlots);
+
+            if (!assignedError && assignedTasks && assignedTasks.length > 0) {
+                finalTasks.push(...assignedTasks as AITask[]);
+                logger.log(`Added ${assignedTasks.length} assigned tasks to fill remaining slots`);
+            }
         }
 
-        return [];
+        // Make sure we don't return more than the requested limit
+        const limitedTasks = finalTasks.slice(0, limit);
+
+        // Log distribution stats
+        const imageTaskCount = limitedTasks.filter(t => t.type === 'image').length;
+        const textTaskCount = limitedTasks.filter(t => t.type === 'text').length;
+        const unassignedCount = limitedTasks.filter(t => !t.user_id).length;
+        const assignedCount = limitedTasks.filter(t => t.user_id).length;
+
+        logger.log(`Final tasks: ${limitedTasks.length} total (${imageTaskCount} image, ${textTaskCount} text)`);
+        logger.log(`Breakdown: ${unassignedCount} unassigned, ${assignedCount} assigned`);
+
+        return limitedTasks;
     } catch (error) {
         logger.error('Error in getRecentTasks:', error);
         return [];
