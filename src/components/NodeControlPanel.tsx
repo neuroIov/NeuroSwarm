@@ -348,11 +348,15 @@ export const NodeControlPanel = () => {
   };
 
   return (
-    <div className="stat-card">
-      <div className="flex flex-col space-y-4">
+    <div className="stat-card rounded-3xl h-auto md:h-[420px] overflow-auto" style={{
+      backgroundColor: 'rgba(9, 12, 24, 1)',
+      width: '100%',
+      marginBottom: '1rem'
+    }}>
+      <div className="flex flex-col space-y-4 justify-center">
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold">Node Control Panel</h2>
+            <h2 className="text-xl ">Node Control Panel</h2>
             <InfoTooltip content="Manage your computing nodes, start or stop them, and view performance metrics" />
           </div>
           <div className="flex items-center gap-2">
@@ -361,7 +365,8 @@ export const NodeControlPanel = () => {
               size="sm"
               onClick={startScan}
               disabled={isScanning}
-              className="text-swarm-accent-purple border-swarm-accent-purple/50 hover:border-swarm-accent-purple/80 hover:bg-swarm-accent-purple/20"
+              style={{ color: "rgba(3, 97, 218, 1)", borderColor: "rgba(3, 97, 218, 0.5)" }}
+              className="rounded-full hover:border-[rgba(3,97,218,0.8)] hover:bg-[rgba(3,97,218,0.2)]"
             >
               {isScanning ? (
                 <>
@@ -381,12 +386,12 @@ export const NodeControlPanel = () => {
         <div className="flex flex-col sm:flex-row gap-4 sm:items-center mb-2">
           <div className="flex-1">
             <Select value={selectedNodeId} onValueChange={handleNodeSelect}>
-              <SelectTrigger className="w-full bg-slate-800/50">
+              <SelectTrigger className="w-full bg-slate-800/50 rounded-full">
                 <SelectValue placeholder="Select a node" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent style={{ backgroundColor: 'rgba(9, 12, 24, 1)', borderColor: 'rgba(255, 255, 255, 0.1)' }}>
                 {nodes.map((node) => (
-                  <SelectItem key={node.id} value={node.id}>
+                  <SelectItem key={node.id} value={node.id} style={{ backgroundColor: 'rgba(9, 12, 24, 1)' }}>
                     <div className="flex items-center gap-2">
                       {getDeviceIcon(node.type)}
                       <span>{node.name}</span>
@@ -406,7 +411,7 @@ export const NodeControlPanel = () => {
             variant={isActive ? "destructive" : "default"}
             disabled={isStarting || !selectedNodeId}
             onClick={toggleNodeStatus}
-            className={!isActive ? "bg-green-600 hover:bg-green-700" : ""}
+            className={`rounded-full ${!isActive ? "bg-green-600 hover:bg-green-700" : ""}`}
           >
             {isStarting ? (
               <>
@@ -415,17 +420,25 @@ export const NodeControlPanel = () => {
               </>
             ) : (
               <>
-                <Power className="w-4 h-4 mr-2" />
+                <span className="h-4 mr-2" />
                 {isActive ? "Stop Node" : "Start Node"}
+                <img src="Vector (6).png" alt="" />
               </>
             )}
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
+
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-3 mt-4">
+          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
             <div className="flex items-center text-slate-400 mb-1">
-              <Cpu className="w-4 h-4 mr-2" /> CPU Usage
+              <div className="p-2 rounded-[10px] px-3" style={{
+                background: 'radial-gradient(91.65% 91.65% at 50% 0%,  #69AAFF 0%, #0361DA 36.8%, #161628 100%)'
+
+              }}>
+                <img src="Vector (1).png" alt="" />
+              </div>
+              <span className="w-4 h-4 mr-2" /> CPU Usage
             </div>
             <div className="text-2xl font-bold">{cpuUsage.toFixed(1)}%</div>
             {isActive && (
@@ -438,9 +451,14 @@ export const NodeControlPanel = () => {
             )}
           </div>
 
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
+          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
             <div className="flex items-center text-slate-400 mb-1">
-              <HardDrive className="w-4 h-4 mr-2" /> Memory
+              <div className="p-2 rounded-[10px] px-3" style={{
+                background: 'radial-gradient(91.65% 91.65% at 50% 0%, #69AAFF 0%, #0361DA 36.8%, #161628 100%)'
+              }}>
+                <img src="Group 5.png" alt="" />
+              </div>
+              <span className="w-4 h-4 mr-2" /> Memory
             </div>
             <div className="text-2xl font-bold">{memoryUsage.toFixed(1)}%</div>
             {isActive && (
@@ -453,9 +471,14 @@ export const NodeControlPanel = () => {
             )}
           </div>
 
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
+          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
             <div className="flex items-center text-slate-400 mb-1">
-              <Activity className="w-4 h-4 mr-2" /> Network
+              <div className="p-2 rounded-[10px] px-3" style={{
+                background: 'radial-gradient(91.65% 91.65% at 50% 0%, #69AAFF 0%, #0361DA 36.8%, #161628 100%)'
+              }}>
+                <img src="Vector (3).png" alt="" />
+              </div>
+              <span className="w-4 h-4 mr-2" /> Network
             </div>
             <div className="text-2xl font-bold">
               {networkUsage.toFixed(1)} MB/s
@@ -470,16 +493,26 @@ export const NodeControlPanel = () => {
             )}
           </div>
 
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
+          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
             <div className="flex items-center text-slate-400 mb-1">
-              <Clock className="w-4 h-4 mr-2" /> Tasks Completed
+              <div className="px-3 py-3   rounded-[10px] " style={{
+                background: 'radial-gradient(91.65% 91.65% at 50% 0%, #69AAFF 0%, #0361DA 36.8%, #161628 100%)'
+              }}>
+                <img src="Vector.png" alt="" className="h-4 w-6" />
+              </div>
+              <span className="w-4 h-4 mr-2" /> Tasks Completed
             </div>
             <div className="text-2xl font-bold">{tasksCompleted}</div>
           </div>
 
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg col-span-1 sm:col-span-2 lg:col-span-1">
+          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg col-span-1 sm:col-span-2 lg:col-span-1" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
             <div className="flex items-center text-slate-400 mb-1">
-              <Clock className="w-4 h-4 mr-2" /> Success Rate
+              <div className="p-2 rounded-[10px] px-3" style={{
+                background: 'radial-gradient(91.65% 91.65% at 50% 0%, #69AAFF 0%, #0361DA 36.8%, #161628 100%)'
+              }}>
+                <img src="Vector (2).png" alt="" />
+              </div>
+              <span className="w-4 h-4 mr-2" /> Success Rate
             </div>
             <div className="text-2xl font-bold">{successRate.toFixed(1)}%</div>
             {isActive && tasksCompleted > 0 && (
@@ -492,12 +525,11 @@ export const NodeControlPanel = () => {
             )}
           </div>
 
-          <div className="col-span-1 sm:col-span-2 lg:col-span-3 p-3 bg-slate-800/30 rounded-lg">
+          <div className="col-span-1 sm:col-span-2 lg:col-span-3 p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
             <div className="flex items-center text-slate-400 mb-1">
               <div className="flex-1">Reward Tier</div>
-              <div className="flex items-center text-xs bg-purple-900/50 text-purple-300 py-1 px-2 rounded-full">
-                {rewardTier ? rewardTier.toUpperCase() : "NONE"}
-              </div>
+            </div>
+            <div>
             </div>
             <div className="mt-1 text-slate-300 text-sm">
               {rewardTier === "webgpu" &&
@@ -509,7 +541,6 @@ export const NodeControlPanel = () => {
               {rewardTier === "cpu" &&
                 "This device uses CPU processing, earning basic NLOV token rewards."}
             </div>
-
             {selectedNode && selectedNode.cpuCores && (
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                 <div className="text-slate-400">
@@ -528,12 +559,13 @@ export const NodeControlPanel = () => {
                 )}
               </div>
             )}
+
           </div>
+
         </div>
       </div>
-
       <Dialog open={showScanDialog} onOpenChange={setShowScanDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" style={{ backgroundColor: 'rgba(9, 12, 24, 1)' }}>
           <DialogHeader>
             <DialogTitle>Scanning Device Hardware</DialogTitle>
             <DialogDescription>
@@ -563,7 +595,7 @@ export const NodeControlPanel = () => {
         open={showDeviceTypeDialog}
         onOpenChange={setShowDeviceTypeDialog}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" style={{ backgroundColor: 'rgba(9, 12, 24, 1)' }}>
           <DialogHeader>
             <DialogTitle>
               {deviceGroup === "desktop_laptop"
@@ -590,12 +622,12 @@ export const NodeControlPanel = () => {
                   setCustomSpecs({});
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
                   <SelectValue placeholder="Select device type" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent style={{ backgroundColor: 'rgba(9, 12, 24, 1)' }}>
                   {getDeviceTypesForGroup(deviceGroup).map((type) => (
-                    <SelectItem key={type} value={type}>
+                    <SelectItem key={type} value={type} style={{ backgroundColor: 'rgba(9, 12, 24, 1)' }}>
                       <div className="flex items-center">
                         {getDeviceIcon(
                           type as "desktop" | "laptop" | "tablet" | "mobile"
@@ -617,13 +649,13 @@ export const NodeControlPanel = () => {
                     setSelectedModel("");
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
                     <SelectValue placeholder="Select brand" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent style={{ backgroundColor: 'rgba(9, 12, 24, 1)' }}>
                     {getDeviceBrands(deviceGroup, selectedDeviceType).map(
                       (brand) => (
-                        <SelectItem key={brand} value={brand}>
+                        <SelectItem key={brand} value={brand} style={{ backgroundColor: 'rgba(9, 12, 24, 1)' }}>
                           {brand}
                         </SelectItem>
                       )
@@ -634,16 +666,16 @@ export const NodeControlPanel = () => {
 
               {selectedBrand && (
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger>
+                  <SelectTrigger style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent style={{ backgroundColor: 'rgba(9, 12, 24, 1)' }}>
                     {getDeviceModels(
                       deviceGroup,
                       selectedDeviceType,
                       selectedBrand
                     ).map((model) => (
-                      <SelectItem key={model} value={model}>
+                      <SelectItem key={model} value={model} style={{ backgroundColor: 'rgba(9, 12, 24, 1)' }}>
                         {model}
                       </SelectItem>
                     ))}
@@ -663,6 +695,7 @@ export const NodeControlPanel = () => {
                       </label>
                       <Input
                         id="cpu"
+                        style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}
                         placeholder="e.g. Intel Core i7-12700K"
                         value={customSpecs.cpu || ""}
                         onChange={(e) =>
@@ -682,6 +715,7 @@ export const NodeControlPanel = () => {
                       </label>
                       <Input
                         id="gpu"
+                        style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}
                         placeholder="e.g. NVIDIA RTX 4070"
                         value={customSpecs.gpu || ""}
                         onChange={(e) =>
@@ -713,6 +747,33 @@ export const NodeControlPanel = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <div className="flex mt-2 h-[88px] flex-col p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+        <div className="flex items-center text-slate-400 mb-1">
+          <div style={{
+            // background: 'radial-gradient(91.65% 91.65% at 50% 0%, #69AAFF 0%, #0361DA 36.8%, #161628 100%)',
+            width: '24px',
+            height: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '6px'
+          }}>
+            <img src="PNG 1.png" alt="Earnings" className="w-4 h-4" />
+          </div>
+          <span className="ml-2">Total Earnings</span>
+          <div className="text-[40px] font-bold ml-auto" style={{
+            background: 'linear-gradient(267.93deg, #20A5EF 35.94%, #0361DA 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            // textFillColor: 'transparent'
+          }}>27.053</div>
+          <sub><div className="text-sm text-slate-400" >NLOV</div></sub>
+
+
+        </div>
+
+      </div>
     </div>
   );
 };
