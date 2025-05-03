@@ -1,271 +1,297 @@
-import { getSwarmSupabase, getTaskSupabase } from '@/lib/supabase-client';
-import { AITask, TaskStatus, TaskType } from './types';
+// taskService.js - Core functions for task operations
+
+import { getSwarmSupabase } from '@/lib/supabase-client';
+import { AITask, TaskStatus } from './types';
 import { logger } from '../utils/logger';
-import { TASK_TABLES } from './config';
 
-const taskUpdateQueue = new Map<string, Partial<AITask>>();
-const BATCH_SIZE = 50;
-const UPDATE_INTERVAL = 5000;
-
-// const startUpdateLoop = (): void => {
-//     setInterval(async () => {
-//         if (taskUpdateQueue.size === 0) return;
-//         await processBatchUpdates();
-//     }, UPDATE_INTERVAL);
-// };
-
-// const processBatchUpdates = async (): Promise<void> => {
-//     const updates = Array.from(taskUpdateQueue.entries()).slice(0, BATCH_SIZE);
-//     if (updates.length === 0) return;
-
-//     try {
-//         const client = getClient();
-//         await Promise.all(
-//             updates.map(async ([taskId, update]) => {
-//                 const { error } = await client
-//                     .from('tasks')
-//                     .update(update)
-//                     .eq('id', taskId);
-//                 if (error) throw error;
-//                 taskUpdateQueue.delete(taskId);
-//             })
-//         );
-//     } catch (error) {
-//         logger.error('Error processing batch updates:', error);
-//     }
-// };
-
-export const convertToAITask = (item: Record<string, unknown>, sourceTable: string): AITask => {
-    const id = item.id as string || crypto.randomUUID();
-    let content = '';
-    let type: TaskType = 'inference';
-    let model = 'neural-engine';
-
-    if (sourceTable === 'freedomai_conversations') {
-        content = (item.title || item.content || 'AI Conversation') as string;
-        type = 'text';
-        model = 'freedom-ai';
-    } else if (sourceTable === 'freedomai_messages') {
-        content = (item.content || item.message || 'AI Message') as string;
-        type = 'text';
-        model = (item.model || 'freedom-ai') as string;
-    } else if (sourceTable === 'img_gen_messages') {
-        content = (item.prompt || item.content || 'Image Generation') as string;
-        type = 'image';
-        model = (item.model || 'neuro-image-gen') as string;
-    } else if (sourceTable === 'music_gen_messages') {
-        content = (item.prompt || item.content || 'Music Generation') as string;
-        type = 'inference';
-        model = (item.model || 'neuro-music-gen') as string;
-    } else if (item.content) {
-        content = item.content as string;
-    } else if (item.message) {
-        content = item.message as string;
-    } else if (item.prompt) {
-        content = item.prompt as string;
-    } else if (item.text) {
-        content = item.text as string;
-    } else if (item.title) {
-        content = item.title as string;
-    } else if (item.data) {
-        content = typeof item.data === 'string' ? item.data : JSON.stringify(item.data);
-    }
-
-    const timestamp = (item.created_at || item.timestamp || new Date().toISOString()) as string;
-
-    return {
-        id,
-        type,
-        status: 'pending',
-        created_at: timestamp,
-        updated_at: (item.updated_at || timestamp) as string,
-        compute_time: 0,
-        blockchain_task_id: '',
-        node_id: '',
-        user_id: (item.user_id || item.owner_id || '') as string,
-        model,
-        params: JSON.stringify({
-            model,
-            temperature: 0.7,
-            max_tokens: 1000,
-        }),
-        input_tokens: content ? Math.ceil(content.length / 4) : 100,
-        output_tokens: 0,
-        prompt: content || `Processing ${sourceTable} item...`,
-        result: '',
-        gpu_usage: 0,
-        reward_amount: 0,
-        completion_signature: '',
-    };
+// Simple cache to track current processing task
+const taskProcessingState = {
+    currentTask: null,
+    isProcessing: false
 };
 
-export const getRecentTasks = async (limit: number = 20, offset: number = 0): Promise<AITask[]> => {
+/**
+ * Get pending unassigned tasks (where user_id is null)
+ * Maintains proper distribution of task types (40% image, 60% text)
+ */
+export const getPendingUnassignedTasks = async (limit = 20) => {
     try {
-        // We only need to fetch from the tasks table now
         const client = getSwarmSupabase();
-
-        // Calculate image and text task limits with 40/60 ratio
-        const imageTaskLimit = Math.ceil(limit * 0.4); // 40% image tasks
-        const textTaskLimit = limit - imageTaskLimit;   // 60% text tasks
-
-        // First, get unassigned pending text tasks
-        const { data: pendingTextTasks, error: textError } = await client
-            .from('tasks')
-            .select('*')
-            .eq('status', 'pending')
-            .is('user_id', null)
-            .eq('type', 'text')
-            .order('created_at', { ascending: false })
-            .limit(textTaskLimit);
-
-        if (textError) {
-            logger.error('Error fetching pending text tasks:', textError);
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return [];
         }
 
-        // Get unassigned pending image tasks
-        const { data: pendingImageTasks, error: imageError } = await client
+        // Calculate distribution limits
+        const imageLimit = Math.ceil(limit * 0.4); // 40% image tasks
+        const textLimit = limit - imageLimit;      // 60% text tasks
+
+        // Get pending unassigned image tasks
+        const { data: imageTasks, error: imageError } = await client
             .from('tasks')
             .select('*')
             .eq('status', 'pending')
             .is('user_id', null)
             .eq('type', 'image')
-            .order('created_at', { ascending: false })
-            .limit(imageTaskLimit);
+            .order('created_at', { ascending: true })
+            .limit(imageLimit);
 
         if (imageError) {
             logger.error('Error fetching pending image tasks:', imageError);
+            return [];
         }
 
-        // Create arrays with proper null checks
-        const textTasks = pendingTextTasks || [];
-        const imageTasks = pendingImageTasks || [];
-
-        logger.log(`Found ${textTasks.length} unassigned text tasks and ${imageTasks.length} unassigned image tasks`);
-
-        // If we don't have enough tasks of one type, get more of the other type
-        let finalTextLimit = textTasks.length;
-        let finalImageLimit = imageTasks.length;
-
-        if (textTasks.length < textTaskLimit && imageTasks.length > imageTaskLimit) {
-            // Get more image tasks if we don't have enough text tasks
-            finalImageLimit = Math.min(imageTasks.length, imageTaskLimit + (textTaskLimit - textTasks.length));
-        } else if (imageTasks.length < imageTaskLimit && textTasks.length > textTaskLimit) {
-            // Get more text tasks if we don't have enough image tasks
-            finalTextLimit = Math.min(textTasks.length, textTaskLimit + (imageTaskLimit - imageTasks.length));
-        }
-
-        // Interleave tasks for balanced distribution
-        const finalTasks: AITask[] = [];
-        const maxTasks = Math.max(finalTextLimit, finalImageLimit);
-
-        for (let i = 0; i < maxTasks; i++) {
-            // Add image task first (if available) to maintain 40/60 distribution 
-            if (i < finalImageLimit) {
-                finalTasks.push(imageTasks[i] as AITask);
-            }
-
-            // Add text task (if available)
-            if (i < finalTextLimit) {
-                finalTasks.push(textTasks[i] as AITask);
-            }
-        }
-
-        // If we still need more tasks to reach our limit, get assigned tasks
-        const remainingSlots = limit - finalTasks.length;
-
-        if (remainingSlots > 0) {
-            const { data: assignedTasks, error: assignedError } = await client
-                .from('tasks')
-                .select('*')
-                .not('user_id', 'is', null)
-                .order('created_at', { ascending: false })
-                .limit(remainingSlots);
-
-            if (!assignedError && assignedTasks && assignedTasks.length > 0) {
-                finalTasks.push(...assignedTasks as AITask[]);
-                logger.log(`Added ${assignedTasks.length} assigned tasks to fill remaining slots`);
-            }
-        }
-
-        // Make sure we don't return more than the requested limit
-        const limitedTasks = finalTasks.slice(0, limit);
-
-        // Log distribution stats
-        const imageTaskCount = limitedTasks.filter(t => t.type === 'image').length;
-        const textTaskCount = limitedTasks.filter(t => t.type === 'text').length;
-        const unassignedCount = limitedTasks.filter(t => !t.user_id).length;
-        const assignedCount = limitedTasks.filter(t => t.user_id).length;
-
-        logger.log(`Final tasks: ${limitedTasks.length} total (${imageTaskCount} image, ${textTaskCount} text)`);
-        logger.log(`Breakdown: ${unassignedCount} unassigned, ${assignedCount} assigned`);
-
-        return limitedTasks;
-    } catch (error) {
-        logger.error('Error in getRecentTasks:', error);
-        return [];
-    }
-};
-
-export const getPendingTasks = async (limit: number = 20): Promise<AITask[]> => {
-    try {
-        const client = getSwarmSupabase();
-        const { data, error } = await client
+        // Get pending unassigned text tasks
+        const { data: textTasks, error: textError } = await client
             .from('tasks')
             .select('*')
             .eq('status', 'pending')
+            .is('user_id', null)
+            .eq('type', 'text')
             .order('created_at', { ascending: true })
-            .limit(limit);
+            .limit(textLimit);
 
-        if (error) throw error;
-        return (data as AITask[]) || [];
+        if (textError) {
+            logger.error('Error fetching pending text tasks:', textError);
+            return [];
+        }
+
+        // Combine and interleave tasks for better distribution
+        const tasks = [];
+        const maxLength = Math.max((imageTasks || []).length, (textTasks || []).length);
+
+        for (let i = 0; i < maxLength; i++) {
+            if (i < (imageTasks || []).length) {
+                tasks.push(imageTasks[i]);
+            }
+            if (i < (textTasks || []).length) {
+                tasks.push(textTasks[i]);
+            }
+
+            // Don't exceed the limit
+            if (tasks.length >= limit) break;
+        }
+
+        logger.log(`Found ${tasks.length} pending unassigned tasks (${(imageTasks || []).length} image, ${(textTasks || []).length} text)`);
+        return tasks;
     } catch (error) {
-        logger.error('Error fetching pending tasks:', error);
+        logger.error('Error fetching pending unassigned tasks:', error);
         return [];
     }
 };
 
-export const updateTaskStatus = async (taskId: string, status: TaskStatus, result?: string): Promise<void> => {
-    const updates: Partial<AITask> = { status, updated_at: new Date().toISOString() };
-    if (result) updates.result = result;
-
+/**
+ * Assign a batch of tasks to a user
+ */
+export const assignTasksToUser = async (userId, nodeId, batchSize = 5) => {
     try {
+        if (!userId) {
+            logger.error('Cannot assign tasks: No user ID provided');
+            return [];
+        }
+
         const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return [];
+        }
+
+        // Get pending unassigned tasks
+        const pendingTasks = await getPendingUnassignedTasks(batchSize * 2);
+        if (pendingTasks.length === 0) {
+            logger.log('No pending unassigned tasks available for assignment');
+            return [];
+        }
+
+        // Take only the batch size we need
+        const tasksToAssign = pendingTasks.slice(0, batchSize);
+        const taskIds = tasksToAssign.map(task => task.id);
+        const timestamp = new Date().toISOString();
+
+        // Update all tasks in one batch operation
         const { error } = await client
             .from('tasks')
-            .update(updates)
-            .eq('id', taskId);
+            .update({
+                user_id: userId,
+                node_id: nodeId,
+                updated_at: timestamp
+            })
+            .in('id', taskIds)
+            .is('user_id', null); // Only update if still unassigned
 
-        if (error) throw error;
+        if (error) {
+            logger.error('Error assigning tasks to user:', error);
+            return [];
+        }
+
+        // Re-fetch the assigned tasks to confirm assignment
+        const { data: assignedTasks, error: fetchError } = await client
+            .from('tasks')
+            .select('*')
+            .in('id', taskIds)
+            .eq('user_id', userId);
+
+        if (fetchError) {
+            logger.error('Error fetching assigned tasks:', fetchError);
+            return [];
+        }
+
+        const imageCount = (assignedTasks || []).filter(t => t.type === 'image').length;
+        const textCount = (assignedTasks || []).filter(t => t.type === 'text').length;
+
+        logger.log(`Successfully assigned ${(assignedTasks || []).length} tasks to user ${userId}`);
+        logger.log(`Task distribution: ${imageCount} images, ${textCount} text tasks`);
+
+        return assignedTasks || [];
     } catch (error) {
-        logger.error('Error updating task status:', error);
-        throw new Error(`Failed to update task status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        logger.error('Error in assignTasksToUser:', error);
+        return [];
     }
 };
 
-export const updateTaskBlockchainDetails = async (taskId: string, updates: Partial<AITask>): Promise<void> => {
-    taskUpdateQueue.set(taskId, {
-        ...taskUpdateQueue.get(taskId),
-        ...updates,
-        updated_at: new Date().toISOString(),
-    });
-};
+/**
+ * Process a task sequentially - change status to processing, wait, then complete
+ */
+export const processTask = async (taskId, userId) => {
+    // Prevent processing multiple tasks simultaneously
+    if (taskProcessingState.isProcessing) {
+        logger.log(`Already processing task ${taskProcessingState.currentTask?.id}, skipping ${taskId}`);
+        return { success: false };
+    }
 
-export const logTaskProof = async (proofData: { taskId: string; timestamp: number; success: boolean; signature: string }): Promise<void> => {
     try {
         const client = getSwarmSupabase();
-        const { error } = await client
-            .from('task_proofs')
-            .insert({
-                task_id: proofData.taskId,
-                timestamp: new Date(proofData.timestamp).toISOString(),
-                success: proofData.success,
-                signature: proofData.signature,
-            });
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return { success: false };
+        }
 
-        if (error) throw error;
+        // First check if the task exists and belongs to this user
+        const { data: task, error: fetchError } = await client
+            .from('tasks')
+            .select('*')
+            .eq('id', taskId)
+            .eq('user_id', userId)
+            .eq('status', 'pending')
+            .single();
+
+        if (fetchError || !task) {
+            logger.error(`Task ${taskId} not found or not assigned to user ${userId}`);
+            return { success: false };
+        }
+
+        // Set as currently processing task
+        taskProcessingState.isProcessing = true;
+        taskProcessingState.currentTask = task;
+
+        // Update status to processing
+        const { error: updateError } = await client
+            .from('tasks')
+            .update({
+                status: 'processing',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', taskId)
+            .eq('user_id', userId);
+
+        if (updateError) {
+            logger.error(`Error updating task ${taskId} to processing:`, updateError);
+            taskProcessingState.isProcessing = false;
+            taskProcessingState.currentTask = null;
+            return { success: false };
+        }
+
+        // Determine processing time based on task type
+        const processingTime = task.type === 'image' ? 30 : 15; // seconds
+        logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds`);
+
+        // Wait for processing time to complete
+        await new Promise(resolve => setTimeout(resolve, processingTime * 1000));
+
+        // Generate simple result based on task type
+        const result = task.type === 'image'
+            ? `https://example.com/generated-image-${taskId}.png`
+            : `Generated text for prompt: "${task.prompt?.substring(0, 30) || 'No prompt'}..."`;
+
+        // Update task as completed
+        const { error: completeError } = await client
+            .from('tasks')
+            .update({
+                status: 'completed',
+                result,
+                updated_at: new Date().toISOString(),
+                compute_time: processingTime,
+                output_tokens: task.type === 'text' ? Math.ceil(result.length / 4) : 0
+            })
+            .eq('id', taskId)
+            .eq('user_id', userId);
+
+        if (completeError) {
+            logger.error(`Error completing task ${taskId}:`, completeError);
+            taskProcessingState.isProcessing = false;
+            taskProcessingState.currentTask = null;
+            return { success: false };
+        }
+
+        logger.log(`Successfully completed task ${taskId} in ${processingTime}s`);
+
+        // Clear processing state
+        taskProcessingState.isProcessing = false;
+        taskProcessingState.currentTask = null;
+
+        return { success: true, result };
     } catch (error) {
-        logger.error('Error logging task proof:', error);
-        throw new Error(`Failed to log task proof: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        logger.error(`Error processing task ${taskId}:`, error);
+
+        // Try to mark the task as failed
+        try {
+            const client = getSwarmSupabase();
+            await client
+                .from('tasks')
+                .update({
+                    status: 'failed',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', taskId)
+                .eq('user_id', userId);
+        } catch (updateError) {
+            logger.error('Error marking task as failed:', updateError);
+        }
+
+        // Clear processing state
+        taskProcessingState.isProcessing = false;
+        taskProcessingState.currentTask = null;
+
+        return { success: false };
     }
 };
 
+/**
+ * Get user's assigned tasks
+ */
+export const getUserAssignedTasks = async (userId, limit = 10) => {
+    try {
+        const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return [];
+        }
+
+        const { data, error } = await client
+            .from('tasks')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: true })
+            .limit(limit);
+
+        if (error) {
+            logger.error('Error fetching user assigned tasks:', error);
+            return [];
+        }
+
+        return data || [];
+    } catch (error) {
+        logger.error('Error in getUserAssignedTasks:', error);
+        return [];
+    }
+};

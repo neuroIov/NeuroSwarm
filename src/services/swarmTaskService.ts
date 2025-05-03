@@ -1,8 +1,7 @@
-import { getSwarmSupabase, getTaskSupabase } from '@/lib/supabase-client';
+import { getSwarmSupabase } from '@/lib/supabase-client';
 import { AITask, TaskStatus, TaskType } from './types';
 import { logger } from '../utils/logger';
-import { TASK_TABLES, TASK_PROCESSING_CONFIG } from './config';
-import { convertToAITask } from './taskService';
+import { TASK_PROCESSING_CONFIG } from './config';
 import { taskCache } from './taskCacheService';
 
 // Helper function to get user ID safely without creating circular dependencies
@@ -24,184 +23,15 @@ const getCurrentUserId = (): string | null | undefined => {
 };
 
 /**
- * Fetches tasks directly from the main tasks table and converts them to AITask format
- * @param limit Maximum number of tasks to fetch (default: 20)
- * @returns Converted tasks
- */
-export const fetchTasksFromSources = async (limit: number = 20): Promise<AITask[]> => {
-    try {
-        const taskClient = getTaskSupabase();
-        if (!taskClient) {
-            logger.error('Task client is not initialized');
-            return [];
-        }
-
-        // Calculate image and text task limits with 40/60 ratio
-        const imageTaskLimit = Math.ceil(limit * TASK_PROCESSING_CONFIG.DISTRIBUTION.image); // 40%
-        const textTaskLimit = Math.ceil(limit * TASK_PROCESSING_CONFIG.DISTRIBUTION.text);  // 60%
-
-        // Make a single API call with specific filtering to reduce load
-        // Only unassigned tasks with user_id = null and status = pending
-        const { data: tasksData, error: tasksError } = await taskClient
-            .from('tasks')
-            .select('*')
-            .eq('status', 'pending')
-            .is('user_id', null)
-            .order('created_at', { ascending: false })
-            .limit(limit * 2); // Fetch more to ensure we have enough of each type
-
-        if (tasksError) {
-            logger.error('Error fetching tasks:', tasksError);
-            return [];
-        }
-
-        if (!tasksData || tasksData.length === 0) {
-            logger.log('No pending unassigned tasks found');
-            return [];
-        }
-
-        // Split tasks by type
-        const textTasks = tasksData.filter(task => task.type === 'text');
-        const imageTasks = tasksData.filter(task => task.type === 'image');
-
-        logger.log(`Found ${textTasks.length} text tasks and ${imageTasks.length} image tasks`);
-
-        // Determine how many of each type to use
-        let finalTextLimit = Math.min(textTasks.length, textTaskLimit);
-        let finalImageLimit = Math.min(imageTasks.length, imageTaskLimit);
-
-        // Balance if one type is undersupplied
-        if (textTasks.length < textTaskLimit && imageTasks.length > imageTaskLimit) {
-            // Get more image tasks if text tasks are lacking
-            finalImageLimit = Math.min(imageTasks.length, imageTaskLimit + (textTaskLimit - textTasks.length));
-        } else if (imageTasks.length < imageTaskLimit && textTasks.length > textTaskLimit) {
-            // Get more text tasks if image tasks are lacking
-            finalTextLimit = Math.min(textTasks.length, textTaskLimit + (imageTaskLimit - imageTasks.length));
-        }
-
-        // Interleave tasks for balanced distribution
-        const finalTasks: AITask[] = [];
-        const maxTasks = Math.max(finalTextLimit, finalImageLimit);
-
-        for (let i = 0; i < maxTasks; i++) {
-            // Add image task first (if available)
-            if (i < finalImageLimit) {
-                finalTasks.push(imageTasks[i] as AITask);
-            }
-
-            // Add text task (if available)
-            if (i < finalTextLimit) {
-                finalTasks.push(textTasks[i] as AITask);
-            }
-
-            // Don't exceed the limit
-            if (finalTasks.length >= limit) {
-                break;
-            }
-        }
-
-        // Ensure we don't exceed the requested limit
-        const limitedTasks = finalTasks.slice(0, limit);
-
-        // Keep only tasks that are valid and have content
-        const validTasks = limitedTasks.filter(task =>
-            task.prompt && task.prompt.trim() !== '' &&
-            task.id && task.type
-        );
-
-        const imageTaskCount = validTasks.filter(t => t.type === 'image').length;
-        const textTaskCount = validTasks.filter(t => t.type === 'text').length;
-
-        logger.log(`Returning ${validTasks.length} total tasks (${imageTaskCount} image, ${textTaskCount} text)`);
-
-        return validTasks;
-    } catch (error) {
-        logger.error('Error in fetchTasksFromSources:', error);
-        return [];
-    }
-};
-
-/**
- * Creates tasks in the swarm database using bulk RPC insert
- * Associates tasks with the current user session
- */
-export const createTasksInSwarm = async (tasks: AITask[]): Promise<number> => {
-    try {
-        const client = getSwarmSupabase();
-
-        // Prepare tasks for bulk insert with null user_id initially (unassigned)
-        const tasksToInsert = tasks.map(task => {
-            // Set timestamp fields properly
-            const timestamp = new Date().toISOString();
-
-            return {
-                type: task.type,
-                status: 'pending' as TaskStatus,
-                created_at: timestamp,
-                updated_at: timestamp,
-                compute_time: 0,
-                blockchain_task_id: '',
-                node_id: '',
-                user_id: null, // Set to null initially, will be assigned when a user connects
-                model: task.model || 'default-model',
-                params: task.params || JSON.stringify({
-                    model: task.model,
-                    temperature: 0.7,
-                    max_tokens: 1000,
-                }),
-                input_tokens: task.input_tokens || Math.ceil((task.prompt?.length || 0) / 4),
-                output_tokens: 0,
-                prompt: task.prompt,
-                result: '',
-                gpu_usage: 0,
-                reward_amount: 0,
-                completion_signature: ''
-            };
-        });
-
-        // Process in batches to avoid overwhelming the database
-        const batchSize = 50;
-        let totalCreated = 0;
-
-        for (let i = 0; i < tasksToInsert.length; i += batchSize) {
-            const batch = tasksToInsert.slice(i, i + batchSize);
-
-            try {
-                // Use RPC endpoint for bulk insert
-                const { error } = await client.rpc('insert_tasks_bulk', {
-                    task_rows: batch
-                });
-
-                if (error) {
-                    logger.error('Error in bulk insert RPC:', error);
-                    continue;
-                }
-
-                totalCreated += batch.length;
-                logger.log(`Successfully batch inserted ${batch.length} tasks`);
-            } catch (batchError) {
-                logger.error('Error processing batch:', batchError);
-            }
-
-            // Add a small delay between batches
-            if (i + batchSize < tasksToInsert.length) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-        }
-
-        return totalCreated;
-    } catch (error) {
-        logger.error('Error in createTasksInSwarm:', error);
-        return 0;
-    }
-};
-
-/**
  * Get tasks for the current user or guest tasks if no user is logged in
  */
 export const getUserTasks = async (limit: number = 50): Promise<AITask[]> => {
     try {
         const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Swarm client is not initialized');
+            return [];
+        }
 
         // Get user ID from the provider function
         const userId = getCurrentUserId();
@@ -238,12 +68,16 @@ export const getUserTasks = async (limit: number = 50): Promise<AITask[]> => {
 };
 
 /**
- * Get queued tasks that haven't been assigned to any node,
- * with proper distribution of task types
+ * Get queued tasks that haven't been assigned to any user,
+ * with proper distribution of task types (40% image, 60% text)
  */
 export const getQueuedTasks = async (limit: number = 50): Promise<AITask[]> => {
     try {
         const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Swarm client is not initialized');
+            return [];
+        }
 
         // Calculate image and text task limits with 40/60 ratio
         const imageTaskLimit = Math.ceil(limit * TASK_PROCESSING_CONFIG.DISTRIBUTION.image); // 40%
@@ -255,7 +89,7 @@ export const getQueuedTasks = async (limit: number = 50): Promise<AITask[]> => {
             .select('*')
             .eq('status', 'pending')
             .eq('type', 'image')
-            .is('node_id', null)
+            .is('user_id', null)
             .order('created_at', { ascending: true })
             .limit(imageTaskLimit);
 
@@ -270,7 +104,7 @@ export const getQueuedTasks = async (limit: number = 50): Promise<AITask[]> => {
             .select('*')
             .eq('status', 'pending')
             .eq('type', 'text')
-            .is('node_id', null)
+            .is('user_id', null)
             .order('created_at', { ascending: true })
             .limit(textTaskLimit);
 
@@ -291,24 +125,26 @@ export const getQueuedTasks = async (limit: number = 50): Promise<AITask[]> => {
 };
 
 /**
- * Assigns tasks to a specific node with a balanced distribution of task types
- * and updates the user_id to associate tasks with the connected user
+ * Assigns tasks to a specific user with a balanced distribution of task types (40% image, 60% text)
  */
-export const assignTasksToNode = async (nodeId: string, limit: number = 5, userId?: string): Promise<AITask[]> => {
+export const assignTasksToUser = async (userId: string, limit: number = 5): Promise<AITask[]> => {
     try {
         const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Swarm client is not initialized');
+            return [];
+        }
 
         // Calculate the ideal distribution of tasks
         const imageTaskLimit = Math.ceil(limit * TASK_PROCESSING_CONFIG.DISTRIBUTION.image); // 40% image tasks 
-        const textTaskLimit = limit - imageTaskLimit;   // 60% text tasks
+        const textTaskLimit = limit - imageTaskLimit;   // remaining for text tasks
 
-        // Find pending tasks that aren't assigned to any node or user, grouped by type
+        // Find pending tasks that aren't assigned to any user, grouped by type
         const { data: imageTasksData, error: imageError } = await client
             .from('tasks')
             .select('*')
             .eq('status', 'pending')
             .eq('type', 'image')
-            .is('node_id', null)
             .is('user_id', null)
             .order('created_at', { ascending: true })
             .limit(imageTaskLimit);
@@ -323,7 +159,6 @@ export const assignTasksToNode = async (nodeId: string, limit: number = 5, userI
             .select('*')
             .eq('status', 'pending')
             .eq('type', 'text')
-            .is('node_id', null)
             .is('user_id', null)
             .order('created_at', { ascending: true })
             .limit(textTaskLimit);
@@ -350,124 +185,74 @@ export const assignTasksToNode = async (nodeId: string, limit: number = 5, userI
         }
 
         // Interleave tasks to create a balanced distribution
-        const assignedTasks: AITask[] = [];
+        const tasksToAssign: AITask[] = [];
         const maxTasks = Math.max(finalImageLimit, finalTextLimit);
 
         for (let i = 0; i < maxTasks; i++) {
             // Start with images to maintain ~40% ratio
             if (i < finalImageLimit) {
-                assignedTasks.push(imageTasks[i] as AITask);
+                tasksToAssign.push(imageTasks[i] as AITask);
             }
 
             // Then add text tasks
             if (i < finalTextLimit) {
-                assignedTasks.push(textTasks[i] as AITask);
+                tasksToAssign.push(textTasks[i] as AITask);
             }
 
             // Don't exceed the limit
-            if (assignedTasks.length >= limit) {
+            if (tasksToAssign.length >= limit) {
                 break;
             }
         }
 
-        // If we don't have enough tasks, try to refresh from source
-        if (assignedTasks.length < 2) {
-            logger.log(`Found only ${assignedTasks.length} tasks to assign, attempting to load more from source`);
-
-            // Fetch tasks from source and create them in Swarm
-            const newTasks = await fetchTasksFromSources(100); // Fetch a good number
-            await createTasksInSwarm(newTasks);
-
-            // After creating new tasks, try assigning again
-            return assignTasksToNode(nodeId, limit, userId);
-        }
-
-        if (assignedTasks.length === 0) {
+        if (tasksToAssign.length === 0) {
+            logger.log('No pending tasks available to assign');
             return [];
         }
 
-        // Assign tasks to node and user
-        const taskIds = assignedTasks.map(task => task.id);
+        // Assign tasks to user one by one to prevent race conditions
+        const assignedTasks: AITask[] = [];
         const timestamp = new Date().toISOString();
 
-        const updateData: {
-            node_id: string;
-            status: TaskStatus;
-            updated_at: string;
-            user_id?: string;
-        } = {
-            node_id: nodeId,
-            status: 'pending',
-            updated_at: timestamp
-        };
+        for (const task of tasksToAssign) {
+            const { error: updateError } = await client
+                .from('tasks')
+                .update({
+                    user_id: userId,
+                    updated_at: timestamp
+                })
+                .eq('id', task.id)
+                .is('user_id', null) // Only update if still unassigned
+                .eq('status', 'pending'); // Only update if still pending
 
-        // Add user_id to update if provided
-        if (userId) {
-            updateData.user_id = userId;
-        }
+            if (updateError) {
+                logger.error(`Error assigning task ${task.id} to user ${userId}:`, updateError);
+                continue;
+            }
 
-        const { error: updateError } = await client
-            .from('tasks')
-            .update(updateData)
-            .in('id', taskIds);
-
-        if (updateError) {
-            logger.error('Error assigning tasks to node:', updateError);
-            return [];
+            // Add to our assigned tasks list
+            assignedTasks.push({
+                ...task,
+                user_id: userId,
+                updated_at: timestamp
+            });
         }
 
         // Log success and distribution info
         const assignedImageCount = assignedTasks.filter(t => t.type === 'image').length;
         const assignedTextCount = assignedTasks.filter(t => t.type === 'text').length;
 
-        logger.log(`Assigned ${assignedTasks.length} tasks to node: ${nodeId}${userId ? ` and user: ${userId}` : ''}`);
-        logger.log(`Task distribution: ${assignedImageCount} images (${Math.round(assignedImageCount / assignedTasks.length * 100)}%), ${assignedTextCount} text (${Math.round(assignedTextCount / assignedTasks.length * 100)}%)`);
+        logger.log(`Assigned ${assignedTasks.length} tasks to user: ${userId}`);
 
-        // Return assigned tasks with updated status and user_id
-        return assignedTasks.map(task => ({
-            ...task,
-            node_id: nodeId,
-            user_id: userId || task.user_id,
-            status: 'pending' as TaskStatus,
-            updated_at: timestamp
-        }));
+        if (assignedTasks.length > 0) {
+            logger.log(`Task distribution: ${assignedImageCount} images (${Math.round(assignedImageCount / assignedTasks.length * 100)}%), ${assignedTextCount} text (${Math.round(assignedTextCount / assignedTasks.length * 100)}%)`);
+        }
+
+        // Return assigned tasks
+        return assignedTasks;
     } catch (error) {
-        logger.error('Error in assignTasksToNode:', error);
+        logger.error('Error in assignTasksToUser:', error);
         return [];
-    }
-};
-
-/**
- * Process tasks and ensure the database has a sufficient number of tasks
- * Associates tasks with the current session user ID
- */
-export const refreshAndStoreTasks = async (): Promise<number> => {
-    try {
-        // Check if we already have enough tasks in the Swarm database
-        const existingTasks = await getQueuedTasks(10);
-
-        if (existingTasks.length >= 10) {
-            logger.log(`Already have ${existingTasks.length} queued tasks in database`);
-            return 0;
-        }
-
-        // Fetch new tasks from source
-        logger.log('Fetching tasks from source tables to replenish database');
-        const sourceTasks = await fetchTasksFromSources(100);
-
-        if (sourceTasks.length === 0) {
-            logger.log('No tasks found from source tables');
-            return 0;
-        }
-
-        // Create tasks in swarm database
-        const createdCount = await createTasksInSwarm(sourceTasks);
-
-        logger.log(`Created ${createdCount} new tasks in Swarm database`);
-        return createdCount;
-    } catch (error) {
-        logger.error('Error in refreshAndStoreTasks:', error);
-        return 0;
     }
 };
 
@@ -487,6 +272,11 @@ export const processTask = async (
         }
 
         const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Swarm client is not initialized');
+            return { success: false };
+        }
+
         const startTime = Date.now();
 
         // Get current user ID
@@ -648,6 +438,10 @@ export const processTask = async (
             if (userId) {
                 // Mark as failed if this user owns this task
                 const client = getSwarmSupabase();
+                if (!client) {
+                    logger.error('Swarm client is not initialized');
+                    return { success: false };
+                }
 
                 await client
                     .from('tasks')

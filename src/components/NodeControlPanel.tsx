@@ -50,7 +50,7 @@ import {
   clearAssignedTasks,
 } from "@/store/slices/taskSlice";
 import { RootState, useAppDispatch } from "@/store";
-import { assignTasksToNode } from "@/services/swarmTaskService";
+import { assignTasksToUser } from "@/services/swarmTaskService";
 
 type DeviceGroup = "desktop_laptop" | "mobile_tablet";
 

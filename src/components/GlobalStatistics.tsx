@@ -4,16 +4,12 @@ import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { getRecentTasks } from "@/services/taskService";
-import {
-  refreshAndStoreTasks,
-  getQueuedTasks,
-} from "@/services/swarmTaskService";
+import { getQueuedTasks } from "@/services/swarmTaskService";
 import { AITask } from "@/services/types";
 import { FileCode } from "./ui/file-code";
 import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "@/store";
-import { fetchTasks } from "@/store/slices/taskSlice";
+import { fetchPendingTasks } from "@/store/slices/taskSlice";
 
 // Default refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 120000; // Increased to 120 seconds (2 minutes)
@@ -122,22 +118,25 @@ export const GlobalStatistics = () => {
 
         setIsRefreshing(true);
 
-        // Attempt to refresh tasks from source first, but only log success
-        let refreshedCount = 0;
+        // Check for available unassigned tasks, but only log success
+        let availableTaskCount = 0;
         try {
-          refreshedCount = await refreshAndStoreTasks();
-          if (refreshedCount > 0) {
-            console.log(`Refreshed ${refreshedCount} tasks`);
+          const availableTasks = await getQueuedTasks(10);
+          availableTaskCount = availableTasks.length;
+          if (availableTaskCount > 0) {
+            console.log(
+              `Found ${availableTaskCount} available unassigned tasks in the database`
+            );
           }
         } catch (error) {
           // Log error but continue with existing tasks
-          console.error("Error refreshing tasks:", error);
+          console.error("Error checking available tasks:", error);
         }
 
         // Only fetch tasks if we need them (no tasks or forced refresh)
-        if (allTasks.length === 0 || forceRefresh || refreshedCount > 0) {
-          // Dispatch the fetchTasks action to update Redux store
-          const tasks = await dispatch(fetchTasks({ forceRefresh })).unwrap();
+        if (allTasks.length === 0 || forceRefresh || availableTaskCount > 0) {
+          // Dispatch the fetchPendingTasks action to update Redux store
+          const tasks = await dispatch(fetchPendingTasks()).unwrap();
 
           // Only log if we get tasks or occasionally
           if (tasks.length > 0 || Math.random() < 0.1) {
@@ -151,11 +150,9 @@ export const GlobalStatistics = () => {
           // Calculate stats from the fetched tasks (not the Redux store)
           if (tasks.length > 0) {
             calculateAndUpdateStats(tasks);
-          } else if (refreshedCount > 0) {
-            // We created new tasks but didn't fetch them, try again
-            const moreTasks = await dispatch(
-              fetchTasks({ forceRefresh: true })
-            ).unwrap();
+          } else if (availableTaskCount > 0) {
+            // We found new tasks but didn't fetch them, try again
+            const moreTasks = await dispatch(fetchPendingTasks()).unwrap();
 
             if (moreTasks.length > 0) {
               calculateAndUpdateStats(moreTasks);

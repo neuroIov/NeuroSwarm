@@ -18,10 +18,8 @@ import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "@/store";
 import {
   setCurrentTask,
-  updateTaskProgress,
   fetchAndAssignTasks,
-  updateTask,
-  TasksState,
+  updateTaskStatus,
 } from "@/store/slices/taskSlice";
 import {
   incrementTasksCompleted,
@@ -37,6 +35,8 @@ export const TaskPipeline = () => {
   const { assignedTasks, currentTask, isLoading } = useSelector(
     (state: RootState) => state.tasks
   );
+  const { userProfile } = useSelector((state: RootState) => state.session);
+  const userId = userProfile?.id;
 
   const [autoMode, setAutoMode] = useState(true);
   const [stats, setStats] = useState({
@@ -62,6 +62,18 @@ export const TaskPipeline = () => {
 
   // Update stats when tasks change
   useEffect(() => {
+    if (!isActive) {
+      setStats({
+        completed: 0,
+        processing: 0,
+        pending: 0,
+        failed: 0,
+        imageTasksCount: 0,
+        textTasksCount: 0,
+      });
+      return;
+    }
+
     const newStats = {
       completed: assignedTasks.filter((t) => t.status === "completed").length,
       processing: assignedTasks.filter((t) => t.status === "processing").length,
@@ -72,11 +84,18 @@ export const TaskPipeline = () => {
     };
 
     setStats(newStats);
-  }, [assignedTasks]);
+  }, [assignedTasks, isActive]);
+
+  // Clear current task when node becomes inactive
+  useEffect(() => {
+    if (!isActive && currentTask) {
+      dispatch(setCurrentTask(null));
+    }
+  }, [isActive, currentTask, dispatch]);
 
   // Process tasks in auto mode
   useEffect(() => {
-    if (!autoMode || !isActive || !nodeId || !currentTask) return;
+    if (!autoMode || !isActive || !nodeId) return;
 
     let taskProcessingTimer: NodeJS.Timeout | null = null;
 
@@ -89,7 +108,7 @@ export const TaskPipeline = () => {
         // Update task to processing if it's pending
         if (currentTask.status === "pending") {
           dispatch(
-            updateTaskProgress({
+            updateTaskStatus({
               taskId: currentTask.id,
               status: "processing",
             })
@@ -109,7 +128,7 @@ export const TaskPipeline = () => {
           if (success) {
             // Update the task to completed with the result
             dispatch(
-              updateTask({
+              updateTaskStatus({
                 taskId: currentTask.id,
                 status: "completed",
                 result,
@@ -135,11 +154,9 @@ export const TaskPipeline = () => {
 
             if (nextTask) {
               dispatch(setCurrentTask(nextTask));
-            } else {
+            } else if (isActive && nodeId && userId) {
               // If no more tasks, check if we need to fetch more
-              if (nodeId) {
-                dispatch(fetchAndAssignTasks(nodeId));
-              }
+              dispatch(fetchAndAssignTasks({ userId, nodeId }));
             }
 
             // Update success rate
@@ -150,7 +167,7 @@ export const TaskPipeline = () => {
           } else {
             // Mark task as failed
             dispatch(
-              updateTask({
+              updateTaskStatus({
                 taskId: currentTask.id,
                 status: "failed",
               })
@@ -166,11 +183,9 @@ export const TaskPipeline = () => {
 
             if (nextTask) {
               dispatch(setCurrentTask(nextTask));
-            } else {
+            } else if (isActive && nodeId && userId) {
               // If no more tasks, check if we need to fetch more
-              if (nodeId) {
-                dispatch(fetchAndAssignTasks(nodeId));
-              }
+              dispatch(fetchAndAssignTasks({ userId, nodeId }));
             }
 
             // Update success rate
@@ -184,7 +199,7 @@ export const TaskPipeline = () => {
 
           // Mark task as failed
           dispatch(
-            updateTask({
+            updateTaskStatus({
               taskId: currentTask.id,
               status: "failed",
             })
@@ -199,9 +214,9 @@ export const TaskPipeline = () => {
     ) {
       // Process tasks with a 3-second delay between tasks
       taskProcessingTimer = setTimeout(processCurrentTask, 3000);
-    } else if (assignedTasks.length === 0 && nodeId) {
+    } else if (assignedTasks.length === 0 && nodeId && isActive && userId) {
       // If there are no more tasks, try to fetch new ones
-      dispatch(fetchAndAssignTasks(nodeId));
+      dispatch(fetchAndAssignTasks({ userId, nodeId }));
     } else if (!currentTask && assignedTasks.length > 0) {
       // If we have tasks but no current task, select one
       const nextTask = assignedTasks.find((task) => task.status === "pending");
@@ -212,12 +227,12 @@ export const TaskPipeline = () => {
 
     // Set up periodic task check every 30 seconds to fetch new tasks
     const periodicTaskCheck = setInterval(() => {
-      // Only fetch new tasks if we have less than 3 pending tasks
+      // Only fetch new tasks if node is active and we have less than 3 pending tasks
       const pendingTasksCount = assignedTasks.filter(
         (t) => t.status === "pending"
       ).length;
-      if (isActive && nodeId && pendingTasksCount < 3) {
-        dispatch(fetchAndAssignTasks(nodeId));
+      if (isActive && nodeId && userId && pendingTasksCount < 3) {
+        dispatch(fetchAndAssignTasks({ userId, nodeId }));
       }
     }, 30000);
 
@@ -322,7 +337,15 @@ export const TaskPipeline = () => {
         </div>
       </div>
 
-      {isLoading ? (
+      {!isActive ? (
+        <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+          <FileCode className="w-12 h-12 mb-4 text-slate-600" />
+          <p className="text-lg">Node is not active</p>
+          <p className="text-sm mt-2">
+            Start your node to receive and view tasks
+          </p>
+        </div>
+      ) : isLoading ? (
         <div className="flex justify-center items-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-swarm-accent-purple" />
           <span className="ml-3 text-lg">Loading tasks...</span>
@@ -455,13 +478,16 @@ export const TaskPipeline = () => {
           </p>
           {isActive && (
             <Button
-              variant="outline"
               size="sm"
               className="mt-4"
-              onClick={() => nodeId && dispatch(fetchAndAssignTasks(nodeId))}
+              onClick={() =>
+                nodeId &&
+                userId &&
+                dispatch(fetchAndAssignTasks({ userId, nodeId }))
+              }
             >
               <RefreshCw className="w-4 h-4 mr-2" />
-              Check for tasks
+              Get New Tasks
             </Button>
           )}
         </div>
