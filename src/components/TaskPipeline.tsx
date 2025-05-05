@@ -121,9 +121,10 @@ export const TaskPipeline = () => {
 
             // Toast for completed task
             toast.success(
-              `Task completed: ${currentTask.type === "image"
-                ? "Image generated"
-                : "Text processed"
+              `Task completed: ${
+                currentTask.type === "image"
+                  ? "Image generated"
+                  : "Text processed"
               }`
             );
 
@@ -265,63 +266,59 @@ export const TaskPipeline = () => {
   };
 
   return (
-    <div className="stat-card rounded-3xl h-auto md:h-[50%]" style={{
-      backgroundColor: 'rgba(9, 12, 24, 1)',
-      width: '100%'
-    }}>
-      <div className="flex justify-between items-center mb-4 ">
+    <div className="stat-card">
+      <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl">Task Pipeline</h2>
+          <h2 className="text-xl font-semibold">Task Pipeline</h2>
           <InfoTooltip content="The task pipeline shows all tasks assigned to your nodes. Tasks are automatically processed when your nodes are active." />
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 mr-2">
-            {/* <span className="text-green-400 text-xs">
+            <span className="text-green-400 text-xs">
               Image ({stats.imageTasksCount})
             </span>
             <span className="text-blue-400 text-xs">
               Text ({stats.textTasksCount})
-            </span> */}
-            <span>NLOV Network Auto</span>
+            </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-400">Auto</span>
+            <span className="text-sm text-swarm-text-secondary">Auto</span>
             <Switch checked={autoMode} onCheckedChange={toggleAutoMode} />
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4  md:gap-4 mb-6 max-w-md mx-auto">
-        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center gap-2">
-            <img src="Check Icon.png" alt="" />
+            <CheckCircle className="w-4 h-4 text-green-500" />
+            <span className="text-xl font-bold">{stats.completed}</span>
           </div>
           <span className="text-xs text-slate-400">Completed</span>
-          <span className="text-xl font-bold">{stats.completed}</span>
         </div>
 
-        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center gap-2">
-            <img src="Vector (4).png" alt="" />
+            <Zap className="w-4 h-4 text-blue-500" />
+            <span className="text-xl font-bold">{stats.processing}</span>
           </div>
           <span className="text-xs text-slate-400">Processing</span>
-          <span className="text-xl font-bold">{stats.processing}</span>
         </div>
 
-        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center gap-2">
-            <img src="Group.png" alt="" />
+            <Clock className="w-4 h-4 text-amber-500" />
+            <span className="text-xl font-bold">{stats.pending}</span>
           </div>
           <span className="text-xs text-slate-400">Pending</span>
-          <span className="text-xl font-bold">{stats.pending}</span>
         </div>
 
-        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center gap-2">
-            <img src="Vector (5).png" alt="" />
+            <XCircle className="w-4 h-4 text-red-500" />
+            <span className="text-xl font-bold">{stats.failed}</span>
           </div>
           <span className="text-xs text-slate-400">Failed</span>
-          <span className="text-xl font-bold">{stats.failed}</span>
         </div>
       </div>
 
@@ -335,18 +332,22 @@ export const TaskPipeline = () => {
           {assignedTasks.map((task) => (
             <div
               key={task.id}
-              className={`task-card p-4 rounded-lg ${currentTask?.id === task.id ? "border border-swarm-accent-purple/50" : ""}`}
-              style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}
+              className={`task-card ${
+                currentTask?.id === task.id
+                  ? "border border-swarm-accent-purple/50"
+                  : ""
+              }`}
             >
               <div className="flex items-start gap-3">
                 <div className="mt-1">{getTaskTypeIcon(task.type)}</div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-sm font-medium ${task.type === "image"
-                        ? "text-green-400"
-                        : "text-blue-400"
-                        }`}
+                      className={`text-sm font-medium ${
+                        task.type === "image"
+                          ? "text-green-400"
+                          : "text-blue-400"
+                      }`}
                     >
                       {task.type}
                     </span>
@@ -371,7 +372,7 @@ export const TaskPipeline = () => {
                         {task.type === "image"
                           ? "Image generated successfully"
                           : task.result.substring(0, 50) +
-                          (task.result.length > 50 ? "..." : "")}
+                            (task.result.length > 50 ? "..." : "")}
                       </span>
                     ) : task.status === "processing" ? (
                       <span className="text-blue-400">Processing...</span>
@@ -394,22 +395,26 @@ export const TaskPipeline = () => {
                   <div
                     className={`
                     text-xs rounded-full px-2 py-0.5
-                    ${task.status === "completed"
+                    ${
+                      task.status === "completed"
                         ? "bg-green-900/50 text-green-300"
                         : ""
-                      }
-                    ${task.status === "processing"
+                    }
+                    ${
+                      task.status === "processing"
                         ? "bg-blue-900/50 text-blue-300"
                         : ""
-                      }
-                    ${task.status === "pending"
+                    }
+                    ${
+                      task.status === "pending"
                         ? "bg-amber-900/50 text-amber-300"
                         : ""
-                      }
-                    ${task.status === "failed"
+                    }
+                    ${
+                      task.status === "failed"
                         ? "bg-red-900/50 text-red-300"
                         : ""
-                      }
+                    }
                   `}
                   >
                     {task.status === "processing" ? (
@@ -440,7 +445,7 @@ export const TaskPipeline = () => {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-slate-400" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+        <div className="flex flex-col items-center justify-center py-16 text-slate-400">
           <FileCode className="w-12 h-12 mb-4 text-slate-600" />
           <p className="text-lg">No tasks assigned yet</p>
           <p className="text-sm mt-2">

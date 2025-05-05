@@ -8,9 +8,9 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useComputeToken } from '../hooks/useComputeToken';
 import { NodeStats, TaskStats } from '../hooks/useComputeToken';
 
-const MetricCard = ({ title, value, unit, change }: {
-    title: string;
-    value: number;
+const MetricCard = ({ title, value, unit, change }: { 
+    title: string; 
+    value: number; 
     unit: string;
     change?: number;
 }) => (
@@ -37,7 +37,7 @@ const Dashboard = () => {
     const { totalNodes, activeNodes, networkLoad, networkEfficiency, rewardPool } = useNetworkStore();
     const { publicKey } = useWallet();
     const computeToken = useComputeToken();
-
+    
     const [nodeStats, setNodeStats] = useState({
         highRep: 0,
         medRep: 0,
@@ -58,7 +58,7 @@ const Dashboard = () => {
         const fetchStats = async () => {
             try {
                 const devices = await computeToken.getAllDevices();
-
+                
                 // Calculate node reputation stats
                 const stats = {
                     highRep: 0,
@@ -166,7 +166,7 @@ const Dashboard = () => {
         const interval = setInterval(fetchStats, 30000); // Update every 30s
         return () => clearInterval(interval);
     }, [computeToken, publicKey]);
-
+    
     const reputationData = [
         { name: 'High Rep', value: nodeStats.highRep, color: '#10B981' },
         { name: 'Med Rep', value: nodeStats.medRep, color: '#F59E0B' },
@@ -321,32 +321,32 @@ const Dashboard = () => {
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={performanceData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis
-                                dataKey="time"
+                            <XAxis 
+                                dataKey="time" 
                                 stroke="#9CA3AF"
                             />
-                            <YAxis
+                            <YAxis 
                                 stroke="#9CA3AF"
                             />
-                            <Tooltip
-                                contentStyle={{
+                            <Tooltip 
+                                contentStyle={{ 
                                     backgroundColor: '#1F2937',
                                     border: 'none',
                                     borderRadius: '0.5rem',
                                     color: '#F3F4F6'
                                 }}
                             />
-                            <Line
-                                type="monotone"
-                                dataKey="load"
-                                stroke="#10B981"
+                            <Line 
+                                type="monotone" 
+                                dataKey="load" 
+                                stroke="#10B981" 
                                 strokeWidth={2}
                                 dot={false}
                             />
-                            <Line
-                                type="monotone"
-                                dataKey="efficiency"
-                                stroke="#3B82F6"
+                            <Line 
+                                type="monotone" 
+                                dataKey="efficiency" 
+                                stroke="#3B82F6" 
                                 strokeWidth={2}
                                 dot={false}
                             />
