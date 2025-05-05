@@ -17,7 +17,7 @@ export const Sidebar = ({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
 
             {/* User profile section with right-sided curve */}
             <div
-                className="mb-8 px-4 py-3 rounded-tr-full rounded-br-full "
+                className="mb-8 px-4 py-3"
                 style={{
                     backgroundColor: 'rgba(30, 30, 30, 1)',
                     borderTopRightRadius: '24px',
@@ -29,8 +29,8 @@ export const Sidebar = ({ isOpen, onClose }: { isOpen?: boolean, onClose?: () =>
                         AG
                     </div>
                     <div>
-                        <h2 className="">Alex Goldburg</h2>
-                        <p className="text-gray-400 text-sm border-white">Contributor</p>
+                        <h2 className="font-bold text-lg">Alex Goldburg</h2>
+                        <p className="text-gray-400 text-sm">Controller</p>
                     </div>
                 </div>
             </div>

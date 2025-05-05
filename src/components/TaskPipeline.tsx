@@ -267,7 +267,7 @@ export const TaskPipeline = () => {
   return (
     <div className="stat-card rounded-3xl h-auto md:h-[50%]" style={{
       backgroundColor: 'rgba(9, 12, 24, 1)',
-      width: '110%'
+      width: '100%'
     }}>
       <div className="flex justify-between items-center mb-4 ">
         <div className="flex items-center gap-2">
@@ -282,63 +282,47 @@ export const TaskPipeline = () => {
             <span className="text-blue-400 text-xs">
               Text ({stats.textTasksCount})
             </span> */}
+            <span>NLOV Network Auto</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-400">NLOV Network Auto</span>
+            <span className="text-sm text-slate-400">Auto</span>
             <Switch checked={autoMode} onCheckedChange={toggleAutoMode} />
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:gap-4 mb-6 max-w-md">
-
-        <div className="relative flex flex-col items-center p-3 bg-slate-800/30 rounded-2xl overflow-hidden" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+      <div className="grid grid-cols-2 sm:grid-cols-4  md:gap-4 mb-6 max-w-md mx-auto">
+        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
           <div className="flex items-center gap-2">
             <img src="Check Icon.png" alt="" />
           </div>
           <span className="text-xs text-slate-400">Completed</span>
           <span className="text-xl font-bold">{stats.completed}</span>
-
-          {/* Blue bottom bar */}
-          <div className="absolute bottom-0 left-0 w-full h-2 bg-blue-600 rounded-b-lg" />
         </div>
 
-
-        <div className="relative flex flex-col items-center p-3 bg-slate-800/30 rounded-2xl overflow-hidden" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
           <div className="flex items-center gap-2">
             <img src="Vector (4).png" alt="" />
           </div>
           <span className="text-xs text-slate-400">Processing</span>
           <span className="text-xl font-bold">{stats.processing}</span>
-
-          {/* Blue bottom bar */}
-          <div className="absolute bottom-0 left-0 w-full h-2 bg-blue-600 rounded-b-lg" />
         </div>
 
-
-        <div className="relative flex flex-col items-center p-3 bg-slate-800/30 rounded-2xl overflow-hidden" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
           <div className="flex items-center gap-2">
             <img src="Group.png" alt="" />
           </div>
           <span className="text-xs text-slate-400">Pending</span>
           <span className="text-xl font-bold">{stats.pending}</span>
-
-          {/* Bottom color bar */}
-          <div className="absolute bottom-0 left-0 w-full h-2 bg-blue-600 rounded-b-lg" />
         </div>
 
-
-        <div className="relative flex flex-col items-center p-3 bg-slate-800/30 rounded-2xl overflow-hidden" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
+        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg" style={{ backgroundColor: 'rgba(15, 23, 42, 0.3)' }}>
           <div className="flex items-center gap-2">
             <img src="Vector (5).png" alt="" />
           </div>
           <span className="text-xs text-slate-400">Failed</span>
           <span className="text-xl font-bold">{stats.failed}</span>
-
-          {/* Bottom color bar */}
-          <div className="absolute bottom-0 left-0 w-full h-2 bg-blue-600 rounded-b-lg" />
         </div>
-
       </div>
 
       {isLoading ? (
@@ -479,4 +463,4 @@ export const TaskPipeline = () => {
       )}
     </div>
   );
-}
+};
