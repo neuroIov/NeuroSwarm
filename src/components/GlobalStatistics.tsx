@@ -80,7 +80,7 @@ export const GlobalStatistics = () => {
     const avgTime =
       computeTimes.length > 0
         ? computeTimes.reduce((sum, time) => sum + time, 0) /
-          computeTimes.length
+        computeTimes.length
         : 0;
 
     // Gather unique user and node IDs
@@ -284,8 +284,7 @@ export const GlobalStatistics = () => {
         `Stats updated from allTasks: ${allTasks.length} tasks found`
       );
       console.log(
-        `Task types: Image=${
-          allTasks.filter((t) => t.type === "image").length
+        `Task types: Image=${allTasks.filter((t) => t.type === "image").length
         }, Text=${allTasks.filter((t) => t.type === "text").length}`
       );
     } else if (
@@ -382,119 +381,120 @@ export const GlobalStatistics = () => {
   );
 
   return (
-    <div className="stat-card">
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold">Global Statistics</h2>
-          <InfoTooltip content="Overview of the entire Swarm Network activity" />
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-400">Auto-Refresh</span>
-            <Switch checked={autoRefresh} onCheckedChange={toggleAutoRefresh} />
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="bg-slate-700/50 border-slate-600"
-          >
-            <RefreshCw
-              className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`}
-            />
-            {isRefreshing ? "Refreshing..." : "Refresh"}
-          </Button>
-        </div>
-      </div>
+    // <div className="stat-card">
+    //   <div className="flex justify-between items-center mb-4">
+    //     <div className="flex items-center gap-2">
+    //       <h2 className="text-xl font-semibold">Global Statistics</h2>
+    //       <InfoTooltip content="Overview of the entire Swarm Network activity" />
+    //     </div>
+    //     <div className="flex items-center gap-3">
+    //       <div className="flex items-center gap-2">
+    //         <span className="text-sm text-slate-400">Auto-Refresh</span>
+    //         <Switch checked={autoRefresh} onCheckedChange={toggleAutoRefresh} />
+    //       </div>
+    //       <Button
+    //         variant="outline"
+    //         size="sm"
+    //         onClick={handleRefresh}
+    //         disabled={isRefreshing}
+    //         className="bg-slate-700/50 border-slate-600"
+    //       >
+    //         <RefreshCw
+    //           className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`}
+    //         />
+    //         {isRefreshing ? "Refreshing..." : "Refresh"}
+    //       </Button>
+    //     </div>
+    //   </div>
 
-      {statsCards}
+    //   {statsCards}
 
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-lg font-medium">Recent Global Tasks</h3>
-          <div className="text-sm text-blue-400">
-            <span className="mr-1">•</span> Network Load:{" "}
-            {stats.networkLoad.toFixed(1)}%
-          </div>
-        </div>
+    //   <div className="mb-6">
+    //     <div className="flex justify-between items-center mb-2">
+    //       <h3 className="text-lg font-medium">Recent Global Tasks</h3>
+    //       <div className="text-sm text-blue-400">
+    //         <span className="mr-1">•</span> Network Load:{" "}
+    //         {stats.networkLoad.toFixed(1)}%
+    //       </div>
+    //     </div>
 
-        {displayTasks.length > 0 ? (
-          <div className="space-y-3 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
-            {displayTasks.map((task, index) => (
-              <div key={`${task.id}-${index}`} className="task-card">
-                <div className="flex">
-                  <div className="mr-3 p-2 bg-blue-900/20 rounded">
-                    <div className="w-8 h-8 flex items-center justify-center">
-                      <FileCode
-                        className={`w-5 h-5 ${getTaskTypeColorClass(
-                          task.type
-                        )}`}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-blue-400">
-                        {task.model || "default"}
-                      </span>
-                      <span
-                        className={`text-xs bg-slate-700/50 px-2 py-0.5 rounded ${getTaskTypeColorClass(
-                          task.type
-                        )}`}
-                      >
-                        {task.type}
-                      </span>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded ml-auto 
-                        ${
-                          task.status === "completed"
-                            ? "bg-green-900/50 text-green-300"
-                            : ""
-                        }
-                        ${
-                          task.status === "processing"
-                            ? "bg-blue-900/50 text-blue-300"
-                            : ""
-                        }
-                        ${
-                          task.status === "pending"
-                            ? "bg-amber-900/50 text-amber-300"
-                            : ""
-                        }
-                        ${
-                          task.status === "failed"
-                            ? "bg-red-900/50 text-red-300"
-                            : ""
-                        }
-                      `}
-                      >
-                        {task.status.charAt(0).toUpperCase() +
-                          task.status.slice(1)}
-                      </span>
-                    </div>
-                    <p className="text-sm mb-1">
-                      Prompt: {task.prompt.substring(0, 80)}
-                      {task.prompt.length > 80 ? "..." : ""}
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span>{task.compute_time || 0}s</span>
-                      <span className="ml-auto">
-                        {formatTime(task.created_at)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-slate-400">
-            <FileCode className="w-10 h-10 mb-2 text-slate-600" />
-            <p>No tasks available. Refresh to load tasks.</p>
-          </div>
-        )}
-      </div>
-    </div>
+    //     {displayTasks.length > 0 ? (
+    //       <div className="space-y-3 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
+    //         {displayTasks.map((task, index) => (
+    //           <div key={`${task.id}-${index}`} className="task-card">
+    //             <div className="flex">
+    //               <div className="mr-3 p-2 bg-blue-900/20 rounded">
+    //                 <div className="w-8 h-8 flex items-center justify-center">
+    //                   <FileCode
+    //                     className={`w-5 h-5 ${getTaskTypeColorClass(
+    //                       task.type
+    //                     )}`}
+    //                   />
+    //                 </div>
+    //               </div>
+    //               <div className="flex-1">
+    //                 <div className="flex items-center gap-2 mb-1">
+    //                   <span className="text-sm font-medium text-blue-400">
+    //                     {task.model || "default"}
+    //                   </span>
+    //                   <span
+    //                     className={`text-xs bg-slate-700/50 px-2 py-0.5 rounded ${getTaskTypeColorClass(
+    //                       task.type
+    //                     )}`}
+    //                   >
+    //                     {task.type}
+    //                   </span>
+    //                   <span
+    //                     className={`text-xs px-2 py-0.5 rounded ml-auto 
+    //                     ${
+    //                       task.status === "completed"
+    //                         ? "bg-green-900/50 text-green-300"
+    //                         : ""
+    //                     }
+    //                     ${
+    //                       task.status === "processing"
+    //                         ? "bg-blue-900/50 text-blue-300"
+    //                         : ""
+    //                     }
+    //                     ${
+    //                       task.status === "pending"
+    //                         ? "bg-amber-900/50 text-amber-300"
+    //                         : ""
+    //                     }
+    //                     ${
+    //                       task.status === "failed"
+    //                         ? "bg-red-900/50 text-red-300"
+    //                         : ""
+    //                     }
+    //                   `}
+    //                   >
+    //                     {task.status.charAt(0).toUpperCase() +
+    //                       task.status.slice(1)}
+    //                   </span>
+    //                 </div>
+    //                 <p className="text-sm mb-1">
+    //                   Prompt: {task.prompt.substring(0, 80)}
+    //                   {task.prompt.length > 80 ? "..." : ""}
+    //                 </p>
+    //                 <div className="flex items-center gap-2 text-xs text-slate-400">
+    //                   <span>{task.compute_time || 0}s</span>
+    //                   <span className="ml-auto">
+    //                     {formatTime(task.created_at)}
+    //                   </span>
+    //                 </div>
+    //               </div>
+    //             </div>
+    //           </div>
+    //         ))}
+    //       </div>
+    //     ) : (
+    //       <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+    //         <FileCode className="w-10 h-10 mb-2 text-slate-600" />
+    //         <p>No tasks available. Refresh to load tasks.</p>
+    //       </div>
+    //     )}
+    //   </div>
+    // </div>
+    <h1></h1>
   );
 };

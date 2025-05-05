@@ -72,8 +72,8 @@ export const WalletButton = () => {
 
   const displayAddress = userPublicKey
     ? `${userPublicKey.toString().slice(0, 6)}...${userPublicKey
-        .toString()
-        .slice(-4)}`
+      .toString()
+      .slice(-4)}`
     : "Connected";
 
   return (
@@ -82,18 +82,13 @@ export const WalletButton = () => {
       onClick={handleWalletAction}
       disabled={isLoading}
       className={`
-        flex items-center gap-2 font-medium
-        ${
-          walletConnected
-            ? "bg-green-900/20 text-green-400 hover:bg-green-900/30 border-green-800"
-            : "bg-swarm-accent-purple text-white hover:bg-swarm-accent-purple/90"
+        flex items-center gap-2  rounded-full border-4 h-full border-black-800
+        ${walletConnected
+          ? "bg-green-900/20 text-green-400 hover:bg-green-900/30 border-green-800"
+          : "bg-blue-600 text-white hover:bg-blue-700"
         }
+        text-sm md:text-base
       `}
-      title={
-        walletConnected && userProfile
-          ? `Reputation: ${userProfile.reputation_score}/100 | Tasks: ${userProfile.total_tasks_completed} | Earnings: ${userProfile.total_earnings}`
-          : "Connect your wallet"
-      }
     >
       {isLoading ? (
         <>
@@ -108,10 +103,8 @@ export const WalletButton = () => {
         </>
       ) : (
         <>
-          <Wallet className="w-4 h-4" />
-          <span>
-            {session.userId === "guest" ? "Connect Wallet" : "Connect"}
-          </span>
+          <Wallet className="w-4 h-4 " />
+          <span>Connect Wallet</span>
         </>
       )}
     </Button>
