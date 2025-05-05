@@ -43,7 +43,6 @@
 
   body {
     @apply bg-swarm-darker-blue text-swarm-text-primary;
-    overflow: hidden;
   }
 
   .nlov-gradient {
@@ -54,9 +53,11 @@
   }
 
   .card-gradient {
-    background: linear-gradient(135deg,
-        rgba(30, 41, 59, 0.7) 0%,
-        rgba(15, 23, 42, 0.9) 100%);
+    background: linear-gradient(
+      135deg,
+      rgba(30, 41, 59, 0.7) 0%,
+      rgba(15, 23, 42, 0.9) 100%
+    );
   }
 
   .task-card {
