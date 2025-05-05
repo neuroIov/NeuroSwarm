@@ -22,6 +22,41 @@ const getCurrentUserId = (): string | null | undefined => {
     return getUserIdFn();
 };
 
+// Define a type for task processing result
+interface TaskProcessingResult {
+    success: boolean;
+    result?: string;
+    message?: string;  // Added for error messages and state change notifications
+}
+
+// Task processing state with mutex behavior
+const taskProcessingState = {
+    isProcessing: false,
+    currentTaskId: null as string | null,
+    processingPromise: null as Promise<TaskProcessingResult> | null,
+
+    // Acquire lock for processing
+    async acquireLock(taskId: string): Promise<boolean> {
+        if (this.isProcessing) {
+            logger.warn(`Cannot acquire lock for task ${taskId} - already processing task ${this.currentTaskId}`);
+            return false;
+        }
+
+        logger.log(`Acquiring lock for task ${taskId}`);
+        this.isProcessing = true;
+        this.currentTaskId = taskId;
+        return true;
+    },
+
+    // Release lock
+    releaseLock(): void {
+        logger.log(`Releasing lock for task ${this.currentTaskId}`);
+        this.isProcessing = false;
+        this.currentTaskId = null;
+        this.processingPromise = null;
+    }
+};
+
 /**
  * Get tasks for the current user or guest tasks if no user is logged in
  */
@@ -126,6 +161,7 @@ export const getQueuedTasks = async (limit: number = 50): Promise<AITask[]> => {
 
 /**
  * Assigns tasks to a specific user with a balanced distribution of task types (40% image, 60% text)
+ * With added locking to prevent race conditions
  */
 export const assignTasksToUser = async (userId: string, limit: number = 5): Promise<AITask[]> => {
     try {
@@ -210,46 +246,44 @@ export const assignTasksToUser = async (userId: string, limit: number = 5): Prom
             return [];
         }
 
-        // Assign tasks to user one by one to prevent race conditions
+        // Assign tasks to user using a transaction to prevent race conditions
         const assignedTasks: AITask[] = [];
         const timestamp = new Date().toISOString();
+        const taskIds = tasksToAssign.map(task => task.id);
 
-        for (const task of tasksToAssign) {
-            const { error: updateError } = await client
-                .from('tasks')
-                .update({
-                    user_id: userId,
-                    updated_at: timestamp
-                })
-                .eq('id', task.id)
-                .is('user_id', null) // Only update if still unassigned
-                .eq('status', 'pending'); // Only update if still pending
-
-            if (updateError) {
-                logger.error(`Error assigning task ${task.id} to user ${userId}:`, updateError);
-                continue;
-            }
-
-            // Add to our assigned tasks list
-            assignedTasks.push({
-                ...task,
+        // Use Supabase's batch update with proper constraints
+        // This ensures we only update tasks that are still unassigned
+        const { data: updatedTasks, error: updateError } = await client
+            .from('tasks')
+            .update({
                 user_id: userId,
                 updated_at: timestamp
-            });
+            })
+            .in('id', taskIds)
+            .is('user_id', null) // Only update if still unassigned
+            .eq('status', 'pending') // Only update if still pending
+            .select();
+
+        if (updateError) {
+            logger.error(`Error assigning tasks to user ${userId}:`, updateError);
+            return [];
         }
+
+        // Only count tasks that were successfully assigned
+        const successfullyAssigned = updatedTasks || [];
+
+        logger.log(`Successfully assigned ${successfullyAssigned.length} of ${tasksToAssign.length} tasks to user ${userId}`);
 
         // Log success and distribution info
-        const assignedImageCount = assignedTasks.filter(t => t.type === 'image').length;
-        const assignedTextCount = assignedTasks.filter(t => t.type === 'text').length;
+        const assignedImageCount = successfullyAssigned.filter(t => t.type === 'image').length;
+        const assignedTextCount = successfullyAssigned.filter(t => t.type === 'text').length;
 
-        logger.log(`Assigned ${assignedTasks.length} tasks to user: ${userId}`);
-
-        if (assignedTasks.length > 0) {
-            logger.log(`Task distribution: ${assignedImageCount} images (${Math.round(assignedImageCount / assignedTasks.length * 100)}%), ${assignedTextCount} text (${Math.round(assignedTextCount / assignedTasks.length * 100)}%)`);
+        if (successfullyAssigned.length > 0) {
+            logger.log(`Task distribution: ${assignedImageCount} images (${Math.round(assignedImageCount / successfullyAssigned.length * 100)}%), ${assignedTextCount} text (${Math.round(assignedTextCount / successfullyAssigned.length * 100)}%)`);
         }
 
-        // Return assigned tasks
-        return assignedTasks;
+        // Return only the tasks that were successfully assigned
+        return successfullyAssigned as AITask[];
     } catch (error) {
         logger.error('Error in assignTasksToUser:', error);
         return [];
@@ -258,207 +292,271 @@ export const assignTasksToUser = async (userId: string, limit: number = 5): Prom
 
 /**
  * Processes a task and updates its status
- * Ensures only one task is processed at a time and prevents race conditions
+ * Uses a mutex pattern to ensure only one task is processed at a time
+ * and adds resilience against race conditions
  */
 export const processTask = async (
     taskId: string,
-    estimatedTime: number
-): Promise<{ success: boolean, result?: string }> => {
-    try {
-        // If we're already processing a task, don't start another one
-        if (taskCache.isProcessingTask && taskCache.processingTask?.id !== taskId) {
-            logger.log(`Already processing task ${taskCache.processingTask?.id}, can't process ${taskId} now`);
-            return { success: false };
-        }
-
-        const client = getSwarmSupabase();
-        if (!client) {
-            logger.error('Swarm client is not initialized');
-            return { success: false };
-        }
-
-        const startTime = Date.now();
-
-        // Get current user ID
-        const userId = getCurrentUserId();
-
-        if (!userId) {
-            logger.error(`Cannot process task ${taskId}: No user ID available`);
-            return { success: false };
-        }
-
-        // First, fetch the task by ID only without filtering by status
-        // This ensures we can find the task regardless of current status
-        const { data: taskData, error: fetchError } = await client
-            .from('tasks')
-            .select('*')
-            .eq('id', taskId)
-            .single();
-
-        if (fetchError || !taskData) {
-            logger.error(`Error fetching task ${taskId}:`, fetchError);
-            // Remove from cache if it doesn't exist
-            taskCache.removeTask(taskId);
-            return { success: false };
-        }
-
-        const task = taskData as AITask;
-
-        // Verify the task is in a state we can process
-        if (task.status !== 'pending') {
-            logger.warn(`Task ${taskId} is not in pending state (current status: ${task.status})`);
-            return { success: false };
-        }
-
-        // Set this task as the currently processing task in cache
-        taskCache.setProcessingTask(task);
-
-        // Update status to processing
-        const { error: updateError } = await client
-            .from('tasks')
-            .update({
-                status: 'processing',
-                user_id: userId,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', taskId)
-            .is('user_id', null) // Only update unassigned tasks
-            .eq('status', 'pending'); // Only update if still pending
-
-        // Check for errors in the update
-        if (updateError) {
-            logger.error(`Error updating task ${taskId} to processing state:`, updateError);
-            taskCache.setProcessingTask(null);
-            return { success: false };
-        }
-
-        // Verify task was updated by fetching it again
-        const { data: updatedTask, error: verifyError } = await client
-            .from('tasks')
-            .select('*')
-            .eq('id', taskId)
-            .single();
-
-        if (verifyError || !updatedTask) {
-            logger.error(`Error verifying task update for ${taskId}:`, verifyError);
-            taskCache.setProcessingTask(null);
-            return { success: false };
-        }
-
-        // Check if the task was actually updated to processing and assigned to us
-        if (updatedTask.status !== 'processing' || updatedTask.user_id !== userId) {
-            logger.warn(`Task ${taskId} could not be claimed by user ${userId} (current status: ${updatedTask.status}, assigned to: ${updatedTask.user_id || 'none'})`);
-            taskCache.setProcessingTask(null);
-            return { success: false };
-        }
-
-        // Process the task with fixed duration based on type
-        // This simulates the actual computation time
-        const processingTime = task.type === 'image' ? 30 : 15; // 30s for images, 15s for text
-        logger.log(`Processing ${task.type} task ${taskId} for user ${userId} (will take ${processingTime}s)`);
-
-        // Simulate processing with a promise
-        await new Promise(resolve => setTimeout(resolve, processingTime * 1000));
-
-        // Generate a result based on task type
-        let result = '';
-        const shortPrompt = task.prompt ?
-            `${task.prompt.substring(0, 50)}${task.prompt.length > 50 ? '...' : ''}` :
-            'No prompt';
-
-        if (task.type === 'text') {
-            result = `Generated text response for prompt: "${shortPrompt}"`;
-        } else if (task.type === 'image') {
-            result = `https://example.com/generated-image-${taskId}.png`;
+    userId: string
+): Promise<TaskProcessingResult> => {
+    // First check if we're already processing this or another task
+    if (taskProcessingState.isProcessing) {
+        if (taskProcessingState.currentTaskId === taskId) {
+            // If this is the same task and we have a processing promise, return it
+            if (taskProcessingState.processingPromise) {
+                logger.log(`Already processing task ${taskId}, returning existing promise`);
+                return taskProcessingState.processingPromise;
+            }
         } else {
-            result = `Processed ${task.type} task: "${shortPrompt}"`;
+            // Different task is being processed
+            logger.warn(`Cannot process task ${taskId} - already processing task ${taskProcessingState.currentTaskId}`);
+            return { success: false };
         }
+    }
 
-        // Calculate actual compute time and stats
-        const endTime = Date.now();
-        const actualComputeTime = (endTime - startTime) / 1000; // in seconds
+    // Try to acquire the processing lock
+    if (!await taskProcessingState.acquireLock(taskId)) {
+        return { success: false };
+    }
 
-        // Calculate realistic GPU usage (varies by task type and size)
-        const gpuUsage = task.type === 'image' ?
-            Math.min(95, 65 + Math.random() * 30) : // 65-95% for images
-            Math.min(80, 40 + Math.random() * 40);  // 40-80% for text
+    // Create a new processing promise and store it
+    taskProcessingState.processingPromise = (async () => {
+        let processingTimer: NodeJS.Timeout | null = null;
 
-        // Calculate input and output tokens if not already set
-        const inputTokens = task.input_tokens || (task.prompt ? Math.ceil(task.prompt.length / 4) : 0);
-        const outputTokens = task.type === 'text' ?
-            Math.ceil(result.length / 4) : // For text, estimate based on result length
-            0;  // For images, output tokens don't apply the same way
+        try {
+            logger.log(`Starting to process task ${taskId}`);
+            const client = getSwarmSupabase();
+            if (!client) {
+                logger.error('Swarm client is not initialized');
+                return { success: false };
+            }
 
-        // Mark as completed
-        const { error: completeError } = await client
-            .from('tasks')
-            .update({
+            const startTime = Date.now();
+
+            if (!userId) {
+                logger.error(`Cannot process task ${taskId}: No user ID available`);
+                return { success: false };
+            }
+
+            // First, fetch the task by ID to check its current state
+            const { data: taskData, error: fetchError } = await client
+                .from('tasks')
+                .select('*')
+                .eq('id', taskId)
+                .single();
+
+            if (fetchError || !taskData) {
+                logger.error(`Error fetching task ${taskId}:`, fetchError);
+                // Remove from cache if it doesn't exist
+                taskCache.removeTask(taskId);
+                return { success: false };
+            }
+
+            const task = taskData as AITask;
+            logger.log(`Fetched task ${taskId} - current status: ${task.status}, assigned to: ${task.user_id || 'none'}`);
+
+            // Set this task as the currently processing task in cache
+            taskCache.setProcessingTask(task);
+
+            // Check if task is in a state we can process
+            if (task.status !== 'pending' && task.status !== 'processing') {
+                logger.warn(`Task ${taskId} is not in a valid state for processing (current status: ${task.status})`);
+                return { success: false };
+            }
+
+            // If task is assigned to someone else, don't process it
+            if (task.user_id && task.user_id !== userId) {
+                logger.warn(`Task ${taskId} is assigned to user ${task.user_id}, not current user ${userId}`);
+                return { success: false };
+            }
+
+            // Process the task with fixed duration based on type
+            const processingTime = task.type === 'image' ? 30 : 15; // 30s for images, 15s for text
+
+            logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds`);
+
+            // Update task to processing state with proper conditions to prevent race conditions
+            // This uses a conditional update that only succeeds if our conditions are met
+            const { data: updatedTask, error: updateError } = await client
+                .from('tasks')
+                .update({
+                    status: 'processing',
+                    user_id: userId,
+                    updated_at: new Date().toISOString()
+                })
+                .match({
+                    id: taskId,
+                    status: 'pending'  // Only update if status is still pending
+                })
+                .select()
+                .single();
+
+            if (updateError) {
+                logger.error(`Error updating task ${taskId} to processing state:`, updateError);
+                taskCache.setProcessingTask(null);
+                return { success: false };
+            }
+
+            // If no updatedTask was returned, the conditional update didn't match
+            if (!updatedTask) {
+                // Try to fetch the task again to check why the update failed
+                const { data: currentTask } = await client
+                    .from('tasks')
+                    .select('*')
+                    .eq('id', taskId)
+                    .single();
+
+                if (currentTask) {
+                    logger.warn(`Could not update task ${taskId} to processing state. Current status: ${currentTask.status}, assigned to: ${currentTask.user_id || 'none'}`);
+                }
+
+                taskCache.setProcessingTask(null);
+                return { success: false };
+            }
+
+            try {
+                // Simulate processing with a promise that can be safely interrupted
+                await new Promise<void>((resolve) => {
+                    processingTimer = setTimeout(() => resolve(), processingTime * 1000);
+                });
+            } catch (processingError) {
+                logger.error(`Error during task ${taskId} processing:`, processingError);
+                throw processingError;
+            } finally {
+                // Clean up any timers if they exist
+                if (processingTimer) {
+                    clearTimeout(processingTimer);
+                    processingTimer = null;
+                }
+            }
+
+            // Generate a result based on task type
+            let result = '';
+            const shortPrompt = task.prompt ?
+                `${task.prompt.substring(0, 50)}${task.prompt.length > 50 ? '...' : ''}` :
+                'No prompt';
+
+            if (task.type === 'text') {
+                result = `Generated text response for prompt: "${shortPrompt}"`;
+            } else if (task.type === 'image') {
+                result = `https://example.com/generated-image-${taskId}.png`;
+            } else {
+                result = `Processed ${task.type} task: "${shortPrompt}"`;
+            }
+
+            // Calculate actual compute time and stats
+            const endTime = Date.now();
+            const actualComputeTime = (endTime - startTime) / 1000; // in seconds
+
+            // Calculate realistic GPU usage (varies by task type and size)
+            const gpuUsage = task.type === 'image' ?
+                Math.min(95, 65 + Math.random() * 30) : // 65-95% for images
+                Math.min(80, 40 + Math.random() * 40);  // 40-80% for text
+
+            // Calculate input and output tokens if not already set
+            const inputTokens = task.input_tokens || (task.prompt ? Math.ceil(task.prompt.length / 4) : 0);
+            const outputTokens = task.type === 'text' ?
+                Math.ceil(result.length / 4) : // For text, estimate based on result length
+                0;  // For images, output tokens don't apply the same way
+
+            logger.log(`Preparing to mark task ${taskId} as completed after ${actualComputeTime.toFixed(2)}s of processing`);
+
+            // Mark as completed with conditional update to prevent race conditions
+            const { error: completeError } = await client
+                .from('tasks')
+                .update({
+                    status: 'completed',
+                    result,
+                    updated_at: new Date().toISOString(),
+                    compute_time: actualComputeTime,
+                    gpu_usage: gpuUsage,
+                    input_tokens: inputTokens,
+                    output_tokens: outputTokens
+                })
+                .match({
+                    id: taskId,
+                    user_id: userId,
+                    status: 'processing' // Only update if still in processing state
+                });
+
+            // Check for errors in the completion update
+            if (completeError) {
+                logger.error(`Error marking task ${taskId} as completed:`, completeError);
+
+                // Try to fetch current state to understand why completion failed
+                const { data: currentTask } = await client
+                    .from('tasks')
+                    .select('*')
+                    .eq('id', taskId)
+                    .single();
+
+                if (currentTask) {
+                    logger.warn(`Failed to complete task ${taskId}. Current status: ${currentTask.status}, assigned to: ${currentTask.user_id || 'none'}`);
+                }
+
+                return { success: false };
+            }
+
+            logger.log(`Successfully completed task ${taskId} in ${actualComputeTime.toFixed(2)}s`);
+
+            // Update the cache
+            taskCache.updateTask(taskId, {
                 status: 'completed',
                 result,
-                updated_at: new Date().toISOString(),
                 compute_time: actualComputeTime,
                 gpu_usage: gpuUsage,
                 input_tokens: inputTokens,
-                output_tokens: outputTokens
-            })
-            .eq('id', taskId)
-            .eq('user_id', userId); // Only update if it belongs to this user
+                output_tokens: outputTokens,
+                updated_at: new Date().toISOString(),
+                user_id: userId
+            });
 
-        // Check for errors in the completion update
-        if (completeError) {
-            logger.error(`Error marking task ${taskId} as completed:`, completeError);
-            taskCache.setProcessingTask(null);
-            return { success: false };
-        }
+            return { success: true, result };
+        } catch (error) {
+            logger.error('Error processing task:', error);
 
-        // Update the cache
-        taskCache.updateTask(taskId, {
-            status: 'completed',
-            result,
-            compute_time: actualComputeTime,
-            gpu_usage: gpuUsage,
-            input_tokens: inputTokens,
-            output_tokens: outputTokens,
-            updated_at: new Date().toISOString(),
-            user_id: userId
-        });
-
-        // Clear the processing task
-        taskCache.setProcessingTask(null);
-
-        logger.log(`Successfully completed task ${taskId} (${task.type}) for user ${userId} in ${actualComputeTime.toFixed(2)}s`);
-        return { success: true, result };
-    } catch (error) {
-        logger.error('Error processing task:', error);
-
-        try {
-            // Get current user ID
-            const userId = getCurrentUserId();
-
-            if (userId) {
+            try {
                 // Mark as failed if this user owns this task
                 const client = getSwarmSupabase();
-                if (!client) {
-                    logger.error('Swarm client is not initialized');
-                    return { success: false };
-                }
+                if (client && userId) {
+                    logger.log(`Marking task ${taskId} as failed due to error`);
+                    await client
+                        .from('tasks')
+                        .update({
+                            status: 'failed',
+                            updated_at: new Date().toISOString()
+                        })
+                        .match({
+                            id: taskId,
+                            user_id: userId,
+                            status: 'processing' // Only update if still in processing state
+                        });
 
-                await client
-                    .from('tasks')
-                    .update({
+                    // Update the cache
+                    taskCache.updateTask(taskId, {
                         status: 'failed',
                         updated_at: new Date().toISOString()
-                    })
-                    .eq('id', taskId)
-                    .eq('user_id', userId); // Only if task belongs to this user
+                    });
+                }
+            } catch (updateError) {
+                logger.error('Error updating failed task status:', updateError);
             }
-        } catch (updateError) {
-            logger.error('Error updating failed task status:', updateError);
+
+            return { success: false };
+        } finally {
+            // Clean up any timers that might still be active
+            if (processingTimer) {
+                clearTimeout(processingTimer);
+                processingTimer = null;
+            }
+
+            logger.log(`Task ${taskId} processing completed, cleaning up resources`);
+            // Always clear the processing task and release the lock
+            taskCache.setProcessingTask(null);
+            taskProcessingState.releaseLock();
         }
+    })();
 
-        // Clear the processing task
-        taskCache.setProcessingTask(null);
-
-        return { success: false };
-    }
+    // Return the processing promise
+    return taskProcessingState.processingPromise;
 }; 

@@ -11,7 +11,8 @@ import {
     processNextTask,
     setStoreRef,
     startTaskPolling,
-    startTaskProcessing
+    startTaskProcessing,
+    recoverStuckTasks
 } from '@/store/slices/taskSlice';
 
 // Initialize store reference for taskSlice
@@ -36,6 +37,7 @@ class TaskPollingService {
     private lastPollTime = 0;
     private consecutiveEmptyFetches = 0;
     private consecutiveErrors = 0;
+    private hasActiveTaskProcessing = false;
 
     /**
      * Start polling for new tasks
@@ -102,6 +104,12 @@ class TaskPollingService {
             return;
         }
 
+        // Don't poll if we're actively processing a task (let it finish first)
+        if (this.hasActiveTaskProcessing) {
+            logger.log('Task processing active, deferring poll');
+            return;
+        }
+
         // Perform the actual poll
         this.poll();
     }
@@ -119,6 +127,13 @@ class TaskPollingService {
 
         this.isPolling = false;
         logger.log('Stopped task polling service');
+    }
+
+    /**
+     * Set active task processing state to coordinate polling
+     */
+    setActiveTaskProcessing(active: boolean): void {
+        this.hasActiveTaskProcessing = active;
     }
 
     /**
@@ -165,9 +180,41 @@ class TaskPollingService {
             // Use a smaller batch size when fetching to reduce load
             const batchSize = 20; // Standard size for global view
 
+            // Don't fetch if we're actively processing a task (let it finish first)
+            if (this.hasActiveTaskProcessing) {
+                logger.log('Task processing active, skipping fetch');
+                this.isCurrentlyFetching = false;
+                return;
+            }
+
+            // Check for stuck tasks and recover them (every 5 polls)
+            if (Math.random() < 0.2) { // 20% chance to check for stuck tasks
+                // Get Redux state to check for stuck tasks
+                const state = store.getState();
+                const processingTasks = state.tasks.assignedTasks.filter(t => t.status === 'processing');
+
+                if (processingTasks.length > 0) {
+                    const oldestProcessingTime = Math.min(
+                        ...processingTasks.map(t =>
+                            new Date(t.updated_at || 0).getTime()
+                        )
+                    );
+
+                    // If any task has been processing for more than 1 minute, recover all stuck tasks
+                    if (now - oldestProcessingTime > 60000) {
+                        logger.warn(`Found stuck tasks in processing state (oldest: ${(now - oldestProcessingTime) / 1000}s), recovering...`);
+                        store.dispatch(recoverStuckTasks());
+                    }
+                }
+            }
+
             // First fetch new tasks - handle errors gracefully
             let tasks: AITask[] = [];
             try {
+                // Use the Redux store's fetchPendingTasks action
+                await store.dispatch(fetchPendingTasks());
+
+                // Get tasks from the service directly for the cache
                 tasks = await getPendingUnassignedTasks(batchSize);
                 taskCache.setTasks(tasks, true); // Mark as successful fetch
                 this.consecutiveErrors = 0;
@@ -281,10 +328,11 @@ export const initializeTaskServices = (userId: string, nodeId: string) => {
     const stopPolling = startTaskPolling(store.dispatch, userId, nodeId);
 
     // Start task processing pipeline (using Redux implementation)
-    startTaskProcessing(store.dispatch, userId);
+    const stopProcessing = startTaskProcessing(store.dispatch, userId);
 
     return {
-        stopPolling
+        stopPolling,
+        stopProcessing
     };
 };
 
@@ -298,14 +346,21 @@ export const manuallyAssignTasks = async (userId: string, nodeId: string, batchS
     }
 
     try {
+        // Signal that we're about to perform task assignment
+        taskPollingService.setActiveTaskProcessing(true);
+
         // Use the Redux action to assign tasks
         const result = await store.dispatch(
             fetchAndAssignTasks({ userId, nodeId, batchSize })
         ).unwrap();
+
         return result;
     } catch (error) {
         logger.error('Error manually assigning tasks:', error);
         return [];
+    } finally {
+        // Signal that we're done with task assignment
+        taskPollingService.setActiveTaskProcessing(false);
     }
 };
 
@@ -314,11 +369,17 @@ export const manuallyAssignTasks = async (userId: string, nodeId: string, batchS
  */
 export const processSingleTask = async () => {
     try {
+        // Signal that we're about to process a task
+        taskPollingService.setActiveTaskProcessing(true);
+
         // Use the Redux action to process the next task
         const result = await store.dispatch(processNextTask()).unwrap();
         return result;
     } catch (error) {
         logger.error('Error processing single task:', error);
         return { success: false };
+    } finally {
+        // Signal that we're done with task processing
+        taskPollingService.setActiveTaskProcessing(false);
     }
 }; 

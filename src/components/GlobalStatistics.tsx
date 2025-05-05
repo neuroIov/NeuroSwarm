@@ -23,9 +23,7 @@ export const GlobalStatistics = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Cache for storing tasks to reduce duplicate requests
   const [taskCache, setTaskCache] = useState<AITask[]>([]);
-  const [lastRefreshTime, setLastRefreshTime] = useState<number>(
-    Number(localStorage.getItem(LAST_REFRESH_KEY)) || 0
-  );
+  const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
 
   // Get tasks from Redux store
   const { allTasks } = useSelector((state: RootState) => state.tasks);
@@ -51,6 +49,12 @@ export const GlobalStatistics = () => {
         if (parsedTasks.length > 0) {
           setTaskCache(parsedTasks);
         }
+      }
+
+      // Load the last refresh time from localStorage here inside useEffect
+      const savedLastRefreshTime = localStorage.getItem(LAST_REFRESH_KEY);
+      if (savedLastRefreshTime) {
+        setLastRefreshTime(Number(savedLastRefreshTime));
       }
     } catch (error) {
       console.error("Error loading task cache:", error);
