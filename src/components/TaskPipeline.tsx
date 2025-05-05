@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   CheckCircle,
   Clock,
@@ -18,10 +18,10 @@ import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "@/store";
 import {
   setCurrentTask,
-  updateTaskProgress,
   fetchAndAssignTasks,
-  updateTask,
-  TasksState,
+  updateTaskStatus,
+  processNextTask,
+  recoverStuckTasks,
 } from "@/store/slices/taskSlice";
 import {
   incrementTasksCompleted,
@@ -34,9 +34,11 @@ import { Button } from "@/components/ui/button";
 export const TaskPipeline = () => {
   const dispatch = useAppDispatch();
   const { isActive, nodeId } = useSelector((state: RootState) => state.node);
-  const { assignedTasks, currentTask, isLoading } = useSelector(
+  const { assignedTasks, currentTask, isLoading, isProcessing } = useSelector(
     (state: RootState) => state.tasks
   );
+  const { userProfile } = useSelector((state: RootState) => state.session);
+  const userId = userProfile?.id;
 
   const [autoMode, setAutoMode] = useState(true);
   const [stats, setStats] = useState({
@@ -48,20 +50,27 @@ export const TaskPipeline = () => {
     textTasksCount: 0,
   });
 
-  // Set current task when no current task is selected and tasks are available
-  useEffect(() => {
-    if (!currentTask && assignedTasks.length > 0 && isActive) {
-      const nextTask = assignedTasks.find(
-        (task) => task.status === "pending" || task.status === "processing"
-      );
-      if (nextTask) {
-        dispatch(setCurrentTask(nextTask));
-      }
-    }
-  }, [currentTask, assignedTasks, isActive, dispatch]);
+  // Simple flag to prevent concurrent operations
+  const [localProcessing, setLocalProcessing] = useState(false);
+
+  // References for task recovery and timeouts
+  const recoveryTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const taskAssignTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update stats when tasks change
   useEffect(() => {
+    if (!isActive) {
+      setStats({
+        completed: 0,
+        processing: 0,
+        pending: 0,
+        failed: 0,
+        imageTasksCount: 0,
+        textTasksCount: 0,
+      });
+      return;
+    }
+
     const newStats = {
       completed: assignedTasks.filter((t) => t.status === "completed").length,
       processing: assignedTasks.filter((t) => t.status === "processing").length,
@@ -72,166 +81,302 @@ export const TaskPipeline = () => {
     };
 
     setStats(newStats);
-  }, [assignedTasks]);
+  }, [assignedTasks, isActive]);
 
-  // Process tasks in auto mode
-  useEffect(() => {
-    if (!autoMode || !isActive || !nodeId || !currentTask) return;
-
-    let taskProcessingTimer: NodeJS.Timeout | null = null;
-
-    const processCurrentTask = async () => {
-      if (
-        currentTask &&
-        (currentTask.status === "pending" ||
-          currentTask.status === "processing")
-      ) {
-        // Update task to processing if it's pending
-        if (currentTask.status === "pending") {
-          dispatch(
-            updateTaskProgress({
-              taskId: currentTask.id,
-              status: "processing",
-            })
-          );
-        }
-
-        // Determine the processing time based on task type
-        const processingTime = currentTask.type === "image" ? 30 : 15;
-
-        // Process the task
-        try {
-          const { success, result } = await processTask(
-            currentTask.id,
-            processingTime
-          );
-
-          if (success) {
-            // Update the task to completed with the result
-            dispatch(
-              updateTask({
-                taskId: currentTask.id,
-                status: "completed",
-                result,
-              })
-            );
-
-            // Update node stats
-            dispatch(incrementTasksCompleted());
-
-            // Toast for completed task
-            toast.success(
-              `Task completed: ${
-                currentTask.type === "image"
-                  ? "Image generated"
-                  : "Text processed"
-              }`
-            );
-
-            // Find the next pending task
-            const nextTask = assignedTasks.find(
-              (task) => task.id !== currentTask.id && task.status === "pending"
-            );
-
-            if (nextTask) {
-              dispatch(setCurrentTask(nextTask));
-            } else {
-              // If no more tasks, check if we need to fetch more
-              if (nodeId) {
-                dispatch(fetchAndAssignTasks(nodeId));
-              }
-            }
-
-            // Update success rate
-            const successRate =
-              ((stats.completed + 1) / (stats.completed + 1 + stats.failed)) *
-              100;
-            dispatch(updateSuccessRate(successRate));
-          } else {
-            // Mark task as failed
-            dispatch(
-              updateTask({
-                taskId: currentTask.id,
-                status: "failed",
-              })
-            );
-
-            // Toast for failed task
-            toast.error(`Task processing failed: ${currentTask.type}`);
-
-            // Find the next pending task
-            const nextTask = assignedTasks.find(
-              (task) => task.id !== currentTask.id && task.status === "pending"
-            );
-
-            if (nextTask) {
-              dispatch(setCurrentTask(nextTask));
-            } else {
-              // If no more tasks, check if we need to fetch more
-              if (nodeId) {
-                dispatch(fetchAndAssignTasks(nodeId));
-              }
-            }
-
-            // Update success rate
-            const successRate =
-              (stats.completed / (stats.completed + stats.failed + 1)) * 100;
-            dispatch(updateSuccessRate(successRate));
-          }
-        } catch (error) {
-          console.error("Error processing task:", error);
-          toast.error("Error processing task");
-
-          // Mark task as failed
-          dispatch(
-            updateTask({
-              taskId: currentTask.id,
-              status: "failed",
-            })
-          );
-        }
-      }
-    };
-
-    if (
-      currentTask &&
-      (currentTask.status === "pending" || currentTask.status === "processing")
-    ) {
-      // Process tasks with a 3-second delay between tasks
-      taskProcessingTimer = setTimeout(processCurrentTask, 3000);
-    } else if (assignedTasks.length === 0 && nodeId) {
-      // If there are no more tasks, try to fetch new ones
-      dispatch(fetchAndAssignTasks(nodeId));
-    } else if (!currentTask && assignedTasks.length > 0) {
-      // If we have tasks but no current task, select one
-      const nextTask = assignedTasks.find((task) => task.status === "pending");
-      if (nextTask) {
-        dispatch(setCurrentTask(nextTask));
-      }
+  // Cleanup function for timers
+  const clearAllTimers = useCallback(() => {
+    if (recoveryTimerRef.current) {
+      clearTimeout(recoveryTimerRef.current);
+      recoveryTimerRef.current = null;
     }
 
-    // Set up periodic task check every 30 seconds to fetch new tasks
-    const periodicTaskCheck = setInterval(() => {
-      // Only fetch new tasks if we have less than 3 pending tasks
-      const pendingTasksCount = assignedTasks.filter(
-        (t) => t.status === "pending"
-      ).length;
-      if (isActive && nodeId && pendingTasksCount < 3) {
-        dispatch(fetchAndAssignTasks(nodeId));
-      }
-    }, 30000);
+    if (taskAssignTimerRef.current) {
+      clearTimeout(taskAssignTimerRef.current);
+      taskAssignTimerRef.current = null;
+    }
+  }, []);
 
-    return () => {
-      if (taskProcessingTimer) {
-        clearTimeout(taskProcessingTimer);
+  // Recovery function for stuck tasks
+  const recoverStuckTasksHandler = useCallback(() => {
+    const stuckTasks = assignedTasks.filter(
+      (t) =>
+        t.status === "processing" &&
+        new Date().getTime() - new Date(t.updated_at).getTime() > 60000
+    );
+
+    if (stuckTasks.length > 0) {
+      console.warn(`Recovering ${stuckTasks.length} stuck tasks`);
+      dispatch(recoverStuckTasks());
+
+      // Only show toast for first stuck task to avoid spam
+      if (stuckTasks[0]) {
+        toast.error(
+          `Task ${stuckTasks[0].id.slice(
+            0,
+            8
+          )}... timed out and was marked as failed`
+        );
       }
-      clearInterval(periodicTaskCheck);
+    }
+  }, [assignedTasks, dispatch]);
+
+  // Function to select a task to process
+  const selectNextTask = useCallback(() => {
+    // Choose pending task that's not currently selected
+    const pendingTasks = assignedTasks.filter(
+      (t) => t.status === "pending" && (!currentTask || t.id !== currentTask.id)
+    );
+
+    // If no pending tasks or we already have a valid task, do nothing
+    if (pendingTasks.length === 0) {
+      return false;
+    }
+
+    // Select first pending task
+    dispatch(setCurrentTask(pendingTasks[0]));
+    return true;
+  }, [assignedTasks, currentTask, dispatch]);
+
+  // Function to fetch more tasks if needed
+  const checkAndFetchMoreTasks = useCallback(() => {
+    // Only fetch more tasks if we have less than 2 pending tasks and we're not already fetching
+    if (
+      !isLoading &&
+      !localProcessing &&
+      userId &&
+      nodeId &&
+      isActive &&
+      assignedTasks.filter((t) => t.status === "pending").length < 2
+    ) {
+      // Avoid scheduling multiple fetches
+      if (taskAssignTimerRef.current) {
+        clearTimeout(taskAssignTimerRef.current);
+      }
+
+      // Schedule task assignment with a delay to avoid overwhelming the system
+      taskAssignTimerRef.current = setTimeout(() => {
+        dispatch(fetchAndAssignTasks({ userId, nodeId }));
+        taskAssignTimerRef.current = null;
+      }, 3000);
+    }
+  }, [
+    isLoading,
+    localProcessing,
+    userId,
+    nodeId,
+    isActive,
+    assignedTasks,
+    dispatch,
+  ]);
+
+  // Main task processing effect - simplified to reduce race conditions
+  useEffect(() => {
+    // Exit conditions
+    if (!autoMode || !isActive || !userId || !nodeId) {
+      clearAllTimers();
+      return;
+    }
+
+    // If already processing or there's no current task, don't start
+    if (isProcessing || localProcessing) {
+      return;
+    }
+
+    // Set up a timer to recover stuck tasks
+    if (!recoveryTimerRef.current) {
+      recoveryTimerRef.current = setInterval(() => {
+        recoverStuckTasksHandler();
+      }, 30000); // Check every 30 seconds
+    }
+
+    // Handle task selection and processing
+    const processTask = async () => {
+      // Skip if already processing
+      if (isProcessing || localProcessing) {
+        return;
+      }
+
+      // Make sure we have a valid task to process
+      if (!currentTask || currentTask.status !== "pending") {
+        if (!selectNextTask()) {
+          // No tasks to select, check if we need to fetch more
+          checkAndFetchMoreTasks();
+          return;
+        }
+
+        // Let the next cycle handle the newly selected task
+        return;
+      }
+
+      try {
+        // Set local processing flag
+        setLocalProcessing(true);
+
+        // Process the task
+        const result = await dispatch(processNextTask()).unwrap();
+
+        if (result.success) {
+          // Update node metrics
+          dispatch(incrementTasksCompleted());
+
+          // Calculate success rate
+          const successRate = Math.round(
+            ((stats.completed + 1) / (stats.completed + 1 + stats.failed)) * 100
+          );
+
+          dispatch(updateSuccessRate(successRate));
+
+          // Show success toast
+          toast.success(
+            `Task completed: ${
+              currentTask.type === "image"
+                ? "Image generated"
+                : "Text processed"
+            }`
+          );
+        } else {
+          // Task failed
+          const successRate = Math.round(
+            (stats.completed / (stats.completed + stats.failed + 1)) * 100
+          );
+
+          dispatch(updateSuccessRate(successRate));
+
+          // Only show error toast for non-expected failures
+          if (
+            !(
+              "message" in result &&
+              (result.message === "Task is no longer current" ||
+                result.message === "Processing lock could not be acquired")
+            )
+          ) {
+            toast.error(`Failed to process ${currentTask.type} task`);
+          }
+        }
+
+        // Always select next task after completion
+        selectNextTask();
+
+        // Check if we need more tasks
+        checkAndFetchMoreTasks();
+      } catch (error) {
+        console.error("Error processing task:", error);
+
+        // Only show unexpected errors
+        if (
+          error.message !== "No pending tasks to process" &&
+          error.message !== "Processing lock could not be acquired"
+        ) {
+          toast.error("Error processing task");
+        }
+
+        // Still try to select next task after error
+        selectNextTask();
+      } finally {
+        // Reset local processing state with a short delay
+        setTimeout(() => {
+          setLocalProcessing(false);
+        }, 1000);
+      }
     };
-  }, [currentTask, autoMode, isActive, nodeId, assignedTasks, dispatch, stats]);
 
+    // Start processing if we have a pending task selected
+    if (currentTask?.status === "pending") {
+      processTask();
+    } else if (!currentTask && !isLoading) {
+      // No current task, try to select one
+      selectNextTask();
+    }
+
+    // Check if we need more tasks
+    checkAndFetchMoreTasks();
+
+    // Cleanup function
+    return () => {
+      clearAllTimers();
+    };
+  }, [
+    autoMode,
+    isActive,
+    userId,
+    nodeId,
+    currentTask,
+    isProcessing,
+    localProcessing,
+    isLoading,
+    assignedTasks,
+    stats,
+    clearAllTimers,
+    recoverStuckTasksHandler,
+    selectNextTask,
+    checkAndFetchMoreTasks,
+    dispatch,
+  ]);
+
+  // Toggle auto mode
   const toggleAutoMode = (checked: boolean) => {
     setAutoMode(checked);
+    setLocalProcessing(false);
+
+    // Clear all timers
+    clearAllTimers();
+
+    // Recover any stuck tasks
+    recoverStuckTasksHandler();
+
     toast(checked ? "Auto-processing enabled" : "Auto-processing disabled");
+  };
+
+  // Manual task processing for non-auto mode
+  const handleProcessCurrentTask = async () => {
+    if (
+      isProcessing ||
+      localProcessing ||
+      !currentTask ||
+      !userId ||
+      !isActive
+    ) {
+      return;
+    }
+
+    try {
+      setLocalProcessing(true);
+
+      // Process the current task
+      const result = await dispatch(processNextTask()).unwrap();
+
+      if (result.success) {
+        // Task completed successfully
+        dispatch(incrementTasksCompleted());
+        toast.success(`Task completed successfully`);
+
+        // Update success rate
+        const successRate = Math.round(
+          ((stats.completed + 1) / (stats.completed + 1 + stats.failed)) * 100
+        );
+        dispatch(updateSuccessRate(successRate));
+      } else {
+        // Task failed
+        toast.error(`Failed to process task`);
+
+        // Update success rate
+        const successRate = Math.round(
+          (stats.completed / (stats.completed + stats.failed + 1)) * 100
+        );
+        dispatch(updateSuccessRate(successRate));
+      }
+
+      // Select next task
+      selectNextTask();
+    } catch (error) {
+      console.error("Error processing task:", error);
+      toast.error("Error processing task");
+    } finally {
+      // Reset local processing state with a delay
+      setTimeout(() => {
+        setLocalProcessing(false);
+      }, 1000);
+    }
   };
 
   const getStatusIcon = (status: TaskStatus) => {
@@ -322,13 +467,43 @@ export const TaskPipeline = () => {
         </div>
       </div>
 
-      {isLoading ? (
+      {!isActive ? (
+        <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+          <FileCode className="w-12 h-12 mb-4 text-slate-600" />
+          <p className="text-lg">Node is not active</p>
+          <p className="text-sm mt-2">
+            Start your node to receive and view tasks
+          </p>
+        </div>
+      ) : isLoading ? (
         <div className="flex justify-center items-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-swarm-accent-purple" />
           <span className="ml-3 text-lg">Loading tasks...</span>
         </div>
       ) : assignedTasks.length > 0 ? (
         <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+          {!autoMode && currentTask && currentTask.status === "pending" && (
+            <div className="mb-4 flex justify-center">
+              <Button
+                disabled={localProcessing}
+                onClick={handleProcessCurrentTask}
+                className="bg-swarm-accent-purple hover:bg-swarm-accent-purple/80"
+              >
+                {localProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4 mr-2" />
+                    Process Selected Task
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
           {assignedTasks.map((task) => (
             <div
               key={task.id}
@@ -354,13 +529,28 @@ export const TaskPipeline = () => {
                     <span className="text-xs bg-slate-700/50 px-2 py-0.5 rounded text-slate-300">
                       {task.model || "default"}
                     </span>
-                    {currentTask?.id === task.id &&
-                      task.status === "processing" && (
-                        <span className="text-xs bg-blue-900/40 px-2 py-0.5 rounded-full text-blue-300 ml-2 flex items-center gap-1">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          Current
-                        </span>
-                      )}
+                    {currentTask?.id === task.id && (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full ml-2 flex items-center gap-1 
+                        ${
+                          task.status === "processing"
+                            ? "bg-blue-900/40 text-blue-300"
+                            : "bg-amber-900/40 text-amber-300"
+                        }`}
+                      >
+                        {task.status === "processing" ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Processing
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="w-3 h-3" />
+                            Selected
+                          </>
+                        )}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm mt-1 text-slate-200">
                     {task.prompt.substring(0, 100)}
@@ -455,13 +645,26 @@ export const TaskPipeline = () => {
           </p>
           {isActive && (
             <Button
-              variant="outline"
               size="sm"
               className="mt-4"
-              onClick={() => nodeId && dispatch(fetchAndAssignTasks(nodeId))}
+              disabled={isLoading || localProcessing}
+              onClick={() =>
+                nodeId &&
+                userId &&
+                dispatch(fetchAndAssignTasks({ userId, nodeId }))
+              }
             >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Check for tasks
+              {isLoading || localProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Get New Tasks
+                </>
+              )}
             </Button>
           )}
         </div>

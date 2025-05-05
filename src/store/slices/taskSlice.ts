@@ -1,412 +1,476 @@
-import { createSlice, createAsyncThunk, PayloadAction, Dispatch, AnyAction } from '@reduxjs/toolkit';
-import { AITask, TaskStatus } from '@/services/types';
+// taskSlice.js - Redux slice for task management
+
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import {
-    getRecentTasks,
-    updateTaskStatus,
-    getPendingTasks
+    getPendingUnassignedTasks,
+    assignTasksToUser,
+    processTask,
+    getUserAssignedTasks
 } from '@/services/taskService';
-import { assignTasksToNode, refreshAndStoreTasks } from '@/services/swarmTaskService';
-import { taskCache } from '@/services/taskCacheService';
-import { taskPollingService } from '@/services/taskPollingService';
-import { TASK_PROCESSING_CONFIG } from '@/services/config';
-import { AppDispatch } from '@/store';
-import { getSwarmSupabase } from '@/lib/supabase-client';
 import { logger } from '@/utils/logger';
+import { RootState } from '@/store'; // Fix import path for RootState
 
-export interface TasksState {
-    allTasks: AITask[];
-    assignedTasks: AITask[];
-    currentTask: AITask | null;
-    isLoading: boolean;
-    error: string | null;
-    lastFetchTime: number;
-}
+// Simple polling controller
+let pollingInterval: NodeJS.Timeout | null = null;
 
-const initialState: TasksState = {
-    allTasks: [],
-    assignedTasks: [],
-    currentTask: null,
-    isLoading: false,
-    error: null,
-    lastFetchTime: 0
-};
+// Create a reference to the store for polling
+let storeRef: { getState: () => RootState } | null = null;
 
-// Function to check if we should fetch tasks or use cached data
-const shouldFetchTasks = (state: TasksState, forceRefresh: boolean = false): boolean => {
-    const now = Date.now();
-    const timeSinceLastFetch = now - state.lastFetchTime;
-    const hasTasks = state.allTasks.length > 0;
+// Track current task processing state
+let isProcessingTask = false;
+let currentProcessingTaskId: string | null = null;
 
-    // Always fetch if forced, no tasks, or last fetch was more than polling interval
-    return forceRefresh || !hasTasks || timeSinceLastFetch > TASK_PROCESSING_CONFIG.POLLING_INTERVAL;
-};
+// Enhanced mutex for task processing with lock timeout
+const taskProcessingLock = {
+    isLocked: false,
+    currentTaskId: null,
+    lockTime: 0,
 
-// Initialize polling service
-let pollingInitialized = false;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const initPollingService = (dispatch: any) => {
-    if (pollingInitialized) return;
-
-    taskPollingService.setCallbacks({
-        onNewTasks: (tasks) => {
-            dispatch(addNewTasks(tasks));
-        },
-        onTasksFetched: (count) => {
-            if (count > 0) {
-                dispatch(fetchTasks({ forceRefresh: false }));
+    acquire(taskId) {
+        if (this.isLocked) {
+            // Check for stale locks (over 2 minutes)
+            if (Date.now() - this.lockTime > 120000) {
+                logger.warn(`Force releasing stale lock on task ${this.currentTaskId}`);
+                this.release();
+            } else {
+                return false;
             }
-        },
-        onError: (error) => {
-            console.error('Task polling error:', error);
         }
-    });
 
-    taskPollingService.start();
-    pollingInitialized = true;
-};
+        this.isLocked = true;
+        this.currentTaskId = taskId;
+        this.lockTime = Date.now();
+        logger.log(`Acquired processing lock for task ${taskId}`);
+        return true;
+    },
 
-// Local helper function for task fetching  
-const fetchAndConvertTasks = async (limit: number): Promise<AITask[]> => {
-    // Just use getRecentTasks directly now that it fetches from the main tasks table
-    return await getRecentTasks(limit);
-};
-
-// Async thunks
-export const fetchTasks = createAsyncThunk(
-    'tasks/fetchTasks',
-    async ({ forceRefresh = false }: { forceRefresh?: boolean } = {}, { getState, dispatch, rejectWithValue }) => {
-        try {
-            // Initialize polling service if not already done
-            initPollingService(dispatch);
-
-            const state = getState() as { tasks: TasksState };
-
-            // Check if we should fetch tasks or use cached data
-            if (!forceRefresh && !shouldFetchTasks(state.tasks, forceRefresh)) {
-                // Reduce logging frequency
-                if (Math.random() < 0.1) {
-                    console.log('Using cached tasks - fetch skipped');
-                }
-                return taskCache.tasks.slice(0, 20);
-            }
-
-            // Use the cached tasks if available
-            if (taskCache.tasks.length > 0 && !taskCache.isStale && !forceRefresh) {
-                // Reduce logging frequency
-                if (Math.random() < 0.2) {
-                    console.log(`Using ${taskCache.tasks.length} cached tasks`);
-                }
-                return taskCache.tasks.slice(0, 20);
-            }
-
-            // Fetch new tasks using our optimized function
-            const tasks = await fetchAndConvertTasks(20);
-
-            // Only log task fetching if we actually got new tasks or on occasion
-            if (tasks.length > 0 || Math.random() < 0.2) {
-                console.log(`Fetched ${tasks.length} tasks total`);
-
-                // More detailed logs less frequently
-                if (Math.random() < 0.3) {
-                    console.log(`Image tasks: ${tasks.filter(t => t.type === "image").length}`);
-                    console.log(`Text tasks: ${tasks.filter(t => t.type === "text").length}`);
-                }
-            }
-
-            return tasks;
-        } catch (error) {
-            return rejectWithValue((error as Error).message);
-        }
+    release() {
+        logger.log(`Released processing lock for task ${this.currentTaskId}`);
+        this.isLocked = false;
+        this.currentTaskId = null;
+        return true;
     }
-);
+};
 
-export const fetchAndAssignTasks = createAsyncThunk(
-    'tasks/fetchAndAssignTasks',
-    async (nodeId: string, { getState, rejectWithValue, dispatch }) => {
-        try {
-            // Initialize polling service if not already done
-            initPollingService(dispatch);
-
-            // Get the current user ID from the session state
-            const state = getState() as { session: { userProfile: { id: string } } };
-            const userId = state.session?.userProfile?.id;
-
-            if (!userId) {
-                logger.warn('No user ID available for task assignment');
-            }
-
-            // Try to refresh tasks from source if needed (this is an efficient operation)
-            await refreshAndStoreTasks();
-
-            // Use the swarmTaskService to assign tasks to node and user (with specified limit and proper distribution)
-            const assignedTasks = await assignTasksToNode(nodeId, 5, userId);
-
-            // If we successfully assigned tasks, return them
-            if (assignedTasks.length > 0) {
-                logger.log(`Successfully assigned ${assignedTasks.length} tasks to node ${nodeId} and user ${userId || 'guest'}`);
-                return assignedTasks;
-            }
-
-            // If no tasks were assigned, try fallback to pending tasks as a last resort
-            logger.log('No tasks assigned through primary method, trying fallback');
-
-            // Get pending tasks from regular task service (limit to 5)
-            const pendingTasks = await getPendingTasks(5);
-
-            if (pendingTasks.length === 0) {
-                logger.log('No pending tasks available for assignment');
-                return [];
-            }
-
-            // Create assigned tasks with user_id and node_id
-            const tasksWithNodeId = pendingTasks.map(task => ({
-                ...task,
-                node_id: nodeId,
-                user_id: userId || task.user_id,
-                status: 'pending' as TaskStatus
-            }));
-
-            if (tasksWithNodeId.length === 0) {
-                return [];
-            }
-
-            // Update all tasks in a single batch operation to reduce API calls
-            // Create a batch update object for all tasks
-            const client = getSwarmSupabase();
-            const taskIds = tasksWithNodeId.map(task => task.id);
-            const timestamp = new Date().toISOString();
-
-            // Single update operation for all tasks
-            const { error: updateError } = await client
-                .from('tasks')
-                .update({
-                    user_id: userId,
-                    node_id: nodeId,
-                    updated_at: timestamp
-                })
-                .in('id', taskIds);
-
-            if (updateError) {
-                logger.error('Error updating tasks in batch:', updateError);
-                return rejectWithValue('Failed to update tasks');
-            }
-
-            logger.log(`Successfully assigned ${tasksWithNodeId.length} tasks via fallback method`);
-
-            // Return properly formatted tasks
-            return tasksWithNodeId.map(task => ({
-                ...task,
-                updated_at: timestamp
-            }));
-        } catch (error) {
-            return rejectWithValue((error as Error).message);
-        }
-    }
-);
-
-export const updateTask = createAsyncThunk(
-    'tasks/updateTask',
-    async ({
-        taskId,
-        status,
-        result
-    }: {
-        taskId: string;
-        status: TaskStatus;
-        result?: string
-    }, { rejectWithValue }) => {
-        try {
-            await updateTaskStatus(taskId, status, result);
-
-            // Update the task in the cache
-            taskCache.updateTask(taskId, { status, result });
-
-            return { taskId, status, result };
-        } catch (error) {
-            return rejectWithValue((error as Error).message);
-        }
-    }
-);
+export const setStoreRef = (store: { getState: () => RootState }) => {
+    storeRef = store;
+};
 
 export const taskSlice = createSlice({
     name: 'tasks',
-    initialState,
+    initialState: {
+        allTasks: [],
+        assignedTasks: [],
+        currentTask: null,
+        isLoading: false,
+        isProcessing: false,
+        error: null,
+        lastFetchTime: 0
+    },
     reducers: {
-        setCurrentTask: (state, action: PayloadAction<AITask | null>) => {
+        setCurrentTask: (state, action) => {
             state.currentTask = action.payload;
         },
-        updateTaskProgress: (state, action: PayloadAction<{
-            taskId: string;
-            status: TaskStatus;
-            result?: string;
-        }>) => {
+        updateTaskStatus: (state, action) => {
             const { taskId, status, result } = action.payload;
 
+            // Update in assigned tasks
+            const assignedIndex = state.assignedTasks.findIndex(t => t.id === taskId);
+            if (assignedIndex !== -1) {
+                state.assignedTasks[assignedIndex].status = status;
+                if (result) state.assignedTasks[assignedIndex].result = result;
+            }
+
             // Update in all tasks
-            const taskIndex = state.allTasks.findIndex(task => task.id === taskId);
-            if (taskIndex !== -1) {
-                state.allTasks[taskIndex].status = status;
-                if (result) {
-                    state.allTasks[taskIndex].result = result;
+            const allIndex = state.allTasks.findIndex(t => t.id === taskId);
+            if (allIndex !== -1) {
+                state.allTasks[allIndex].status = status;
+                if (result) state.allTasks[allIndex].result = result;
+
+                // Remove completed/failed tasks from global list
+                if (status === 'completed' || status === 'failed') {
+                    state.allTasks = state.allTasks.filter(t => t.id !== taskId);
                 }
             }
 
-            // Update in assigned tasks
-            const assignedTaskIndex = state.assignedTasks.findIndex(task => task.id === taskId);
-            if (assignedTaskIndex !== -1) {
-                state.assignedTasks[assignedTaskIndex].status = status;
-                if (result) {
-                    state.assignedTasks[assignedTaskIndex].result = result;
-                }
+            // Update current task if it's the same task
+            if (state.currentTask?.id === taskId) {
+                state.currentTask = {
+                    ...state.currentTask,
+                    status,
+                    ...(result && { result })
+                };
 
-                // If task is completed or failed, remove it from current task if it's the current one
-                if ((status === 'completed' || status === 'failed') && state.currentTask?.id === taskId) {
-                    state.currentTask = null;
+                // If task is completed or failed, set processing to false
+                if (status === 'completed' || status === 'failed') {
+                    state.isProcessing = false;
+                } else if (status === 'processing') {
+                    state.isProcessing = true;
                 }
+            }
+
+            // Clear current task if it's completed or failed and find next
+            if (state.currentTask?.id === taskId && (status === 'completed' || status === 'failed')) {
+                // Look for next pending task
+                const nextTask = state.assignedTasks.find(t => t.status === 'pending');
+                state.currentTask = nextTask || null;
             }
         },
         clearAssignedTasks: (state) => {
             state.assignedTasks = [];
             state.currentTask = null;
         },
-        addNewTasks: (state, action: PayloadAction<AITask[]>) => {
-            // Add new tasks to the assigned tasks list
-            const newTasks = action.payload.filter(
-                newTask => !state.assignedTasks.some(task => task.id === newTask.id)
-            );
+        setProcessingStatus: (state, action) => {
+            state.isProcessing = action.payload;
+        },
+        recoverStuckTasks: (state) => {
+            // Find tasks stuck in processing state
+            const stuckTasks = state.assignedTasks.filter(task => task.status === 'processing');
 
-            if (newTasks.length > 0) {
-                state.assignedTasks = [...state.assignedTasks, ...newTasks];
+            // Mark them as failed
+            stuckTasks.forEach(task => {
+                const index = state.assignedTasks.findIndex(t => t.id === task.id);
+                if (index !== -1) {
+                    state.assignedTasks[index].status = 'failed';
 
-                // Set current task if none is active
-                if (!state.currentTask && newTasks.some(task => task.status === 'pending')) {
-                    const firstPendingTask = newTasks.find(task => task.status === 'pending');
-                    if (firstPendingTask) {
-                        state.currentTask = firstPendingTask;
+                    // Also remove from global tasks list if it exists there
+                    const globalIndex = state.allTasks.findIndex(t => t.id === task.id);
+                    if (globalIndex !== -1) {
+                        state.allTasks[globalIndex].status = 'failed';
                     }
                 }
+            });
+
+            // Reset processing state if current task was stuck
+            if (state.currentTask?.status === 'processing') {
+                // Look for next pending task
+                const nextTask = state.assignedTasks.find(t => t.status === 'pending');
+                state.currentTask = nextTask || null;
+                state.isProcessing = false;
             }
-        },
+
+            // Clear global task processing state
+            isProcessingTask = false;
+            currentProcessingTaskId = null;
+
+            if (stuckTasks.length > 0) {
+                console.log(`Recovered ${stuckTasks.length} stuck tasks`);
+            }
+
+            return state;
+        }
     },
     extraReducers: (builder) => {
         builder
-            // Fetch tasks cases
-            .addCase(fetchTasks.pending, (state) => {
+            // Fetch pending tasks
+            .addCase(fetchPendingTasks.pending, (state) => {
                 state.isLoading = true;
-                state.error = null;
             })
-            .addCase(fetchTasks.fulfilled, (state, action) => {
+            .addCase(fetchPendingTasks.fulfilled, (state, action) => {
                 state.isLoading = false;
+                state.allTasks = action.payload;
                 state.lastFetchTime = Date.now();
-
-                // Only add tasks that are not already in the completed assigned tasks
-                const completedAssignedTaskIds = state.assignedTasks
-                    .filter(t => t.status === 'completed' || t.status === 'failed')
-                    .map(t => t.id);
-
-                // Don't filter out pending tasks - they should always be visible
-                const pendingTasksFromPayload = action.payload.filter(task => task.status === 'pending');
-                const otherTasksFromPayload = action.payload.filter(task =>
-                    task.status !== 'pending' && !completedAssignedTaskIds.includes(task.id)
-                );
-
-                // Prioritize pending tasks, then add other tasks
-                state.allTasks = [...pendingTasksFromPayload, ...otherTasksFromPayload];
-
-                // Log the task breakdown for debugging
-                console.log(`Global tasks updated: ${state.allTasks.length} total, ${pendingTasksFromPayload.length} pending, ${otherTasksFromPayload.length} other`);
             })
-            .addCase(fetchTasks.rejected, (state, action) => {
+            .addCase(fetchPendingTasks.rejected, (state, action) => {
                 state.isLoading = false;
-                state.error = action.payload as string;
-                // Don't clear existing tasks on error
+                state.error = action.payload;
             })
 
-            // Fetch and assign tasks cases
+            // Assign tasks to user
             .addCase(fetchAndAssignTasks.pending, (state) => {
                 state.isLoading = true;
-                state.error = null;
             })
             .addCase(fetchAndAssignTasks.fulfilled, (state, action) => {
                 state.isLoading = false;
 
-                // If there are new tasks, add them to assigned tasks
+                // Add newly assigned tasks
                 if (action.payload.length > 0) {
-                    // Filter out tasks that are already in the assigned tasks list
+                    // Only add tasks not already in the list
                     const newTasks = action.payload.filter(
                         newTask => !state.assignedTasks.some(task => task.id === newTask.id)
                     );
 
-                    state.assignedTasks = [...state.assignedTasks, ...newTasks];
+                    if (newTasks.length > 0) {
+                        state.assignedTasks = [...state.assignedTasks, ...newTasks];
 
-                    // Add assigned tasks to all tasks if they don't exist already
-                    newTasks.forEach(task => {
-                        if (!state.allTasks.some(t => t.id === task.id)) {
-                            state.allTasks.push(task);
-                        }
-                    });
-
-                    // Set the first pending task as current if there's no current task
-                    if (!state.currentTask) {
-                        const firstPendingTask = state.assignedTasks.find(task => task.status === 'pending');
-                        if (firstPendingTask) {
-                            state.currentTask = firstPendingTask;
+                        // Set first pending task as current if none is selected
+                        if (!state.currentTask) {
+                            const firstPending = newTasks.find(t => t.status === 'pending');
+                            if (firstPending) state.currentTask = firstPending;
                         }
                     }
                 }
             })
             .addCase(fetchAndAssignTasks.rejected, (state, action) => {
                 state.isLoading = false;
-                state.error = action.payload as string;
+                state.error = action.payload;
             })
 
-            // Update task cases
-            .addCase(updateTask.fulfilled, (state, action) => {
-                const { taskId, status, result } = action.payload;
-
-                // Update in all tasks
-                const taskIndex = state.allTasks.findIndex(task => task.id === taskId);
-                if (taskIndex !== -1) {
-                    state.allTasks[taskIndex].status = status;
-                    if (result) {
-                        state.allTasks[taskIndex].result = result;
-                    }
-
-                    // If task is completed or failed, remove it from global tasks list
-                    // This will allow new pending tasks to become visible
-                    if (status === 'completed' || status === 'failed') {
-                        state.allTasks = state.allTasks.filter(task => task.id !== taskId);
-
-                        // After removing, check if we need to fetch more tasks
-                        if (state.allTasks.length < 30) {
-                            console.log('Task completed, global task count reduced - will fetch more tasks on next refresh');
-                        }
-                    }
-                }
-
-                // Update in assigned tasks
-                const assignedTaskIndex = state.assignedTasks.findIndex(task => task.id === taskId);
-                if (assignedTaskIndex !== -1) {
-                    state.assignedTasks[assignedTaskIndex].status = status;
-                    if (result) {
-                        state.assignedTasks[assignedTaskIndex].result = result;
-                    }
-                }
-
-                // If the current task is completed or failed, move to the next pending task
-                if ((status === 'completed' || status === 'failed') && state.currentTask?.id === taskId) {
-                    const nextPendingTask = state.assignedTasks.find(task => task.status === 'pending');
-                    state.currentTask = nextPendingTask || null;
-                }
+            // Process task
+            .addCase(processNextTask.pending, (state) => {
+                state.isProcessing = true;
             })
-    },
+            .addCase(processNextTask.fulfilled, (state, action) => {
+                state.isProcessing = false;
+
+                // Task status updates are handled via the updateTaskStatus reducer
+                // This gets called when the task updates
+            })
+            .addCase(processNextTask.rejected, (state) => {
+                state.isProcessing = false;
+            });
+    }
 });
+
+// Async thunks
+export const fetchPendingTasks = createAsyncThunk(
+    'tasks/fetchPendingTasks',
+    async (_, { rejectWithValue }) => {
+        try {
+            const tasks = await getPendingUnassignedTasks(20);
+            return tasks;
+        } catch (error) {
+            logger.error('Error fetching pending tasks:', error);
+            return rejectWithValue(error.message);
+        }
+    }
+);
+
+interface AssignTasksParams {
+    userId: string;
+    nodeId: string;
+    batchSize?: number;
+}
+
+export const fetchAndAssignTasks = createAsyncThunk(
+    'tasks/fetchAndAssignTasks',
+    async ({ userId, nodeId, batchSize = 5 }: AssignTasksParams, { rejectWithValue }) => {
+        try {
+            if (!userId) {
+                return rejectWithValue('No user ID provided');
+            }
+
+            // Avoid duplicate requests
+            if (isProcessingTask) {
+                logger.log('Already processing a task, skipping task assignment');
+                return [];
+            }
+
+            const assignedTasks = await assignTasksToUser(userId, nodeId, batchSize);
+            return assignedTasks;
+        } catch (error) {
+            logger.error('Error assigning tasks to user:', error);
+            return rejectWithValue(error.message);
+        }
+    }
+);
+
+export const processNextTask = createAsyncThunk(
+    'tasks/processNextTask',
+    async (_, { getState, dispatch, rejectWithValue }) => {
+        let taskToProcess = null;
+
+        try {
+            // Get current state
+            const state = getState() as RootState;
+            const userId = state.session?.userProfile?.id;
+
+            if (!userId) {
+                return rejectWithValue('No user ID available');
+            }
+
+            // Get the current task or find next pending task
+            taskToProcess = state.tasks.currentTask;
+
+            if (!taskToProcess || taskToProcess.status !== 'pending') {
+                logger.warn('No valid task to process');
+                return rejectWithValue('No pending tasks to process');
+            }
+
+            // Try to acquire lock - if already processing, don't start another task
+            if (!taskProcessingLock.acquire(taskToProcess.id)) {
+                logger.warn(`Cannot process task ${taskToProcess.id} - processing lock could not be acquired`);
+                return rejectWithValue('Processing lock could not be acquired');
+            }
+
+            // Set global processing state
+            isProcessingTask = true;
+            currentProcessingTaskId = taskToProcess.id;
+
+            // Step 1: Mark as processing
+            dispatch(updateTaskStatus({
+                taskId: taskToProcess.id,
+                status: 'processing'
+            }));
+
+            // Step 2: Process task
+            logger.log(`Starting to process task ${taskToProcess.id}`);
+            const result = await processTask(taskToProcess.id, userId);
+
+            // Step 3: Update status based on result
+            if (result.success) {
+                dispatch(updateTaskStatus({
+                    taskId: taskToProcess.id,
+                    status: 'completed',
+                    result: result.result
+                }));
+                logger.log(`Task ${taskToProcess.id} completed successfully`);
+            } else {
+                dispatch(updateTaskStatus({
+                    taskId: taskToProcess.id,
+                    status: 'failed'
+                }));
+                logger.warn(`Task ${taskToProcess.id} processing failed`);
+            }
+
+            return result;
+        } catch (error) {
+            // Mark task as failed
+            if (taskToProcess) {
+                dispatch(updateTaskStatus({
+                    taskId: taskToProcess.id,
+                    status: 'failed'
+                }));
+            }
+
+            logger.error(`Error processing task: ${error.message || error}`);
+            return rejectWithValue(error.message || 'Unknown error');
+        } finally {
+            // Always clean up
+            isProcessingTask = false;
+            currentProcessingTaskId = null;
+            taskProcessingLock.release();
+        }
+    }
+);
+
+// Start simple polling for tasks
+export const startTaskPolling = (dispatch, userId, nodeId) => {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+    }
+
+    // First fetch immediately
+    dispatch(fetchPendingTasks());
+
+    // Assign initial batch of tasks if we have a user ID
+    if (userId) {
+        dispatch(fetchAndAssignTasks({ userId, nodeId }));
+    }
+
+    // Set up polling interval (every 20 seconds)
+    pollingInterval = setInterval(() => {
+        // Don't poll if we're actively processing a task
+        if (isProcessingTask) {
+            logger.log('Skipping poll while task is processing');
+            return;
+        }
+
+        dispatch(fetchPendingTasks());
+
+        // If we have less than 3 pending tasks left, fetch more
+        if (storeRef) {
+            const state = storeRef.getState();
+            const pendingTaskCount = state.tasks.assignedTasks.filter(t => t.status === 'pending').length;
+
+            if (pendingTaskCount < 3 && userId && !isProcessingTask) {
+                dispatch(fetchAndAssignTasks({ userId, nodeId }));
+            }
+        }
+    }, 20000);
+
+    // Return a function to stop polling
+    return () => {
+        if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+        }
+    };
+};
+
+// Process tasks in a loop
+export const startTaskProcessing = (dispatch, userId) => {
+    let processingInterval = null;
+    let isProcessing = false;
+    let lastProcessingAttempt = 0;
+
+    const processLoop = async () => {
+        // Prevent multiple simultaneous processing
+        if (isProcessing || isProcessingTask) {
+            return;
+        }
+
+        // Throttle processing attempts (not more than once every 3 seconds)
+        const now = Date.now();
+        if (now - lastProcessingAttempt < 3000) {
+            return;
+        }
+
+        lastProcessingAttempt = now;
+
+        try {
+            isProcessing = true;
+
+            const state = storeRef?.getState();
+            if (!state || !state.node.isActive) {
+                isProcessing = false;
+                return;
+            }
+
+            // Check for any tasks stuck in processing state
+            const stuckTasks = state.tasks.assignedTasks.filter(
+                t => t.status === 'processing' &&
+                    Date.now() - new Date(t.updated_at || 0).getTime() > 60000 // Stuck for over 1 minute
+            );
+
+            if (stuckTasks.length > 0) {
+                logger.warn(`Found ${stuckTasks.length} tasks stuck in processing state, recovering...`);
+                dispatch(recoverStuckTasks());
+                isProcessing = false;
+                return;
+            }
+
+            // Check if we have a pending task to process
+            const pendingTask = state.tasks.assignedTasks.find(t => t.status === 'pending');
+
+            if (pendingTask && !isProcessingTask) {
+                logger.log(`Found pending task ${pendingTask.id}, will process`);
+                // Process one task at a time
+                await dispatch(processNextTask()).unwrap();
+
+                // Wait a bit before processing the next task
+                setTimeout(() => {
+                    isProcessing = false;
+                }, 3000);
+            } else {
+                isProcessing = false;
+            }
+        } catch (error) {
+            logger.error('Error in task processing loop:', error);
+            isProcessing = false;
+        }
+    };
+
+    // Initial process immediately
+    processLoop();
+
+    // Set up interval for continuous processing (check every 5 seconds)
+    processingInterval = setInterval(processLoop, 5000);
+
+    // Return a function to stop processing
+    return () => {
+        if (processingInterval) {
+            clearInterval(processingInterval);
+            processingInterval = null;
+        }
+    };
+};
 
 export const {
     setCurrentTask,
-    updateTaskProgress,
+    updateTaskStatus,
     clearAssignedTasks,
-    addNewTasks
+    setProcessingStatus,
+    recoverStuckTasks
 } = taskSlice.actions;
-
-export default taskSlice.reducer; 
+export default taskSlice.reducer;

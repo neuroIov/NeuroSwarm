@@ -1,9 +1,27 @@
-import { refreshAndStoreTasks } from './swarmTaskService';
+import { getQueuedTasks, assignTasksToUser } from './swarmTaskService';
 import { TASK_PROCESSING_CONFIG } from './config';
 import { logger } from '../utils/logger';
 import { taskCache } from './taskCacheService';
 import { AITask } from './types';
-import { getRecentTasks } from './taskService';
+import { getPendingUnassignedTasks } from './taskService';
+import { store } from '@/store';
+import {
+    fetchPendingTasks,
+    fetchAndAssignTasks,
+    processNextTask,
+    setStoreRef,
+    startTaskPolling,
+    startTaskProcessing,
+    recoverStuckTasks
+} from '@/store/slices/taskSlice';
+
+// Initialize store reference for taskSlice
+// This allows the Redux slice to access the store for polling operations
+setStoreRef(store);
+
+// Note: This service now integrates with the Redux task management system.
+// Core task operations (fetching, assigning, processing) are now handled through
+// Redux actions while maintaining the existing polling infrastructure.
 
 type PollingCallbacks = {
     onNewTasks?: (tasks: AITask[]) => void;
@@ -19,6 +37,7 @@ class TaskPollingService {
     private lastPollTime = 0;
     private consecutiveEmptyFetches = 0;
     private consecutiveErrors = 0;
+    private hasActiveTaskProcessing = false;
 
     /**
      * Start polling for new tasks
@@ -85,6 +104,12 @@ class TaskPollingService {
             return;
         }
 
+        // Don't poll if we're actively processing a task (let it finish first)
+        if (this.hasActiveTaskProcessing) {
+            logger.log('Task processing active, deferring poll');
+            return;
+        }
+
         // Perform the actual poll
         this.poll();
     }
@@ -102,6 +127,28 @@ class TaskPollingService {
 
         this.isPolling = false;
         logger.log('Stopped task polling service');
+    }
+
+    /**
+     * Set active task processing state to coordinate polling
+     */
+    setActiveTaskProcessing(active: boolean): void {
+        this.hasActiveTaskProcessing = active;
+    }
+
+    /**
+     * Check for available unassigned tasks in the swarm database
+     * @returns The number of available tasks
+     */
+    private async checkAvailableTasks(): Promise<number> {
+        try {
+            // Get a small sample of unassigned tasks to check availability
+            const availableTasks = await getQueuedTasks(10);
+            return availableTasks.length;
+        } catch (error) {
+            logger.error('Error checking available tasks:', error);
+            return 0;
+        }
     }
 
     /**
@@ -133,10 +180,42 @@ class TaskPollingService {
             // Use a smaller batch size when fetching to reduce load
             const batchSize = 20; // Standard size for global view
 
+            // Don't fetch if we're actively processing a task (let it finish first)
+            if (this.hasActiveTaskProcessing) {
+                logger.log('Task processing active, skipping fetch');
+                this.isCurrentlyFetching = false;
+                return;
+            }
+
+            // Check for stuck tasks and recover them (every 5 polls)
+            if (Math.random() < 0.2) { // 20% chance to check for stuck tasks
+                // Get Redux state to check for stuck tasks
+                const state = store.getState();
+                const processingTasks = state.tasks.assignedTasks.filter(t => t.status === 'processing');
+
+                if (processingTasks.length > 0) {
+                    const oldestProcessingTime = Math.min(
+                        ...processingTasks.map(t =>
+                            new Date(t.updated_at || 0).getTime()
+                        )
+                    );
+
+                    // If any task has been processing for more than 1 minute, recover all stuck tasks
+                    if (now - oldestProcessingTime > 60000) {
+                        logger.warn(`Found stuck tasks in processing state (oldest: ${(now - oldestProcessingTime) / 1000}s), recovering...`);
+                        store.dispatch(recoverStuckTasks());
+                    }
+                }
+            }
+
             // First fetch new tasks - handle errors gracefully
             let tasks: AITask[] = [];
             try {
-                tasks = await getRecentTasks(batchSize);
+                // Use the Redux store's fetchPendingTasks action
+                await store.dispatch(fetchPendingTasks());
+
+                // Get tasks from the service directly for the cache
+                tasks = await getPendingUnassignedTasks(batchSize);
                 taskCache.setTasks(tasks, true); // Mark as successful fetch
                 this.consecutiveErrors = 0;
             } catch (fetchError) {
@@ -161,43 +240,49 @@ class TaskPollingService {
                 this.consecutiveEmptyFetches = 0;
             }
 
-            // Then create any new tasks in the swarm table - but less frequently
-            // Only refresh and store tasks if:
+            // Check available tasks in the swarm database instead of refreshing
+            // Only check if:
             // 1. We haven't done it recently
             // 2. We don't have many tasks cached already
-            // 3. Random chance to avoid all clients refreshing simultaneously
-            const shouldRefreshTasks = (
+            // 3. Random chance to avoid all clients checking simultaneously
+            const shouldCheckAvailability = (
                 timeSinceLastPoll > 60000 || // At least 1 minute since last poll
                 tasks.length < 5 ||          // Few tasks available
                 Math.random() < 0.2          // 20% random chance
             );
 
-            let newTasksCreated = 0;
+            let availableTaskCount = 0;
 
-            if (shouldRefreshTasks) {
+            if (shouldCheckAvailability) {
                 try {
-                    newTasksCreated = await refreshAndStoreTasks();
-                } catch (refreshError) {
-                    logger.error('Error refreshing tasks:', refreshError);
+                    availableTaskCount = await this.checkAvailableTasks();
+
+                    if (availableTaskCount > 0) {
+                        logger.log(`Found ${availableTaskCount} unassigned tasks available in the swarm database`);
+
+                        // Notify about available tasks
+                        if (this.callbacks.onNewTasks) {
+                            const availableTasks = await getQueuedTasks(5);
+                            this.callbacks.onNewTasks(availableTasks);
+                        }
+                    }
+                } catch (checkError) {
+                    logger.error('Error checking available tasks:', checkError);
                 }
             }
 
-            // Call callbacks if provided and something changed
-            if (newTasksCreated > 0 && this.callbacks.onNewTasks) {
-                this.callbacks.onNewTasks(taskCache.tasks.slice(0, newTasksCreated));
-            }
-
+            // Call callbacks if something changed
             if (this.callbacks.onTasksFetched && tasks.length !== startTaskCount) {
                 this.callbacks.onTasksFetched(tasks.length);
             }
 
             // Only log when something meaningful happens or occasionally for feedback
-            const shouldLog = newTasksCreated > 0 ||
+            const shouldLog = availableTaskCount > 0 ||
                 tasks.length !== startTaskCount ||
                 Math.random() < 0.1; // 10% chance to log anyway
 
             if (shouldLog) {
-                logger.log(`Poll complete: ${tasks.length} tasks in cache${newTasksCreated > 0 ? `, ${newTasksCreated} new tasks added` : ''}`);
+                logger.log(`Poll complete: ${tasks.length} tasks in cache${availableTaskCount > 0 ? `, ${availableTaskCount} unassigned tasks available` : ''}`);
             }
         } catch (error) {
             logger.error('Error during task polling:', error);
@@ -226,4 +311,75 @@ class TaskPollingService {
 }
 
 // Create a singleton instance
-export const taskPollingService = new TaskPollingService(); 
+export const taskPollingService = new TaskPollingService();
+
+/**
+ * Initialize task polling and processing for the current user
+ */
+export const initializeTaskServices = (userId: string, nodeId: string) => {
+    if (!userId) {
+        logger.error('Cannot initialize task services: No user ID provided');
+        return;
+    }
+
+    logger.log(`Initializing task services for user ${userId} on node ${nodeId}`);
+
+    // Start polling for new tasks (using Redux implementation)
+    const stopPolling = startTaskPolling(store.dispatch, userId, nodeId);
+
+    // Start task processing pipeline (using Redux implementation)
+    const stopProcessing = startTaskProcessing(store.dispatch, userId);
+
+    return {
+        stopPolling,
+        stopProcessing
+    };
+};
+
+/**
+ * Manual trigger to assign new tasks to the current user
+ */
+export const manuallyAssignTasks = async (userId: string, nodeId: string, batchSize = 5) => {
+    if (!userId) {
+        logger.error('Cannot assign tasks: No user ID provided');
+        return [];
+    }
+
+    try {
+        // Signal that we're about to perform task assignment
+        taskPollingService.setActiveTaskProcessing(true);
+
+        // Use the Redux action to assign tasks
+        const result = await store.dispatch(
+            fetchAndAssignTasks({ userId, nodeId, batchSize })
+        ).unwrap();
+
+        return result;
+    } catch (error) {
+        logger.error('Error manually assigning tasks:', error);
+        return [];
+    } finally {
+        // Signal that we're done with task assignment
+        taskPollingService.setActiveTaskProcessing(false);
+    }
+};
+
+/**
+ * Process a single task from the queue
+ */
+export const processSingleTask = async () => {
+    try {
+        // Signal that we're about to process a task
+        taskPollingService.setActiveTaskProcessing(true);
+
+        // Use the Redux action to process the next task
+        const result = await store.dispatch(processNextTask()).unwrap();
+        return result;
+    } catch (error) {
+        logger.error('Error processing single task:', error);
+        return { success: false };
+    } finally {
+        // Signal that we're done with task processing
+        taskPollingService.setActiveTaskProcessing(false);
+    }
+}; 

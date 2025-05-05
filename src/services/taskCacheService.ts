@@ -2,6 +2,12 @@ import { AITask } from './types';
 import { logger } from '../utils/logger';
 import { TASK_PROCESSING_CONFIG } from './config';
 
+// Define a type for task processing result
+interface TaskProcessingResult {
+    success: boolean;
+    result?: string;
+}
+
 type LocalCache = {
     tasks: AITask[];
     lastFetchTime: number;
@@ -9,6 +15,7 @@ type LocalCache = {
     processingTask: AITask | null; // Track currently processing task
     lastSuccessfulFetch: number; // Track last successful fetch time
     fetchFailureCount: number; // Track consecutive fetch failures
+    processingPromises: Map<string, Promise<TaskProcessingResult>>; // Track task processing promises
 };
 
 class TaskCacheService {
@@ -18,7 +25,8 @@ class TaskCacheService {
         addedToSwarm: new Set<string>(),
         processingTask: null,
         lastSuccessfulFetch: 0,
-        fetchFailureCount: 0
+        fetchFailureCount: 0,
+        processingPromises: new Map()
     };
 
     // Minimum time between API calls in milliseconds
@@ -53,11 +61,38 @@ class TaskCacheService {
     }
 
     /**
-     * Set currently processing task
+     * Set currently processing task with proper locking
      */
-    setProcessingTask(task: AITask | null): void {
+    setProcessingTask(task: AITask | null): boolean {
+        // If we're trying to set null (clear) but the current task is different than what was provided
+        // This prevents race conditions when multiple tasks are being processed
+        if (!task && this._cache.processingTask && task?.id !== this._cache.processingTask.id) {
+            return false;
+        }
+
+        // If we're trying to set a task, but there's already a different task processing
+        if (task && this._cache.processingTask && task.id !== this._cache.processingTask.id) {
+            logger.warn(`Cannot set processing task ${task.id} - already processing ${this._cache.processingTask.id}`);
+            return false;
+        }
+
         this._cache.processingTask = task;
         this.saveToLocalStorage();
+        return true;
+    }
+
+    /**
+     * Store a task processing promise by task ID
+     */
+    setProcessingPromise(taskId: string, promise: Promise<TaskProcessingResult>): void {
+        this._cache.processingPromises.set(taskId, promise);
+    }
+
+    /**
+     * Get a task processing promise by task ID
+     */
+    getProcessingPromise(taskId: string): Promise<TaskProcessingResult> | undefined {
+        return this._cache.processingPromises.get(taskId);
     }
 
     /**
@@ -65,6 +100,13 @@ class TaskCacheService {
      */
     get isProcessingTask(): boolean {
         return this._cache.processingTask !== null;
+    }
+
+    /**
+     * Get ID of currently processing task, if any
+     */
+    get processingTaskId(): string | null {
+        return this._cache.processingTask?.id || null;
     }
 
     /**
@@ -90,6 +132,11 @@ class TaskCacheService {
      * Check if we should throttle API calls
      */
     get shouldThrottleFetch(): boolean {
+        // Don't throttle if we're processing a task - we need to keep checking for status updates
+        if (this.isProcessingTask) {
+            return false;
+        }
+
         const now = Date.now();
 
         // Always throttle if we've fetched very recently
@@ -117,6 +164,28 @@ class TaskCacheService {
      * Set cached tasks and record fetch status
      */
     setTasks(tasks: AITask[], success: boolean = true): void {
+        // Replace the tasks, but keep the currently processing task in the list
+        if (this._cache.processingTask) {
+            const processingTaskId = this._cache.processingTask.id;
+
+            // Keep the processing task if it's not in the new list
+            if (!tasks.some(task => task.id === processingTaskId)) {
+                const existingProcessingTask = this._cache.tasks.find(task => task.id === processingTaskId);
+                if (existingProcessingTask) {
+                    tasks.push(existingProcessingTask);
+                }
+            } else {
+                // Update status of processing task to reflect it's being processed
+                const taskIndex = tasks.findIndex(task => task.id === processingTaskId);
+                if (taskIndex !== -1 && tasks[taskIndex].status !== 'processing') {
+                    tasks[taskIndex] = {
+                        ...tasks[taskIndex],
+                        status: 'processing'
+                    };
+                }
+            }
+        }
+
         this._cache.tasks = tasks;
         this._cache.lastFetchTime = Date.now();
 
@@ -193,11 +262,13 @@ class TaskCacheService {
      * Remove a task from the cache by ID
      */
     removeTask(taskId: string): void {
+        // Don't remove the task if it's currently processing
         if (this._cache.processingTask?.id === taskId) {
-            this._cache.processingTask = null;
+            return;
         }
 
         this._cache.tasks = this._cache.tasks.filter(task => task.id !== taskId);
+        this._cache.processingPromises.delete(taskId);
         this.saveToLocalStorage();
     }
 
@@ -206,9 +277,35 @@ class TaskCacheService {
      */
     updateTask(taskId: string, updates: Partial<AITask>): void {
         // Update in the main tasks list
-        this._cache.tasks = this._cache.tasks.map(task =>
-            task.id === taskId ? { ...task, ...updates } : task
-        );
+        const taskIndex = this._cache.tasks.findIndex(task => task.id === taskId);
+
+        if (taskIndex !== -1) {
+            // Create updated task
+            const updatedTask = {
+                ...this._cache.tasks[taskIndex],
+                ...updates
+            };
+
+            // If the task is being marked as completed or failed, make sure it's not our processing task
+            if (
+                (updates.status === 'completed' || updates.status === 'failed') &&
+                this._cache.processingTask?.id === taskId
+            ) {
+                this._cache.processingTask = null;
+            }
+
+            // Update in the array
+            this._cache.tasks[taskIndex] = updatedTask;
+        } else if (updates.status !== 'completed' && updates.status !== 'failed') {
+            // If the task isn't in our list but isn't being marked as completed/failed,
+            // we should add it to track it
+            logger.warn(`Task ${taskId} not found in cache but being updated with status ${updates.status}`);
+
+            // Add it only if we have enough info
+            if ('id' in updates && 'status' in updates && 'type' in updates) {
+                this._cache.tasks.push(updates as AITask);
+            }
+        }
 
         // Also update in processing task if it's the same
         if (this._cache.processingTask?.id === taskId) {
@@ -327,6 +424,7 @@ class TaskCacheService {
         this._cache.addedToSwarm = new Set();
         this._cache.processingTask = null;
         this._cache.fetchFailureCount = 0;
+        this._cache.processingPromises.clear();
         this.saveToLocalStorage();
     }
 }
