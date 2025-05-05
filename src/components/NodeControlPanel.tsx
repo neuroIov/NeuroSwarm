@@ -348,8 +348,8 @@ export const NodeControlPanel = () => {
   };
 
   return (
-    <div className="stat-card rounded-3xl h-auto md:h-[420px] overflow-auto" style={{
-      backgroundColor: 'rgba(9, 12, 24, 1)',
+    <div className="stat-card rounded-3xl  md:h-[445px] " style={{
+      backgroundColor: 'rgb(74, 87, 138)',
       width: '100%',
       marginBottom: '1rem'
     }}>

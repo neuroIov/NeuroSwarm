@@ -28,7 +28,15 @@ export const Header = ({ toggleSidebar }: { toggleSidebar?: () => void }) => {
           <Menu className="w-5 h-5" />
         </button>
 
-        <h1 className="text-lg md:text-xl  text-white font-urbanist">
+        <h1
+          className="text-lg md:text-xl font-urbanist"
+          style={{
+            background: "linear-gradient(to right, #3b82f6 0%, #ffffff 50%)",
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            color: "transparent",
+          }}
+        >
           Swarm Node Rewards Hub
         </h1>
         <TooltipProvider>

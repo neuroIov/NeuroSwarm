@@ -38,7 +38,7 @@ const StatCard = ({ title, value, unit, changePercentage, info }: StatCardProps)
 
 export const NetworkStats = () => {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-6 w-full md:w-[90%] m-auto">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mb-6 w-full md:w-[100%] m-auto">
       <StatCard
         title="Total Nodes"
         value={65}

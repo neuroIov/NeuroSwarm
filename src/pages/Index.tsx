@@ -8,7 +8,7 @@ import { EarningsDashboard } from '@/components/EarningsDashboard';
 import { ReferralProgram } from '@/components/ReferralProgram';
 import { GlobalStatistics } from '@/components/GlobalStatistics';
 import { HowItWorks } from '@/components/HowItWorks';
-import { Sidebar } from '@/components/Sidebar';
+// import { Sidebar } from '@/components/Sidebar';
 const Index = () => {
   return (
     <>

@@ -82,7 +82,7 @@ export const WalletButton = () => {
       onClick={handleWalletAction}
       disabled={isLoading}
       className={`
-        flex items-center gap-2  rounded-full border-4 h-full border-black-800
+        flex items-center gap-2 font- rounded-full border-4 h-full border-black-800
         ${walletConnected
           ? "bg-green-900/20 text-green-400 hover:bg-green-900/30 border-green-800"
           : "bg-blue-600 text-white hover:bg-blue-700"
