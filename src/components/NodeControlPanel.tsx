@@ -13,6 +13,7 @@ import {
   Tablet,
   Smartphone,
 } from "lucide-react";
+import { getSwarmSupabase } from "@/lib/supabase-client";
 import { Button } from "@/components/ui/button";
 import { InfoTooltip } from "./InfoTooltip";
 import {
@@ -49,6 +50,8 @@ import {
   fetchAndAssignTasks,
   clearAssignedTasks,
 } from "@/store/slices/taskSlice";
+import { useSession } from "@/hooks/useSession";
+
 import { RootState, useAppDispatch } from "@/store";
 import { assignTasksToUser } from "@/services/swarmTaskService";
 
@@ -89,6 +92,9 @@ interface NodeInfo {
 
 export const NodeControlPanel = () => {
   const dispatch = useAppDispatch();
+  const client = getSwarmSupabase();
+  const { userProfile } = useSession();
+
   const {
     isActive,
     nodeId,
@@ -125,6 +131,8 @@ export const NodeControlPanel = () => {
     cpu?: string;
     gpu?: string;
   }>({});
+  const [selectedVRAM, setSelectedVRAM] = useState<number>(0);
+  const [isCreatingDevice, setIsCreatingDevice] = useState(false);
 
   // Update selectedNodeId when nodeId from redux changes
   useEffect(() => {
@@ -167,6 +175,60 @@ export const NodeControlPanel = () => {
       }
     };
   }, [isActive, cpuUsage, memoryUsage, networkUsage, dispatch]);
+
+  // Fetch user's devices when component mounts or user profile changes
+  useEffect(() => {
+    const fetchUserDevices = async () => {
+      if (!userProfile?.id) return;
+
+      try {
+        const { data: devices, error } = await client
+          .from("devices")
+          .select("*")
+          .eq("owner", userProfile.id);
+
+        if (error) throw error;
+
+        // Convert devices to NodeInfo format
+        const userNodes: NodeInfo[] = devices.map((device) => ({
+          id: device.id,
+          name: `${device.device_specs.brand} ${device.device_specs.model}`,
+          type: device.device_specs.type,
+          brand: device.device_specs.brand,
+          model: device.device_specs.model,
+          customSpecs: {
+            cpu: device.device_specs.cpu,
+            gpu: device.device_specs.gpu,
+          },
+          rewardTier: device.device_specs.gpuInfo
+            ?.toLowerCase()
+            .includes("webgpu")
+            ? "webgpu"
+            : device.device_specs.gpuInfo?.toLowerCase().includes("wasm")
+            ? "wasm"
+            : device.device_specs.gpuInfo?.toLowerCase().includes("webgl")
+            ? "webgl"
+            : "cpu",
+          status: device.status === "offline" ? "idle" : "running",
+          cpuCores: device.device_specs.cpuCores,
+          memory: device.device_specs.memory,
+          gpuInfo: device.gpu_model,
+        }));
+
+        setNodes(userNodes);
+
+        // If there's no selected node and we have nodes, select the first one
+        if (!selectedNodeId && userNodes.length > 0) {
+          setSelectedNodeId(userNodes[0].id);
+        }
+      } catch (error) {
+        console.error("Error fetching user devices:", error);
+        toast.error("Failed to load your devices");
+      }
+    };
+
+    fetchUserDevices();
+  }, [userProfile?.id, client]);
 
   const handleNodeSelect = (value: string) => {
     setSelectedNodeId(value);
@@ -236,97 +298,164 @@ export const NodeControlPanel = () => {
     }
   };
 
-  const confirmDeviceType = () => {
+  const confirmDeviceType = async () => {
     if (
       !detectedHardware ||
       !selectedDeviceType ||
       !selectedBrand ||
-      !selectedModel
+      !selectedModel ||
+      !selectedVRAM
     )
       return;
 
-    const newNode: NodeInfo = {
-      id: `node-${nodes.length + 1}`,
-      name: `${selectedBrand} ${selectedModel}`,
-      type: selectedDeviceType,
-      brand: selectedBrand,
-      model: selectedModel,
-      customSpecs: requiresCustomSpecs(deviceGroup, selectedDeviceType)
-        ? customSpecs
-        : undefined,
-      rewardTier: detectedHardware.rewardTier,
-      status: "idle",
-      cpuCores: detectedHardware.cpuCores,
-      memory: detectedHardware.deviceMemory,
-      gpuInfo: detectedHardware.gpuInfo,
-    };
+    setIsCreatingDevice(true);
 
-    setNodes([...nodes, newNode]);
-    setSelectedNodeId(newNode.id);
-    setShowDeviceTypeDialog(false);
-    toast.success("Device added successfully!");
+    try {
+      // Create device specs object
+      const deviceSpecs = {
+        type: selectedDeviceType,
+        brand: selectedBrand,
+        model: selectedModel,
+        cpu: customSpecs.cpu,
+        gpu: customSpecs.gpu,
+        vram: selectedVRAM,
+        cpuCores: detectedHardware.cpuCores,
+        memory: detectedHardware.deviceMemory,
+        gpuInfo: detectedHardware.gpuInfo,
+      };
+
+      // Insert device into database
+      const { data: device, error } = await client
+        .from("devices")
+        .insert({
+          status: "offline",
+          gpu_model: customSpecs.gpu || detectedHardware.gpuInfo,
+          vram: selectedVRAM,
+          hash_rate: 84,
+          device_specs: deviceSpecs,
+          owner: userProfile.id,
+        })
+        .select("id")
+        .single();
+
+      if (error) throw error;
+
+      // Create local node representation
+      const newNode: NodeInfo = {
+        id: device.id,
+        name: `${selectedBrand} ${selectedModel}`,
+        type: selectedDeviceType,
+        brand: selectedBrand,
+        model: selectedModel,
+        customSpecs: requiresCustomSpecs(deviceGroup, selectedDeviceType)
+          ? customSpecs
+          : undefined,
+        rewardTier: detectedHardware.rewardTier,
+        status: "idle",
+        cpuCores: detectedHardware.cpuCores,
+        memory: detectedHardware.deviceMemory,
+        gpuInfo: detectedHardware.gpuInfo,
+      };
+
+      setNodes([...nodes, newNode]);
+      setSelectedNodeId(newNode.id);
+      setShowDeviceTypeDialog(false);
+      toast.success("Device added successfully!");
+    } catch (error) {
+      console.error("Error creating device:", error);
+      toast.error("Failed to create device. Please try again.");
+    } finally {
+      setIsCreatingDevice(false);
+    }
   };
 
   const toggleNodeStatus = async () => {
     if (isActive) {
       // Stop the node
-      dispatch(stopNode());
-      dispatch(clearAssignedTasks());
+      try {
+        // Update device status in database
+        const { error: updateError } = await client
+          .from("devices")
+          .update({ status: "offline" })
+          .eq("id", selectedNodeId);
 
-      // Update node status in local state
-      setNodes(
-        nodes.map((node) =>
-          node.id === selectedNodeId ? { ...node, status: "idle" } : node
-        )
-      );
+        if (updateError) throw updateError;
 
-      toast.info(`Node "${selectedNode?.name}" stopped`);
-    } else if (selectedNode) {
-      // Start the node
-      setIsStarting(true);
-
-      // Simulate starting delay
-      setTimeout(async () => {
-        // Update redux store with node info
-        dispatch(
-          startNode({
-            nodeId: selectedNode.id,
-            nodeName: selectedNode.name,
-            nodeType: selectedNode.type,
-            rewardTier: selectedNode.rewardTier,
-          })
-        );
+        dispatch(stopNode());
+        dispatch(clearAssignedTasks());
 
         // Update node status in local state
         setNodes(
           nodes.map((node) =>
-            node.id === selectedNodeId ? { ...node, status: "running" } : node
+            node.id === selectedNodeId ? { ...node, status: "idle" } : node
           )
         );
 
-        // Initial resource usage
-        dispatch(
-          updateNodeMetrics({
-            cpuUsage: Math.random() * 30 + 10,
-            memoryUsage: Math.random() * 20 + 5,
-            networkUsage: Math.random() * 5 + 0.5,
-          })
-        );
+        toast.info(`Node "${selectedNode?.name}" stopped`);
+      } catch (error) {
+        console.error("Error stopping node:", error);
+        toast.error("Failed to stop node. Please try again.");
+      }
+    } else if (selectedNode) {
+      // Start the node
+      setIsStarting(true);
 
+      try {
+        // Update device status in database
+        const { error: updateError } = await client
+          .from("devices")
+          .update({ status: "busy" })
+          .eq("id", selectedNodeId);
+
+        if (updateError) throw updateError;
+
+        // Simulate starting delay
+        setTimeout(async () => {
+          // Update redux store with node info
+          dispatch(
+            startNode({
+              nodeId: selectedNode.id,
+              nodeName: selectedNode.name,
+              nodeType: selectedNode.type,
+              rewardTier: selectedNode.rewardTier,
+            })
+          );
+
+          // Update node status in local state
+          setNodes(
+            nodes.map((node) =>
+              node.id === selectedNodeId ? { ...node, status: "running" } : node
+            )
+          );
+
+          // Initial resource usage
+          dispatch(
+            updateNodeMetrics({
+              cpuUsage: Math.random() * 30 + 10,
+              memoryUsage: Math.random() * 20 + 5,
+              networkUsage: Math.random() * 5 + 0.5,
+            })
+          );
+
+          setIsStarting(false);
+          toast.success(
+            `Node "${selectedNode.name}" started and ready for tasks`
+          );
+
+          // Fetch and assign tasks to this node
+          try {
+            // This thunk action will fetch tasks and assign them to the node
+            dispatch(fetchAndAssignTasks(selectedNode.id));
+          } catch (error) {
+            console.error("Error assigning tasks:", error);
+            toast.error("Failed to assign tasks to node");
+          }
+        }, 2000);
+      } catch (error) {
+        console.error("Error starting node:", error);
+        toast.error("Failed to start node. Please try again.");
         setIsStarting(false);
-        toast.success(
-          `Node "${selectedNode.name}" started and ready for tasks`
-        );
-
-        // Fetch and assign tasks to this node
-        try {
-          // This thunk action will fetch tasks and assign them to the node
-          dispatch(fetchAndAssignTasks(selectedNode.id));
-        } catch (error) {
-          console.error("Error assigning tasks:", error);
-          toast.error("Failed to assign tasks to node");
-        }
-      }, 2000);
+      }
     }
   };
 
@@ -692,6 +821,31 @@ export const NodeControlPanel = () => {
                         }
                       />
                     </div>
+                    <div>
+                      <label
+                        htmlFor="vram"
+                        className="block text-sm font-medium mb-1"
+                      >
+                        VRAM (GB)
+                      </label>
+                      <Select
+                        value={selectedVRAM.toString()}
+                        onValueChange={(value) =>
+                          setSelectedVRAM(Number(value))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select VRAM" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[4, 8, 12, 16, 32, 64].map((vram) => (
+                            <SelectItem key={vram} value={vram.toString()}>
+                              {vram} GB
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 )}
             </div>
@@ -704,11 +858,20 @@ export const NodeControlPanel = () => {
                 !selectedDeviceType ||
                 !selectedBrand ||
                 !selectedModel ||
+                !selectedVRAM ||
                 (requiresCustomSpecs(deviceGroup, selectedDeviceType) &&
-                  (!customSpecs.cpu || !customSpecs.gpu))
+                  (!customSpecs.cpu || !customSpecs.gpu)) ||
+                isCreatingDevice
               }
             >
-              Confirm Device
+              {isCreatingDevice ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating Device...
+                </>
+              ) : (
+                "Confirm Device"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
