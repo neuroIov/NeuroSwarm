@@ -10,7 +10,6 @@ import { GlobalStatistics } from "@/components/GlobalStatistics";
 import { HowItWorks } from "@/components/HowItWorks";
 import { Sidebar } from "@/components/Sidebar";
 
-// Dashboard component for the main dashboard view
 const Dashboard = () => (
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div className="space-y-6">
@@ -27,14 +26,12 @@ const Index = () => {
   const [isLoaded, setIsLoaded] = useState(false);
   const location = useLocation();
 
-  // Get the active section from the current path
   const getActiveSection = () => {
     const path = location.pathname.split("/")[1];
     return path || "dashboard";
   };
 
   useEffect(() => {
-    // Add a slight delay to trigger load animation
     const timer = setTimeout(() => {
       setIsLoaded(true);
     }, 300);
@@ -54,7 +51,6 @@ const Index = () => {
           }}
         />
 
-        {/* Blue glow elements - adjusted */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full max-w-6xl max-h-6xl rounded-full bg-blue-900/8 blur-3xl" />
         <div className="absolute top-0 left-0 w-2/3 h-2/5 bg-blue-900/5 blur-3xl" />
         <div className="absolute bottom-0 right-0 w-3/5 h-1/3 rounded-full bg-blue-800/7 blur-2xl" />

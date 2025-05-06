@@ -21,7 +21,6 @@ const AppContent = () => {
   const dispatch = useAppDispatch();
   const { isActive } = useSelector((state: RootState) => state.node);
 
-  // Log when user profile changes
   useEffect(() => {
     if (userProfile) {
       console.log("User profile in App:", userProfile);
