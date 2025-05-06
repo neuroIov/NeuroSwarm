@@ -1,9 +1,11 @@
-import React from 'react';
+import React from "react";
 import { Home, LineChart, Users, Globe } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface SidebarProps {
   activeSection: string;
   onSectionChange: (section: string) => void;
+  className?: string;
 }
 
 const sidebarItems = [
@@ -29,14 +31,23 @@ const sidebarItems = [
   },
 ];
 
-export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
+export function Sidebar({
+  activeSection,
+  onSectionChange,
+  className,
+}: SidebarProps) {
   return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-[#0A1A2F] border-r border-[#112544]">
+    <aside
+      className={cn(
+        "fixed left-0 top-0 z-40 h-screen w-64 bg-[#0A1A2F] border-r border-[#112544]",
+        className
+      )}
+    >
       <div className="flex h-full flex-col px-3 py-4">
         <div className="mb-10 px-4">
           <h1 className="text-xl font-bold text-white">NeuroSwarm</h1>
         </div>
-        
+
         <nav className="flex-1 space-y-2">
           {sidebarItems.map((item) => {
             const isActive = activeSection === item.id;
