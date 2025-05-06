@@ -5,9 +5,13 @@ export const TASK_TABLES = ['img_gen_messages', 'freedomai_messages',]
 export const TASK_PROCESSING_CONFIG = {
     // Processing time in seconds for different task types
     PROCESSING_TIME: {
-        image: 30,
-        text: 15,
+        image: 10,
+        text: 5,
         inference: 20
+    },
+    EARNINGS_NLOVE: {
+        image: 2,
+        text: 1,
     },
 
     // Ideal distribution percentages for different task types

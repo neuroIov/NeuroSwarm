@@ -3,6 +3,7 @@
 import { getSwarmSupabase } from '@/lib/supabase-client';
 import { AITask, TaskStatus } from './types';
 import { logger } from '../utils/logger';
+import { TASK_PROCESSING_CONFIG } from './config';
 
 // Simple cache to track current processing task
 const taskProcessingState = {
@@ -202,7 +203,7 @@ export const processTask = async (taskId, userId) => {
         }
 
         // Determine processing time based on task type
-        const processingTime = task.type === 'image' ? 30 : 15; // seconds
+        const processingTime = task.type === 'image' ? TASK_PROCESSING_CONFIG.PROCESSING_TIME.image : TASK_PROCESSING_CONFIG.PROCESSING_TIME.text; // seconds
         logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds`);
 
         // Wait for processing time to complete

@@ -97,7 +97,7 @@ export const NetworkStats = () => {
 
   const getTotalNodes = async () => {
     try {
-      const { data, error } = await client.from("devices").select("*");
+      const { data, error } = await client.from("devices").select("id");
       if (error) throw error;
       setTotalNodes(data?.length || 0);
       console.log("Total nodes updated:", data?.length || 0);
@@ -110,7 +110,7 @@ export const NetworkStats = () => {
     try {
       const { data, error } = await client
         .from("devices")
-        .select("*")
+        .select("id")
         .eq("status", "busy");
 
       if (error) throw error;

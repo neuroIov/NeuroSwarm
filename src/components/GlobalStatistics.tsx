@@ -10,6 +10,8 @@ import { FileCode } from "./ui/file-code";
 import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "@/store";
 import { fetchPendingTasks } from "@/store/slices/taskSlice";
+import { getSwarmSupabase } from "@/lib/supabase-client";
+import { formatUptime } from "@/utils/timeUtils";
 
 // Default refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 120000; // Increased to 120 seconds (2 minutes)
@@ -19,6 +21,7 @@ const MIN_REFRESH_INTERVAL = 30000; // Minimum time between refreshes (30 second
 
 export const GlobalStatistics = () => {
   const dispatch = useAppDispatch();
+  const client = getSwarmSupabase();
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Cache for storing tasks to reduce duplicate requests
@@ -39,6 +42,79 @@ export const GlobalStatistics = () => {
 
   // Track completed tasks to trigger refresh when needed
   const [prevCompletedTasks, setPrevCompletedTasks] = useState(0);
+
+  // Fetch total users from the database
+  const fetchTotalUsers = async () => {
+    try {
+      const { data, error } = await client.from("user_profiles").select("id");
+
+      if (error) throw error;
+
+      return data?.length || 0;
+    } catch (error) {
+      console.error("Error fetching total users:", error);
+      return 0;
+    }
+  };
+
+  // Fetch active nodes from the devices table
+  const fetchActiveNodes = async () => {
+    try {
+      const { data, error } = await client
+        .from("devices")
+        .select("id")
+        .eq("status", "busy");
+
+      if (error) throw error;
+
+      return data?.length || 0;
+    } catch (error) {
+      console.error("Error fetching active nodes:", error);
+      return 0;
+    }
+  };
+
+  // Calculate network load based on active nodes / total nodes
+  const calculateNetworkLoad = async (activeNodesCount: number) => {
+    try {
+      const { data, error } = await client.from("devices").select("id");
+
+      if (error) throw error;
+
+      const totalNodes = data?.length || 0;
+
+      if (totalNodes > 0) {
+        return Math.round((activeNodesCount / totalNodes) * 100);
+      }
+      return 0;
+    } catch (error) {
+      console.error("Error calculating network load:", error);
+      return 0;
+    }
+  };
+
+  // Fetch average uptime from all devices
+  const fetchAverageUptime = async () => {
+    try {
+      const { data, error } = await client.from("devices").select("uptime");
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) return 0;
+
+      // Calculate average uptime across all devices
+      const totalUptime = data.reduce(
+        (sum, device) => sum + (device.uptime || 0),
+        0
+      );
+      const averageUptime = totalUptime / data.length;
+
+      return averageUptime;
+    } catch (error) {
+      console.error("Error fetching average uptime:", error);
+      return 0;
+    }
+  };
 
   // Load any cached tasks from localStorage on initial load
   useEffect(() => {
@@ -72,29 +148,59 @@ export const GlobalStatistics = () => {
     }
   }, [allTasks]);
 
-  // Helper function to calculate and update stats - MOVED UP before loadTasks
-  const calculateAndUpdateStats = useCallback((tasks: AITask[]) => {
-    const computeTimes = tasks
-      .map((t) => t.compute_time || 0)
-      .filter((t) => t > 0);
-    const avgTime =
-      computeTimes.length > 0
-        ? computeTimes.reduce((sum, time) => sum + time, 0) /
-          computeTimes.length
-        : 0;
+  // Fetch database statistics
+  const fetchDatabaseStats = useCallback(async () => {
+    try {
+      const [totalUsersCount, activeNodesCount, averageUptimeSeconds] =
+        await Promise.all([
+          fetchTotalUsers(),
+          fetchActiveNodes(),
+          fetchAverageUptime(),
+        ]);
 
-    // Gather unique user and node IDs
-    const userIds = new Set(tasks.map((t) => t.user_id).filter(Boolean));
-    const nodeIds = new Set(tasks.map((t) => t.node_id).filter(Boolean));
+      const networkLoadPercentage = await calculateNetworkLoad(
+        activeNodesCount
+      );
 
-    setStats({
-      totalTasks: tasks.length,
-      avgComputeTime: avgTime,
-      totalUsers: userIds.size,
-      activeNodes: nodeIds.size,
-      networkLoad: Math.min(100, Math.floor(Math.random() * 30) + 40),
-    });
+      return {
+        totalUsers: totalUsersCount,
+        activeNodes: activeNodesCount,
+        avgComputeTime: averageUptimeSeconds,
+        networkLoad: networkLoadPercentage,
+      };
+    } catch (error) {
+      console.error("Error fetching database statistics:", error);
+      return null;
+    }
   }, []);
+
+  // Helper function to calculate and update stats
+  const calculateAndUpdateStats = useCallback(
+    async (tasks: AITask[]) => {
+      // Get database statistics
+      const dbStats = await fetchDatabaseStats();
+
+      const computeTimes = tasks
+        .map((t) => t.compute_time || 0)
+        .filter((t) => t > 0);
+
+      const avgTime =
+        dbStats?.avgComputeTime ||
+        (computeTimes.length > 0
+          ? computeTimes.reduce((sum, time) => sum + time, 0) /
+            computeTimes.length
+          : 0);
+
+      setStats({
+        totalTasks: tasks.length,
+        avgComputeTime: avgTime,
+        totalUsers: dbStats?.totalUsers || 0,
+        activeNodes: dbStats?.activeNodes || 0,
+        networkLoad: dbStats?.networkLoad || 0,
+      });
+    },
+    [fetchDatabaseStats]
+  );
 
   // Memoized function to load tasks to prevent unnecessary re-renders
   const loadTasks = useCallback(
@@ -153,13 +259,13 @@ export const GlobalStatistics = () => {
 
           // Calculate stats from the fetched tasks (not the Redux store)
           if (tasks.length > 0) {
-            calculateAndUpdateStats(tasks);
+            await calculateAndUpdateStats(tasks);
           } else if (availableTaskCount > 0) {
             // We found new tasks but didn't fetch them, try again
             const moreTasks = await dispatch(fetchPendingTasks()).unwrap();
 
             if (moreTasks.length > 0) {
-              calculateAndUpdateStats(moreTasks);
+              await calculateAndUpdateStats(moreTasks);
             }
           }
         } else {
@@ -169,7 +275,7 @@ export const GlobalStatistics = () => {
           }
 
           if (allTasks.length > 0) {
-            calculateAndUpdateStats(allTasks);
+            await calculateAndUpdateStats(allTasks);
           }
         }
 
@@ -357,10 +463,10 @@ export const GlobalStatistics = () => {
 
         <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center text-slate-400 mb-1">
-            <Clock className="w-4 h-4 mr-2" /> Avg. Compute Time
+            <Clock className="w-4 h-4 mr-2" /> Avg. Uptime
           </div>
           <div className="text-2xl font-bold">
-            {stats.avgComputeTime.toFixed(2)}s
+            {formatUptime(stats.avgComputeTime)}
           </div>
         </div>
 

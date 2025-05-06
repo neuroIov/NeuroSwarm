@@ -371,7 +371,7 @@ export const processTask = async (
             }
 
             // Process the task with fixed duration based on type
-            const processingTime = task.type === 'image' ? 30 : 15; // 30s for images, 15s for text
+            const processingTime = task.type === 'image' ? TASK_PROCESSING_CONFIG.PROCESSING_TIME.image : TASK_PROCESSING_CONFIG.PROCESSING_TIME.text; // 120s for images, 40s for text
 
             logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds`);
 
