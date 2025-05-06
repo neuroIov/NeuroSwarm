@@ -4,6 +4,7 @@ import { getSwarmSupabase } from '@/lib/supabase-client';
 import { AITask, TaskStatus } from './types';
 import { logger } from '../utils/logger';
 import { TASK_PROCESSING_CONFIG } from './config';
+import { recordTaskEarning, updateEarningsHistory } from './earningsService';
 
 // Simple cache to track current processing task
 const taskProcessingState = {
@@ -235,6 +236,34 @@ export const processTask = async (taskId, userId) => {
         }
 
         logger.log(`Successfully completed task ${taskId} in ${processingTime}s`);
+
+        // Get user wallet address for recording earnings
+        const { data: userProfile, error: userError } = await client
+            .from('user_profiles')
+            .select('wallet_address')
+            .eq('id', userId)
+            .single();
+
+        if (userError || !userProfile?.wallet_address) {
+            logger.error(`Error fetching user wallet address for earnings record:`, userError);
+        } else {
+            // Record earnings for the completed task
+            const earningResult = await recordTaskEarning(taskId, userProfile.wallet_address, task.type);
+
+            if (earningResult.success) {
+                logger.log(`Successfully recorded earnings for task ${taskId}`);
+
+                // Update earnings history
+                const historyResult = await updateEarningsHistory(userId, task.type);
+                if (historyResult.success) {
+                    logger.log(`Successfully updated earnings history for user ${userId}`);
+                } else {
+                    logger.error(`Failed to update earnings history for user ${userId}`);
+                }
+            } else {
+                logger.error(`Failed to record earnings for task ${taskId}: ${earningResult.message || 'Unknown error'}`);
+            }
+        }
 
         // Clear processing state
         taskProcessingState.isProcessing = false;
