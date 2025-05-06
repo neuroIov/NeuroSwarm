@@ -12,6 +12,8 @@ import {
   Monitor,
   Tablet,
   Smartphone,
+  Timer,
+  AlertTriangle,
 } from "lucide-react";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,9 @@ import {
   startNode,
   stopNode,
   updateNodeMetrics,
+  updateUptime,
+  syncUptime,
+  FREE_TIER_LIMIT_SECONDS,
 } from "@/store/slices/nodeSlice";
 import {
   fetchAndAssignTasks,
@@ -106,6 +111,10 @@ export const NodeControlPanel = () => {
     networkUsage,
     tasksCompleted,
     successRate,
+    startTime,
+    currentSessionUptime,
+    totalUptime,
+    remainingFreeTierTime,
   } = useSelector((state: RootState) => state.node);
 
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
@@ -369,6 +378,65 @@ export const NodeControlPanel = () => {
     }
   };
 
+  // Format time in seconds to human-readable format (hh:mm:ss)
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    return `${hours}h ${minutes}m ${secs}s`;
+  };
+
+  // Format remaining free tier time
+  const formatRemainingFreeTime = (seconds: number): string => {
+    if (seconds <= 0) return "0h 0m 0s";
+    return formatTime(seconds);
+  };
+
+  // Update uptime every second when node is active
+  useEffect(() => {
+    let uptimeInterval: NodeJS.Timeout | null = null;
+
+    if (isActive) {
+      // Update uptime immediately
+      dispatch(updateUptime());
+
+      // Then update every second
+      uptimeInterval = setInterval(() => {
+        dispatch(updateUptime());
+      }, 1000);
+
+      // Sync to database every 5 minutes
+      const syncInterval = setInterval(() => {
+        dispatch(syncUptime());
+      }, 5 * 60 * 1000);
+
+      return () => {
+        if (uptimeInterval) clearInterval(uptimeInterval);
+        if (syncInterval) clearInterval(syncInterval);
+      };
+    }
+
+    return () => {
+      if (uptimeInterval) clearInterval(uptimeInterval);
+    };
+  }, [isActive, dispatch]);
+
+  // Sync uptime to database when user closes the window/tab
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (isActive) {
+        dispatch(syncUptime());
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [isActive, dispatch]);
+
   const toggleNodeStatus = async () => {
     if (isActive) {
       // Stop the node
@@ -401,6 +469,17 @@ export const NodeControlPanel = () => {
       setIsStarting(true);
 
       try {
+        // Get current uptime from database
+        const { data: deviceData, error: fetchError } = await client
+          .from("devices")
+          .select("uptime")
+          .eq("id", selectedNodeId)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        const storedUptime = deviceData?.uptime || 0;
+
         // Update device status in database
         const { error: updateError } = await client
           .from("devices")
@@ -418,6 +497,7 @@ export const NodeControlPanel = () => {
               nodeName: selectedNode.name,
               nodeType: selectedNode.type,
               rewardTier: selectedNode.rewardTier,
+              storedUptime: storedUptime,
             })
           );
 
@@ -438,14 +518,29 @@ export const NodeControlPanel = () => {
           );
 
           setIsStarting(false);
-          toast.success(
-            `Node "${selectedNode.name}" started and ready for tasks`
-          );
+
+          // Show warning if approaching free tier limit
+          if (storedUptime > FREE_TIER_LIMIT_SECONDS * 0.75) {
+            toast.warning(
+              `You're approaching your free tier limit of 4 hours. Total uptime: ${formatTime(
+                storedUptime
+              )}`
+            );
+          } else {
+            toast.success(
+              `Node "${selectedNode.name}" started and ready for tasks`
+            );
+          }
 
           // Fetch and assign tasks to this node
           try {
             // This thunk action will fetch tasks and assign them to the node
-            dispatch(fetchAndAssignTasks(selectedNode.id));
+            dispatch(
+              fetchAndAssignTasks({
+                nodeId: selectedNode.id,
+                userId: userProfile?.id || "",
+              })
+            );
           } catch (error) {
             console.error("Error assigning tasks:", error);
             toast.error("Failed to assign tasks to node");
@@ -606,7 +701,16 @@ export const NodeControlPanel = () => {
             <div className="text-2xl font-bold">{tasksCompleted}</div>
           </div>
 
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg col-span-1 sm:col-span-2 lg:col-span-1">
+          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
+            <div className="flex items-center text-slate-400 mb-1">
+              <Timer className="w-4 h-4 mr-2" /> Total Uptime
+            </div>
+            <div className="text-2xl font-bold">
+              {formatTime(totalUptime + (isActive ? currentSessionUptime : 0))}
+            </div>
+          </div>
+
+          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
             <div className="flex items-center text-slate-400 mb-1">
               <Clock className="w-4 h-4 mr-2" /> Success Rate
             </div>

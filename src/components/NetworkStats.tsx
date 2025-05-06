@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Clock } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { getSwarmSupabase } from "@/lib/supabase-client";
+import { useSelector } from "react-redux";
+import { RootState } from "@/store";
+import { formatUptime } from "@/utils/timeUtils";
+import { useSession } from "@/hooks/useSession";
 
 type StatCardProps = {
   title: string;
@@ -9,6 +13,7 @@ type StatCardProps = {
   unit?: string;
   changePercentage?: number;
   info?: string;
+  isUptime?: boolean;
 };
 
 const StatCard = ({
@@ -17,6 +22,7 @@ const StatCard = ({
   unit,
   changePercentage,
   info,
+  isUptime = false,
 }: StatCardProps) => {
   return (
     <div className="stat-card">
@@ -28,7 +34,14 @@ const StatCard = ({
       </div>
       <div className="flex flex-col">
         <div className="text-2xl font-bold flex items-baseline gap-1">
-          {value}
+          {isUptime ? (
+            <div className="flex items-center">
+              <Clock className="w-4 h-4 mr-2" />
+              {value}
+            </div>
+          ) : (
+            value
+          )}
           {unit && <span className="text-sm text-slate-400">{unit}</span>}
         </div>
         {changePercentage !== undefined && (
@@ -44,12 +57,47 @@ const StatCard = ({
 
 export const NetworkStats = () => {
   const client = getSwarmSupabase();
+  const { userProfile } = useSession();
   const [totalNodes, setTotalNodes] = useState(0);
   const [totalActiveNodes, setTotalActiveNodes] = useState(0);
+  const [networkLoad, setNetworkLoad] = useState(0);
+  const [storedUptime, setStoredUptime] = useState(0);
+
+  // Get uptime from redux store for current session
+  const { isActive, currentSessionUptime, totalUptime, nodeId } = useSelector(
+    (state: RootState) => state.node
+  );
+
+  // Fetch uptime data from all user's devices from the database
+  const fetchUserDevicesUptime = async () => {
+    if (!userProfile?.id) return;
+
+    try {
+      const { data, error } = await client
+        .from("devices")
+        .select("uptime")
+        .eq("owner", userProfile.id);
+
+      if (error) throw error;
+
+      // Calculate total uptime across all user's devices
+      const totalUserUptime = data.reduce(
+        (sum, device) => sum + (device.uptime || 0),
+        0
+      );
+      setStoredUptime(totalUserUptime);
+    } catch (error) {
+      console.error("Error fetching user devices uptime:", error);
+    }
+  };
+
+  // Calculate total uptime including current session if active
+  const calculatedTotalUptime =
+    storedUptime + (isActive ? currentSessionUptime : 0);
 
   const getTotalNodes = async () => {
     try {
-      const { data, error } = await client.from("devices").select("*");
+      const { data, error } = await client.from("devices").select("id");
       if (error) throw error;
       setTotalNodes(data?.length || 0);
       console.log("Total nodes updated:", data?.length || 0);
@@ -62,21 +110,43 @@ export const NetworkStats = () => {
     try {
       const { data, error } = await client
         .from("devices")
-        .select("*")
+        .select("id")
         .eq("status", "busy");
 
       if (error) throw error;
       setTotalActiveNodes(data?.length || 0);
       console.log("Active nodes updated:", data?.length || 0);
+
+      // Calculate network load based on active nodes / total nodes
+      if (totalNodes > 0) {
+        const loadPercentage = Math.round(
+          ((data?.length || 0) / totalNodes) * 100
+        );
+        setNetworkLoad(loadPercentage);
+      }
     } catch (error) {
       console.error("Error getting total active nodes:", error);
     }
   };
 
+  // Fetch initial data
   useEffect(() => {
     getTotalNodes();
     getTotalActiveNodes();
+    fetchUserDevicesUptime();
+  }, [userProfile?.id]);
 
+  // Refresh uptime from database periodically
+  useEffect(() => {
+    const uptimeRefreshInterval = setInterval(() => {
+      fetchUserDevicesUptime();
+    }, 60000); // Every minute
+
+    return () => clearInterval(uptimeRefreshInterval);
+  }, [userProfile?.id]);
+
+  // Listen for realtime updates
+  useEffect(() => {
     const devicesSubscription = client
       .channel("devices-status-changes")
       .on(
@@ -91,8 +161,11 @@ export const NetworkStats = () => {
 
           if (payload.eventType === "UPDATE") {
             console.log("Full update payload:", payload);
-            const newStatus = payload.new.status;
-            const oldStatus = payload.old.status;
+
+            // If uptime was updated, refresh the uptime data
+            if (payload.new.uptime !== payload.old.uptime) {
+              fetchUserDevicesUptime();
+            }
 
             getTotalActiveNodes();
           } else if (
@@ -101,6 +174,7 @@ export const NetworkStats = () => {
           ) {
             getTotalNodes();
             getTotalActiveNodes();
+            fetchUserDevicesUptime();
           }
         }
       )
@@ -112,7 +186,7 @@ export const NetworkStats = () => {
       console.log("Cleaning up subscriptions");
       devicesSubscription.unsubscribe();
     };
-  }, [client]);
+  }, [client, totalNodes]);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -132,16 +206,17 @@ export const NetworkStats = () => {
       />
       <StatCard
         title="Network Load"
-        value={60}
+        value={networkLoad}
         unit="%"
         changePercentage={2.0}
         info="Current utilization of the network's total processing capacity"
       />
       <StatCard
         title="Uptime"
-        value="9h 56m"
+        value={formatUptime(calculatedTotalUptime)}
         changePercentage={5.0}
-        info="How long your nodes have been running in this session"
+        info="Total accumulated uptime across all your nodes"
+        isUptime={true}
       />
     </div>
   );
