@@ -12,8 +12,6 @@ import {
   Monitor,
   Tablet,
   Smartphone,
-  Timer,
-  AlertTriangle,
 } from "lucide-react";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { Button } from "@/components/ui/button";
@@ -47,9 +45,6 @@ import {
   startNode,
   stopNode,
   updateNodeMetrics,
-  updateUptime,
-  syncUptime,
-  FREE_TIER_LIMIT_SECONDS,
 } from "@/store/slices/nodeSlice";
 import {
   fetchAndAssignTasks,
@@ -111,10 +106,6 @@ export const NodeControlPanel = () => {
     networkUsage,
     tasksCompleted,
     successRate,
-    startTime,
-    currentSessionUptime,
-    totalUptime,
-    remainingFreeTierTime,
   } = useSelector((state: RootState) => state.node);
 
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
@@ -378,65 +369,6 @@ export const NodeControlPanel = () => {
     }
   };
 
-  // Format time in seconds to human-readable format (hh:mm:ss)
-  const formatTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-
-    return `${hours}h ${minutes}m ${secs}s`;
-  };
-
-  // Format remaining free tier time
-  const formatRemainingFreeTime = (seconds: number): string => {
-    if (seconds <= 0) return "0h 0m 0s";
-    return formatTime(seconds);
-  };
-
-  // Update uptime every second when node is active
-  useEffect(() => {
-    let uptimeInterval: NodeJS.Timeout | null = null;
-
-    if (isActive) {
-      // Update uptime immediately
-      dispatch(updateUptime());
-
-      // Then update every second
-      uptimeInterval = setInterval(() => {
-        dispatch(updateUptime());
-      }, 1000);
-
-      // Sync to database every 5 minutes
-      const syncInterval = setInterval(() => {
-        dispatch(syncUptime());
-      }, 5 * 60 * 1000);
-
-      return () => {
-        if (uptimeInterval) clearInterval(uptimeInterval);
-        if (syncInterval) clearInterval(syncInterval);
-      };
-    }
-
-    return () => {
-      if (uptimeInterval) clearInterval(uptimeInterval);
-    };
-  }, [isActive, dispatch]);
-
-  // Sync uptime to database when user closes the window/tab
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (isActive) {
-        dispatch(syncUptime());
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [isActive, dispatch]);
-
   const toggleNodeStatus = async () => {
     if (isActive) {
       // Stop the node
@@ -469,17 +401,6 @@ export const NodeControlPanel = () => {
       setIsStarting(true);
 
       try {
-        // Get current uptime from database
-        const { data: deviceData, error: fetchError } = await client
-          .from("devices")
-          .select("uptime")
-          .eq("id", selectedNodeId)
-          .single();
-
-        if (fetchError) throw fetchError;
-
-        const storedUptime = deviceData?.uptime || 0;
-
         // Update device status in database
         const { error: updateError } = await client
           .from("devices")
@@ -497,7 +418,6 @@ export const NodeControlPanel = () => {
               nodeName: selectedNode.name,
               nodeType: selectedNode.type,
               rewardTier: selectedNode.rewardTier,
-              storedUptime: storedUptime,
             })
           );
 
@@ -518,29 +438,14 @@ export const NodeControlPanel = () => {
           );
 
           setIsStarting(false);
-
-          // Show warning if approaching free tier limit
-          if (storedUptime > FREE_TIER_LIMIT_SECONDS * 0.75) {
-            toast.warning(
-              `You're approaching your free tier limit of 4 hours. Total uptime: ${formatTime(
-                storedUptime
-              )}`
-            );
-          } else {
-            toast.success(
-              `Node "${selectedNode.name}" started and ready for tasks`
-            );
-          }
+          toast.success(
+            `Node "${selectedNode.name}" started and ready for tasks`
+          );
 
           // Fetch and assign tasks to this node
           try {
             // This thunk action will fetch tasks and assign them to the node
-            dispatch(
-              fetchAndAssignTasks({
-                nodeId: selectedNode.id,
-                userId: userProfile?.id || "",
-              })
-            );
+            dispatch(fetchAndAssignTasks(selectedNode.id));
           } catch (error) {
             console.error("Error assigning tasks:", error);
             toast.error("Failed to assign tasks to node");
@@ -572,201 +477,175 @@ export const NodeControlPanel = () => {
   };
 
   return (
-    <div className="stat-card">
-      <div className="flex flex-col space-y-4">
-        <div className="flex justify-between items-center mb-2">
+    <div className="p-6 rounded-3xl" style={{ backgroundColor: "#0A1A2F" }}>
+      <div className="flex flex-col">
+        <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold">Node Control Panel</h2>
+            <h2 className="text-lg font-medium text-white/90">
+              Node Control Panel
+            </h2>
             <InfoTooltip content="Manage your computing nodes, start or stop them, and view performance metrics" />
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={startScan}
-              disabled={isScanning}
-              className="text-swarm-accent-purple border-swarm-accent-purple/50 hover:border-swarm-accent-purple/80 hover:bg-swarm-accent-purple/20"
-            >
-              {isScanning ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  Scanning...
-                </>
-              ) : (
-                <>
-                  <Scan className="w-4 h-4 mr-1" />
-                  Scan Device
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-4 sm:items-center mb-2">
-          <div className="flex-1">
-            <Select value={selectedNodeId} onValueChange={handleNodeSelect}>
-              <SelectTrigger className="w-full bg-slate-800/50">
-                <SelectValue placeholder="Select a node" />
-              </SelectTrigger>
-              <SelectContent>
-                {nodes.map((node) => (
-                  <SelectItem key={node.id} value={node.id}>
-                    <div className="flex items-center gap-2">
-                      {getDeviceIcon(node.type)}
-                      <span>{node.name}</span>
-                      {node.status === "running" && (
-                        <span className="ml-2 text-xs bg-green-900/50 text-green-300 px-2 py-0.5 rounded-full">
-                          Active
-                        </span>
-                      )}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <Button
-            variant={isActive ? "destructive" : "default"}
-            disabled={isStarting || !selectedNodeId}
-            onClick={toggleNodeStatus}
-            className={!isActive ? "bg-green-600 hover:bg-green-700" : ""}
+            variant="outline"
+            size="sm"
+            onClick={startScan}
+            disabled={isScanning}
+            className="rounded-full bg-[#112544] text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
           >
-            {isStarting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Starting...
-              </>
-            ) : (
-              <>
-                <Power className="w-4 h-4 mr-2" />
-                {isActive ? "Stop Node" : "Start Node"}
-              </>
-            )}
+            <Scan className="w-4 h-4 mr-2" />
+            Scan Device
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <Cpu className="w-4 h-4 mr-2" /> CPU Usage
-            </div>
-            <div className="text-2xl font-bold">{cpuUsage.toFixed(1)}%</div>
-            {isActive && (
-              <div className="w-full bg-slate-700/50 h-1.5 mt-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-green-500 to-blue-500 h-1.5 rounded-full"
-                  style={{ width: `${cpuUsage}%` }}
-                ></div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <HardDrive className="w-4 h-4 mr-2" /> Memory
-            </div>
-            <div className="text-2xl font-bold">{memoryUsage.toFixed(1)}%</div>
-            {isActive && (
-              <div className="w-full bg-slate-700/50 h-1.5 mt-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full"
-                  style={{ width: `${memoryUsage}%` }}
-                ></div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <Activity className="w-4 h-4 mr-2" /> Network
-            </div>
-            <div className="text-2xl font-bold">
-              {networkUsage.toFixed(1)} MB/s
-            </div>
-            {isActive && (
-              <div className="w-full bg-slate-700/50 h-1.5 mt-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-purple-500 to-pink-500 h-1.5 rounded-full"
-                  style={{ width: `${(networkUsage / 10) * 100}%` }}
-                ></div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <Clock className="w-4 h-4 mr-2" /> Tasks Completed
-            </div>
-            <div className="text-2xl font-bold">{tasksCompleted}</div>
-          </div>
-
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <Timer className="w-4 h-4 mr-2" /> Total Uptime
-            </div>
-            <div className="text-2xl font-bold">
-              {formatTime(totalUptime + (isActive ? currentSessionUptime : 0))}
-            </div>
-          </div>
-
-          <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <Clock className="w-4 h-4 mr-2" /> Success Rate
-            </div>
-            <div className="text-2xl font-bold">{successRate.toFixed(1)}%</div>
-            {isActive && tasksCompleted > 0 && (
-              <div className="w-full bg-slate-700/50 h-1.5 mt-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-green-500 to-emerald-500 h-1.5 rounded-full"
-                  style={{ width: `${successRate}%` }}
-                ></div>
-              </div>
-            )}
-          </div>
-
-          <div className="col-span-1 sm:col-span-2 lg:col-span-3 p-3 bg-slate-800/30 rounded-lg">
-            <div className="flex items-center text-slate-400 mb-1">
-              <div className="flex-1">Reward Tier</div>
-              <div className="flex items-center text-xs bg-purple-900/50 text-purple-300 py-1 px-2 rounded-full">
-                {rewardTier ? rewardTier.toUpperCase() : "NONE"}
-              </div>
-            </div>
-            <div className="mt-1 text-slate-300 text-sm">
-              {rewardTier === "webgpu" &&
-                "This device supports WebGPU acceleration, earning maximum NLOV token rewards."}
-              {rewardTier === "wasm" &&
-                "This device uses WASM processing, earning high NLOV token rewards."}
-              {rewardTier === "webgl" &&
-                "This device uses WebGL processing, earning medium NLOV token rewards."}
-              {rewardTier === "cpu" &&
-                "This device uses CPU processing, earning basic NLOV token rewards."}
-            </div>
-
-            {selectedNode && selectedNode.cpuCores && (
-              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                <div className="text-slate-400">
-                  CPU Cores:{" "}
-                  <span className="text-white">{selectedNode.cpuCores}</span>
-                </div>
-                <div className="text-slate-400">
-                  Memory:{" "}
-                  <span className="text-white">{selectedNode.memory}</span> GB
-                </div>
-                {selectedNode.gpuInfo && (
-                  <div className="col-span-2 text-slate-400">
-                    GPU:{" "}
-                    <span className="text-white">{selectedNode.gpuInfo}</span>
+        <div className="flex gap-4 items-center mb-6">
+          <Select value={selectedNodeId} onValueChange={handleNodeSelect}>
+            <SelectTrigger className="flex-1 bg-[#112544] border-0 rounded-full text-white/80">
+              <SelectValue placeholder="Select Node" />
+            </SelectTrigger>
+            <SelectContent className="bg-[#0A1A2F] border-[#1E293B]">
+              {nodes.map((node) => (
+                <SelectItem
+                  key={node.id}
+                  value={node.id}
+                  className="text-white/80"
+                >
+                  <div className="flex items-center gap-2">
+                    {getDeviceIcon(node.type)}
+                    <span>{node.name}</span>
                   </div>
-                )}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button
+            variant="default"
+            disabled={isStarting || !selectedNodeId}
+            onClick={toggleNodeStatus}
+            className="rounded-full bg-green-600 hover:bg-green-700 text-white"
+          >
+            {isStarting ? "Starting..." : "Start Node"}
+            {!isStarting && <span className="ml-2">+</span>}
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="p-4 rounded-xl bg-[#112544] flex flex-col">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <img src="/icons/cpu.svg" alt="CPU" className="w-4 h-4" />
               </div>
-            )}
+              <span className="text-white/60 text-sm">CPU Usage</span>
+            </div>
+            <div className="text-xl font-medium text-white">
+              {cpuUsage.toFixed(2)}%
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-[#112544] flex flex-col">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <img src="/icons/memory.svg" alt="Memory" className="w-4 h-4" />
+              </div>
+              <span className="text-white/60 text-sm">Memory</span>
+            </div>
+            <div className="text-xl font-medium text-white">
+              {memoryUsage.toFixed(2)}%
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-[#112544] flex flex-col">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <img
+                  src="/icons/network.svg"
+                  alt="Network"
+                  className="w-4 h-4"
+                />
+              </div>
+              <span className="text-white/60 text-sm">Network</span>
+            </div>
+            <div className="text-xl font-medium text-white">
+              {networkUsage.toFixed(2)} MB/s
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-[#112544] flex flex-col">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                <img
+                  src="/icons/success.svg"
+                  alt="Success"
+                  className="w-4 h-4"
+                />
+              </div>
+              <span className="text-white/60 text-sm">Success Rate</span>
+            </div>
+            <div className="text-xl font-medium text-white">
+              {successRate.toFixed(2)}%
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#112544] mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-white/60">Reward Tier</span>
+            <span className="px-3 py-1 bg-purple-500/20 text-purple-400 text-xs font-medium rounded-full uppercase">
+              {rewardTier}
+            </span>
+          </div>
+          <p className="text-sm text-white/70">
+            {rewardTier === "webgpu" &&
+              "This device supports WebGPU acceleration, earning maximum NLOV token rewards."}
+            {rewardTier === "wasm" &&
+              "This device uses WASM processing, earning high NLOV token rewards."}
+            {rewardTier === "webgl" &&
+              "This device uses WebGL processing, earning medium NLOV token rewards."}
+            {rewardTier === "cpu" &&
+              "This device uses CPU processing, earning basic NLOV token rewards."}
+          </p>
+          {selectedNode && selectedNode.cpuCores && (
+            <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
+              <div className="text-white/60">
+                CPU Cores:{" "}
+                <span className="text-white">{selectedNode.cpuCores}</span>
+              </div>
+              <div className="text-white/60">
+                Memory:{" "}
+                <span className="text-white">{selectedNode.memory} GB</span>
+              </div>
+              {selectedNode.gpuInfo && (
+                <div className="col-span-2 text-white/60">
+                  GPU:{" "}
+                  <span className="text-white">{selectedNode.gpuInfo}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 rounded-xl bg-[#112544] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center">
+              <img src="/icons/coin.svg" alt="Coin" className="w-5 h-5" />
+            </div>
+            <span className="text-white/60">Total Earnings</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[32px] font-medium text-blue-400">
+              27.053
+            </span>
+            <span className="text-white/40 text-sm">NLOV</span>
           </div>
         </div>
       </div>
 
       <Dialog open={showScanDialog} onOpenChange={setShowScanDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+        >
           <DialogHeader>
             <DialogTitle>Scanning Device Hardware</DialogTitle>
             <DialogDescription>
@@ -796,7 +675,10 @@ export const NodeControlPanel = () => {
         open={showDeviceTypeDialog}
         onOpenChange={setShowDeviceTypeDialog}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+        >
           <DialogHeader>
             <DialogTitle>
               {deviceGroup === "desktop_laptop"
@@ -823,17 +705,52 @@ export const NodeControlPanel = () => {
                   setCustomSpecs({});
                 }}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select device type" />
+                <SelectTrigger
+                  style={{
+                    backgroundColor: "rgba(15, 23, 42, 0.3)",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(15, 23, 42, 0.3)",
+                  }}
+                >
+                  <SelectValue
+                    placeholder="Select device type"
+                    style={{
+                      color: "rgba(255, 255, 255, 0.7)",
+                      fontSize: "14px",
+                    }}
+                  />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  style={{
+                    backgroundColor: "rgba(9, 12, 24, 1)",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                    border: "1px solid rgba(9, 12, 24, 1)",
+                  }}
+                >
                   {getDeviceTypesForGroup(deviceGroup).map((type) => (
-                    <SelectItem key={type} value={type}>
+                    <SelectItem
+                      key={type}
+                      value={type}
+                      style={{
+                        backgroundColor: "rgba(9, 12, 24, 1)",
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        border: "1px solid rgba(9, 12, 24, 1)",
+                      }}
+                    >
                       <div className="flex items-center">
                         {getDeviceIcon(
                           type as "desktop" | "laptop" | "tablet" | "mobile"
                         )}
-                        <span className="ml-2">
+                        <span
+                          className="ml-2"
+                          style={{
+                            color: "rgba(255, 255, 255, 0.7)",
+                            fontSize: "14px",
+                          }}
+                        >
                           {type.charAt(0).toUpperCase() + type.slice(1)}
                         </span>
                       </div>
@@ -850,13 +767,21 @@ export const NodeControlPanel = () => {
                     setSelectedModel("");
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger
+                    style={{ backgroundColor: "rgba(15, 23, 42, 0.3)" }}
+                  >
                     <SelectValue placeholder="Select brand" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent
+                    style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+                  >
                     {getDeviceBrands(deviceGroup, selectedDeviceType).map(
                       (brand) => (
-                        <SelectItem key={brand} value={brand}>
+                        <SelectItem
+                          key={brand}
+                          value={brand}
+                          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+                        >
                           {brand}
                         </SelectItem>
                       )
@@ -867,16 +792,24 @@ export const NodeControlPanel = () => {
 
               {selectedBrand && (
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger>
+                  <SelectTrigger
+                    style={{ backgroundColor: "rgba(15, 23, 42, 0.3)" }}
+                  >
                     <SelectValue placeholder="Select model" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent
+                    style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+                  >
                     {getDeviceModels(
                       deviceGroup,
                       selectedDeviceType,
                       selectedBrand
                     ).map((model) => (
-                      <SelectItem key={model} value={model}>
+                      <SelectItem
+                        key={model}
+                        value={model}
+                        style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+                      >
                         {model}
                       </SelectItem>
                     ))}
@@ -896,6 +829,7 @@ export const NodeControlPanel = () => {
                       </label>
                       <Input
                         id="cpu"
+                        style={{ backgroundColor: "rgba(15, 23, 42, 0.3)" }}
                         placeholder="e.g. Intel Core i7-12700K"
                         value={customSpecs.cpu || ""}
                         onChange={(e) =>
@@ -915,6 +849,7 @@ export const NodeControlPanel = () => {
                       </label>
                       <Input
                         id="gpu"
+                        style={{ backgroundColor: "rgba(15, 23, 42, 0.3)" }}
                         placeholder="e.g. NVIDIA RTX 4070"
                         value={customSpecs.gpu || ""}
                         onChange={(e) =>
