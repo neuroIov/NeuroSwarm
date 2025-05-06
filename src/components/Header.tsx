@@ -17,17 +17,17 @@ export const Header = ({ className }: HeaderProps) => {
   return (
     <header
       className={cn(
-        "flex container justify-between items-center h-[60px] px-4 md:pl-6 md:pr-1 rounded-full",
+        "flex  justify-between items-center h-[60px] rounded-full border bordder-[#064C94] hover:shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[#0874E3]",
         className
       )}
       style={{
         background: "linear-gradient(270deg, #0874E3 7.24%, #010405 57.23%)",
-        width: "100%",
+        width: "90%",
         maxWidth: "100%",
-        margin: "12px auto",
+        margin: "8px auto",
       }}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 ml-8 mr-2">
         <h1
           className="text-lg md:text-xl font-medium"
           style={{

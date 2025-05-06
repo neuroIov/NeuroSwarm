@@ -70,8 +70,8 @@ const AppContent = () => {
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="*" element={<NotFound />} />
+          <Route path="/*" element={<Index />} />
+          <Route path="/notfound" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </>

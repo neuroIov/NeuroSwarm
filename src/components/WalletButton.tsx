@@ -77,43 +77,40 @@ export const WalletButton = () => {
     : "Connected";
 
   return (
-    <Button
-      variant={walletConnected ? "outline" : "default"}
-      onClick={handleWalletAction}
-      disabled={isLoading}
-      className={`
-        flex items-center gap-2 font-medium
-        ${
-          walletConnected
-            ? "bg-green-900/20 text-green-400 hover:bg-green-900/30 border-green-800"
-            : "bg-swarm-accent-purple text-white hover:bg-swarm-accent-purple/90"
-        }
+    <div className="bg-[#040404] rounded-full p-1.5 ">
+      <Button
+        variant="outline"
+        onClick={handleWalletAction}
+        disabled={isLoading}
+        className={`
+        flex items-center gap-2 font-medium rounded-full 
+        bg-gradient-to-r from-[#0361DA] to-[#20A5EF] text-white
+        border-1 border-[#20A5EF] hover:opacity-90 transition-opacity
+        px-6 py-3 h-auto
       `}
-      title={
-        walletConnected && userProfile
-          ? `Reputation: ${userProfile.reputation_score}/100 | Tasks: ${userProfile.total_tasks_completed} | Earnings: ${userProfile.total_earnings}`
-          : "Connect your wallet"
-      }
-    >
-      {isLoading ? (
-        <>
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span>Loading...</span>
-        </>
-      ) : walletConnected ? (
-        <>
-          <CheckCircle className="w-4 h-4" />
-          <span className="hidden sm:inline">{displayAddress}</span>
-          <span className="sm:hidden">Connected</span>
-        </>
-      ) : (
-        <>
-          <Wallet className="w-4 h-4" />
-          <span>
-            {session.userId === "guest" ? "Connect Wallet" : "Connect"}
-          </span>
-        </>
-      )}
-    </Button>
+        title={
+          walletConnected && userProfile
+            ? `Reputation: ${userProfile.reputation_score}/100 | Tasks: ${userProfile.total_tasks_completed} | Earnings: ${userProfile.total_earnings}`
+            : "Connect your wallet"
+        }
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>Loading...</span>
+          </>
+        ) : walletConnected ? (
+          <>
+            <CheckCircle className="w-5 h-5" />
+            <span>{displayAddress}</span>
+          </>
+        ) : (
+          <>
+            <Wallet className="w-5 h-5" />
+            <span>Connect Wallet</span>
+          </>
+        )}
+      </Button>
+    </div>
   );
 };

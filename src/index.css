@@ -69,11 +69,11 @@
   }
 
   .stat-card {
-    @apply bg-swarm-card-bg border border-slate-700/50 rounded-lg p-5 transition-all duration-200;
+    @apply bg-[#090C18] border border-[##20A5EF] rounded-lg p-5 transition-all duration-200;
   }
 
   .stat-card:hover {
-    @apply border-slate-600/50 shadow-lg shadow-black/20;
+    @apply border-[#1C3F7D] shadow-lg shadow-black/20;
   }
 
   /* Custom scrollbar styles */

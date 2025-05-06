@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { NetworkStats } from "@/components/NetworkStats";
 import { NodeControlPanel } from "@/components/NodeControlPanel";
@@ -9,51 +10,80 @@ import { GlobalStatistics } from "@/components/GlobalStatistics";
 import { HowItWorks } from "@/components/HowItWorks";
 import { Sidebar } from "@/components/Sidebar";
 
-const Index = () => {
-  const [activeSection, setActiveSection] = useState("dashboard");
+// Dashboard component for the main dashboard view
+const Dashboard = () => (
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="space-y-6">
+      <NetworkStats />
+      <NodeControlPanel />
+    </div>
+    <div className="space-y-6">
+      <TaskPipeline />
+    </div>
+  </div>
+);
 
-  const renderContent = () => {
-    switch (activeSection) {
-      case "dashboard":
-        return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-6">
-              <NetworkStats />
-              <NodeControlPanel />
-            </div>
-            <div className="space-y-6">
-              <TaskPipeline />
-            </div>
-          </div>
-        );
-      case "earnings":
-        return <EarningsDashboard />;
-      case "referral":
-        return <ReferralProgram />;
-      case "global-stats":
-        return <GlobalStatistics />;
-      default:
-        return null;
-    }
+const Index = () => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const location = useLocation();
+
+  // Get the active section from the current path
+  const getActiveSection = () => {
+    const path = location.pathname.split("/")[1];
+    return path || "dashboard";
   };
 
+  useEffect(() => {
+    // Add a slight delay to trigger load animation
+    const timer = setTimeout(() => {
+      setIsLoaded(true);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-swarm-darker-blue flex">
-      {/* Sidebar - full height, fixed */}
+    <div className="min-h-screen flex relative">
+      {/* Radial background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div
+          className="absolute top-0 left-0 w-full h-full"
+          style={{
+            background:
+              "linear-gradient(180deg, #000 0%, #021020 30%, #051a36 60%, #000 100%)",
+            opacity: 1,
+          }}
+        />
+
+        {/* Blue glow elements - adjusted */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full max-w-6xl max-h-6xl rounded-full bg-blue-900/8 blur-3xl" />
+        <div className="absolute top-0 left-0 w-2/3 h-2/5 bg-blue-900/5 blur-3xl" />
+        <div className="absolute bottom-0 right-0 w-3/5 h-1/3 rounded-full bg-blue-800/7 blur-2xl" />
+      </div>
+
+      {/* Main content with sidebar */}
       <Sidebar
-        activeSection={activeSection}
-        onSectionChange={setActiveSection}
-        className="fixed left-0 top-0 h-screen"
+        activeSection={getActiveSection()}
+        onSectionChange={() => {}}
+        className="fixed left-0 top-0 h-screen z-10"
       />
 
-      {/* Main content container with header and scrollable content */}
-      <div className="flex-1 ml-64 flex flex-col">
-        {/* Header at the top of main content */}
-        <Header className="sticky top-0 z-50" />
+      <div className="flex-1 ml-64 flex flex-col relative z-10">
+        <Header className="sticky top-8 z-20" />
 
-        {/* Scrollable main content */}
-        <main className="p-6 flex-1 overflow-auto">
-          <div className="max-w-7xl mx-auto">{renderContent()}</div>
+        <main className="p-6 flex-1 overflow-auto mt-8">
+          <div
+            className={`max-w-7xl mx-auto transition-opacity duration-500 ${
+              isLoaded ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/earnings" element={<EarningsDashboard />} />
+              <Route path="/referral" element={<ReferralProgram />} />
+              <Route path="/global-stats" element={<GlobalStatistics />} />
+            </Routes>
+          </div>
         </main>
 
         <HowItWorks />
