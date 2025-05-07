@@ -71,6 +71,36 @@ export const fetchOrCreateUserProfile = createAsyncThunk(
   }
 );
 
+// Async thunk to update username
+export const updateUsername = createAsyncThunk(
+  'session/updateUsername',
+  async ({ userId, username }: { userId: string; username: string }, { rejectWithValue }) => {
+    try {
+      const supabase = getSwarmSupabase();
+
+      console.log(`Updating username for user ${userId} to "${username}"`);
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update({ user_name: username })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error(`Error updating username: ${error.message}`);
+        throw new Error(error.message);
+      }
+
+      console.log('Username updated successfully:', data);
+      return data;
+    } catch (error) {
+      console.error('Error in updateUsername:', error);
+      return rejectWithValue((error as Error).message);
+    }
+  }
+);
+
 const sessionSlice = createSlice({
   name: 'session',
   initialState,
@@ -128,6 +158,23 @@ const sessionSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
         console.error(`Failed to load user profile: ${action.payload}`);
+      })
+
+      // Handle updateUsername
+      .addCase(updateUsername.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        console.log('Updating username...');
+      })
+      .addCase(updateUsername.fulfilled, (state, action) => {
+        state.loading = false;
+        state.userProfile = action.payload;
+        console.log('Username updated successfully');
+      })
+      .addCase(updateUsername.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+        console.error(`Failed to update username: ${action.payload}`);
       });
   },
 });
