@@ -14,6 +14,7 @@ import { RootState, useAppDispatch } from "@/store";
 import { fetchPendingTasks } from "@/store/slices/taskSlice";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { formatUptime } from "@/utils/timeUtils";
+import { updateUptime } from "@/store/slices/nodeSlice";
 
 // Default refresh interval in milliseconds
 const AUTO_REFRESH_INTERVAL = 120000; // Increased to 120 seconds (2 minutes)
@@ -29,10 +30,13 @@ export const GlobalStatistics = () => {
   // Cache for storing tasks to reduce duplicate requests
   const [taskCache, setTaskCache] = useState<AITask[]>([]);
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   // Get tasks from Redux store
   const { allTasks } = useSelector((state: RootState) => state.tasks);
-  const { tasksCompleted } = useSelector((state: RootState) => state.node);
+  const { tasksCompleted, isActive } = useSelector(
+    (state: RootState) => state.node
+  );
 
   const [stats, setStats] = useState({
     totalTasks: 0,
@@ -490,6 +494,40 @@ export const GlobalStatistics = () => {
     [stats]
   );
 
+  // Update real-time stats while node is active
+  useEffect(() => {
+    let uptimeInterval: NodeJS.Timeout | null = null;
+
+    if (isActive) {
+      // Force uptime updates and component re-render every second
+      uptimeInterval = setInterval(() => {
+        dispatch(updateUptime());
+        // Trigger re-render for uptime display
+        setForceUpdate((prev) => prev + 1);
+
+        // Only update database stats occasionally to reduce load
+        if (forceUpdate % 30 === 0) {
+          // Every 30 seconds
+          fetchDatabaseStats().then((dbStats) => {
+            if (dbStats) {
+              setStats((prev) => ({
+                ...prev,
+                totalUsers: dbStats.totalUsers,
+                activeNodes: dbStats.activeNodes,
+                avgComputeTime: dbStats.avgComputeTime,
+                networkLoad: dbStats.networkLoad,
+              }));
+            }
+          });
+        }
+      }, 1000);
+    }
+
+    return () => {
+      if (uptimeInterval) clearInterval(uptimeInterval);
+    };
+  }, [isActive, dispatch, forceUpdate, fetchDatabaseStats]);
+
   return (
     <div className="stat-card">
       <div className="flex justify-between items-center mb-4">
@@ -500,47 +538,190 @@ export const GlobalStatistics = () => {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-sm text-slate-400">Auto-Refresh</span>
-            <Switch checked={autoRefresh} onCheckedChange={toggleAutoRefresh} />
+            <Switch
+              checked={autoRefresh}
+              onCheckedChange={toggleAutoRefresh}
+              className="border border-[#0361da]  data-[state=checked]:bg-slate-700 data-[state=checked]:border-[#0361da] data-[state=checked]:ring-slate-700 data-[state=checked]:ring-offset-slate-700 "
+            />
           </div>
           <Button
             variant="outline"
             size="sm"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="bg-slate-700/50 border-slate-600"
+            className="gradient-button border-0 h-8 rounded-full"
           >
             <RefreshCw
               className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`}
             />
-            {isRefreshing ? "Refreshing..." : "Refresh"}
+            Refresh
           </Button>
         </div>
       </div>
 
-      {statsCards}
+      {/* Global Map Visualization */}
+      <div className="global-map w-full h-[330px] mb-6 border border-blue-900/30">
+        <div className="absolute inset-0 bg-grid opacity-[0.15] z-0"></div>
+        <img
+          src="/images/map.png"
+          alt="Global Network Map"
+          className="absolute inset-0 w-full h-full object-contain z-10"
+          onError={(e) => {
+            e.currentTarget.src =
+              "https://raw.githubusercontent.com/Neurolov/NeuroSwarm/main/public/images/map.png";
+          }}
+        />
+        <div className="absolute inset-0 z-30 pointer-events-none cursor-pointer"></div>
+        {/* Hardcoded Node Indicators (yellow dots) - Fixed positions so you can adjust them */}
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "20%", left: "30%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "30%", left: "58%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "40%", left: "63%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "53%", left: "59%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "65%", left: "50%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "70%", left: "40%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "20%", left: "65%" }}
+        />
+      </div>
 
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-lg font-medium">Recent Global Tasks</h3>
-          <div className="text-sm text-blue-400">
-            <span className="mr-1">•</span> Network Load:{" "}
-            {stats.networkLoad.toFixed(1)}%
+      {/* Stats Cards Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="flex flex-col p-4 earning-cards rounded-lg">
+          <div className="flex gap-3 items-center">
+            <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+              <img
+                src="/images/total_tasks.png"
+                alt="Tasks"
+                className="w-8 h-8 relative z-10"
+                onError={(e) => {
+                  e.currentTarget.src =
+                    "https://raw.githubusercontent.com/Neurolov/NeuroSwarm/main/public/images/total_tasks.png";
+                }}
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm text-[#515194]">Total Tasks</span>
+              <span className="text-xl font-bold text-white">
+                {stats.totalTasks}
+              </span>
+            </div>
           </div>
         </div>
 
+        <div className="flex flex-col p-4 earning-cards rounded-lg">
+          <div className="flex gap-3 items-center">
+            <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+              <img
+                src="/images/computing.png"
+                alt="Processing Time"
+                className="w-8 h-8 relative z-10"
+                onError={(e) => {
+                  e.currentTarget.src =
+                    "https://raw.githubusercontent.com/Neurolov/NeuroSwarm/main/public/images/computing.png";
+                }}
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm text-[#515194]">Processing Time</span>
+              <span className="text-xl font-bold text-white">
+                {(() => {
+                  const seconds = stats.avgComputeTime || 0;
+                  if (seconds < 1) {
+                    return `${(seconds * 1000).toFixed(0)}ms`;
+                  }
+                  if (seconds < 60) {
+                    return `${seconds.toFixed(1)}s`;
+                  }
+                  if (seconds < 3600) {
+                    const minutes = Math.floor(seconds / 60);
+                    return `${minutes}m`;
+                  }
+                  const hours = Math.floor(seconds / 3600);
+                  return `${hours}h`;
+                })()}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col p-4 earning-cards rounded-lg">
+          <div className="flex gap-3 items-center">
+            <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+              <img
+                src="/images/total_users.png"
+                alt="Users"
+                className="w-8 h-8 relative z-10"
+                onError={(e) => {
+                  e.currentTarget.src =
+                    "https://raw.githubusercontent.com/Neurolov/NeuroSwarm/main/public/images/total_users.png";
+                }}
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm text-[#515194]">Total Users</span>
+              <span className="text-xl font-bold text-white">
+                {stats.totalUsers}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col p-4 earning-cards rounded-lg">
+          <div className="flex gap-3 items-center">
+            <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+              <img
+                src="/images/active_nodes.png"
+                alt="Active Nodes"
+                className="w-8 h-8 relative z-10"
+                onError={(e) => {
+                  e.currentTarget.src =
+                    "https://raw.githubusercontent.com/Neurolov/NeuroSwarm/main/public/images/active_nodes.png";
+                }}
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm text-[#515194]">Active Nodes</span>
+              <span className="text-xl font-bold text-white">
+                {stats.activeNodes}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <h3 className="text-lg font-medium mb-4">Recent Global Tasks</h3>
+
         {displayTasks.length > 0 ? (
-          <div className="space-y-3 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
             {displayTasks.map((task, index) => (
-              <div key={`${task.id}-${index}`} className="task-card">
+              <div key={`${task.id}-${index}`} className="task-card data-panel">
                 <div className="flex">
-                  <div className="mr-3 p-2 bg-blue-900/20 rounded">
-                    <div className="w-8 h-8 flex items-center justify-center">
-                      <FileCode
-                        className={`w-5 h-5 ${getTaskTypeColorClass(
-                          task.type
-                        )}`}
-                      />
-                    </div>
+                  <div className="mr-3 p-2 icon-bg rounded-md flex items-center justify-center">
+                    <FileCode
+                      className={`w-5 h-5 z-10 ${getTaskTypeColorClass(
+                        task.type
+                      )}`}
+                    />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -555,25 +736,25 @@ export const GlobalStatistics = () => {
                         {task.type}
                       </span>
                       <span
-                        className={`text-xs px-2 py-0.5 rounded ml-auto 
+                        className={`text-xs px-2 py-0.5 rounded-full ml-auto
                         ${
                           task.status === "completed"
-                            ? "bg-green-900/50 text-green-300"
+                            ? "bg-green-900/20 text-green-300 border border-green-500/30"
                             : ""
                         }
                         ${
                           task.status === "processing"
-                            ? "bg-blue-900/50 text-blue-300"
+                            ? "bg-blue-900/20 text-blue-300 border border-blue-500/30"
                             : ""
                         }
                         ${
                           task.status === "pending"
-                            ? "bg-amber-900/50 text-amber-300"
+                            ? "bg-amber-900/20 text-amber-300 border border-amber-500/30"
                             : ""
                         }
                         ${
                           task.status === "failed"
-                            ? "bg-red-900/50 text-red-300"
+                            ? "bg-red-900/20 text-red-300 border border-red-500/30"
                             : ""
                         }
                       `}
@@ -587,7 +768,7 @@ export const GlobalStatistics = () => {
                       {task.prompt.length > 80 ? "..." : ""}
                     </p>
                     <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span>{task.compute_time || 0}s</span>
+                      <span>Assigning...</span>
                       <span className="ml-auto">
                         {formatTime(task.created_at)}
                       </span>

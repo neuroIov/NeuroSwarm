@@ -11,7 +11,7 @@ import { useSession } from "./hooks/useSession";
 import { WalletButton } from "./components/WalletButton";
 import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "./store";
-import { syncUptime } from "./store/slices/nodeSlice";
+import { syncUptime, updateUptime } from "./store/slices/nodeSlice";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +60,27 @@ const AppContent = () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (syncInterval) clearInterval(syncInterval);
+    };
+  }, [isActive, dispatch]);
+
+  // Update uptime counter more frequently for UI display
+  useEffect(() => {
+    let uptimeInterval: NodeJS.Timeout | null = null;
+
+    if (isActive) {
+      // Update uptime in Redux store every second for real-time UI display
+      uptimeInterval = setInterval(() => {
+        dispatch(updateUptime());
+      }, 1000);
+
+      console.log("Started real-time uptime updates");
+    }
+
+    return () => {
+      if (uptimeInterval) {
+        clearInterval(uptimeInterval);
+        console.log("Stopped real-time uptime updates");
+      }
     };
   }, [isActive, dispatch]);
 
