@@ -27,6 +27,8 @@ import {
   Cell,
   TooltipProps,
 } from "recharts";
+import { useSelector } from "react-redux";
+import { RootState } from "@/store";
 
 type TimeRange = "daily" | "weekly" | "monthly" | "all-time";
 
@@ -43,8 +45,11 @@ interface ChartDataPoint {
 export const EarningsDashboard = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>("daily");
   const [chartPeriod, setChartPeriod] = useState<TimeRange>("daily");
-  const { userProfile, walletConnected, connectWallet } = useSession();
-  const walletAddress = userProfile?.wallet_address;
+
+  const walletAddress = useSelector(
+    (state: RootState) => state.session.walletAddress
+  );
+
   const [walletError, setWalletError] = useState<boolean>(false);
   const [loadingTimeout, setLoadingTimeout] = useState<boolean>(false);
 
@@ -84,12 +89,12 @@ export const EarningsDashboard = () => {
   // Check wallet connection status
   useEffect(() => {
     // If wallet is not connected, consider it an error
-    if (!walletConnected) {
+    if (walletAddress === null) {
       setWalletError(true);
     } else {
       setWalletError(false);
     }
-  }, [walletConnected]);
+  }, [walletAddress]);
 
   // Process transactions into chart data based on selected period
   const chartData = useMemo<ChartDataPoint[]>(() => {
@@ -307,7 +312,7 @@ export const EarningsDashboard = () => {
   };
 
   // If wallet is not connected, show wallet connection message
-  if (!walletConnected) {
+  if (walletAddress === null) {
     return (
       <div className="flex flex-col stat-card">
         <div className="flex justify-between items-center mb-8">
@@ -321,15 +326,15 @@ export const EarningsDashboard = () => {
             className="w-16 h-16 mb-4 opacity-50"
           />
           <h3 className="text-xl font-semibold text-amber-400 mb-2">
-            Wallet Not Connected
+            Wallet Connection Required
           </h3>
-          <p className="text-slate-400 text-center mb-4">
-            Please connect your wallet to view your earnings and transaction
-            history.
+          <p className="text-slate-400 text-center mb-6">
+            To view your earnings dashboard, you need to connect your wallet
+            first.
           </p>
-          <div className="flex items-center justify-center text-blue-400 mb-4">
+          <div className="flex items-center justify-center text-blue-400">
             <svg
-              className="w-5 h-5 mr-2"
+              className="w-6 h-6 mr-2"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -339,11 +344,11 @@ export const EarningsDashboard = () => {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="2"
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
               ></path>
             </svg>
-            <span className="text-sm">
-              Look for the wallet icon in the header
+            <span className="text-sm font-medium">
+              Connect using the wallet icon in the header
             </span>
           </div>
         </div>
@@ -417,7 +422,7 @@ export const EarningsDashboard = () => {
           <p className="text-slate-400 text-center mb-6">
             Unable to load earnings data. Please check your connection and try
             again.
-            {!walletConnected &&
+            {walletAddress === null &&
               " Make sure your wallet is connected from the navbar."}
           </p>
           <div className="flex gap-4">

@@ -9,6 +9,8 @@ import { ReferralProgram } from "@/components/ReferralProgram";
 import { GlobalStatistics } from "@/components/GlobalStatistics";
 import { HowItWorks } from "@/components/HowItWorks";
 import { Sidebar } from "@/components/Sidebar";
+import { useSelector } from "react-redux";
+import { RootState } from "@/store";
 
 const Dashboard = () => (
   <div className="flex flex-col gap-6">
