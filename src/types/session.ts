@@ -28,4 +28,5 @@ export interface UserProfile {
     reputation_score: number;
     joined_at: string;
     user_name: string | null;
+    referral_code: string | null;
 } 
