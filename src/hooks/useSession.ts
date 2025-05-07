@@ -77,6 +77,9 @@ export const useSession = () => {
       return;
     }
 
+    // Check if running on mobile
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
     if ("solana" in window && window.solana?.isPhantom) {
       try {
         console.log("Connecting to Phantom wallet...");
@@ -112,7 +115,14 @@ export const useSession = () => {
       }
     } else {
       console.log("Phantom wallet not detected");
-      alert("Phantom Wallet not detected.");
+      if (isMobile) {
+        // For mobile users, provide deep link to Phantom
+        const phantomUrl = `https://phantom.app/ul/browse/${window.location.href}`;
+        window.location.href = phantomUrl;
+      } else {
+        // For desktop users, show install instructions
+        window.open('https://phantom.app/', '_blank');
+      }
     }
   };
 
