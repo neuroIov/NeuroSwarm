@@ -11,12 +11,10 @@ import { HowItWorks } from "@/components/HowItWorks";
 import { Sidebar } from "@/components/Sidebar";
 
 const Dashboard = () => (
-  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <div className="space-y-6">
-      <NetworkStats />
+  <div className="flex flex-col gap-6">
+    <NetworkStats />
+    <div className="grid grid-cols-2 gap-6">
       <NodeControlPanel />
-    </div>
-    <div className="space-y-6">
       <TaskPipeline />
     </div>
   </div>

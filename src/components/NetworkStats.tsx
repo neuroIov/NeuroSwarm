@@ -25,7 +25,7 @@ const StatCard = ({
   isUptime = false,
 }: StatCardProps) => {
   return (
-    <div className="stat-card">
+    <div className="h-[120px] rounded-xl bg-[linear-gradient(135deg,#0361DA_0%,#0240B3_50%,#05115D_100%)] text-white p-4">
       <div className="flex justify-between items-start mb-2">
         <div className="text-slate-400 flex items-center gap-1">
           {title}
@@ -189,7 +189,7 @@ export const NetworkStats = () => {
   }, [client, totalNodes]);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-4 gap-3 mb-10 w-full">
       <StatCard
         title="Total Nodes"
         value={totalNodes}
