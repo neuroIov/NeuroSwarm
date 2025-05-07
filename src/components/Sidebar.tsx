@@ -52,7 +52,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen md:w-60 lg:w-[266px] px-4 py-6 border-r border border-[#1F2937]",
+        "fixed left-0 top-0 z-40 h-screen md:w-60 lg:w-[266px] px-4 py-6 border-r border-[#1F2937]",
         className
       )}
       style={{

@@ -3,9 +3,10 @@ import { ArrowUp, Clock } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { useSelector } from "react-redux";
-import { RootState } from "@/store";
+import { RootState, useAppDispatch } from "@/store";
 import { formatUptime } from "@/utils/timeUtils";
 import { useSession } from "@/hooks/useSession";
+import { updateUptime } from "@/store/slices/nodeSlice";
 
 type StatCardProps = {
   title: string;
@@ -57,11 +58,13 @@ const StatCard = ({
 
 export const NetworkStats = () => {
   const client = getSwarmSupabase();
+  const dispatch = useAppDispatch();
   const { userProfile } = useSession();
   const [totalNodes, setTotalNodes] = useState(0);
   const [totalActiveNodes, setTotalActiveNodes] = useState(0);
   const [networkLoad, setNetworkLoad] = useState(0);
   const [storedUptime, setStoredUptime] = useState(0);
+  const [localUptime, setLocalUptime] = useState(0);
 
   // Get uptime from redux store for current session
   const { isActive, currentSessionUptime, totalUptime, nodeId } = useSelector(
@@ -90,6 +93,23 @@ export const NetworkStats = () => {
       console.error("Error fetching user devices uptime:", error);
     }
   };
+
+  // Update uptime in real-time when active
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    if (isActive) {
+      // Update uptime in redux store every second
+      interval = setInterval(() => {
+        dispatch(updateUptime());
+        setLocalUptime((prev) => prev + 1); // Force component re-render
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isActive, dispatch]);
 
   // Calculate total uptime including current session if active
   const calculatedTotalUptime =
