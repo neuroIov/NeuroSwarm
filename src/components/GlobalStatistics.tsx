@@ -3,6 +3,8 @@ import { Activity, Clock, Users, Server, RefreshCw } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { logger } from '@/utils/logger';
+import { safeStorage } from '@/utils/storage';
 import { toast } from "sonner";
 import { getQueuedTasks } from "@/services/swarmTaskService";
 import { AITask } from "@/services/types";
@@ -119,7 +121,7 @@ export const GlobalStatistics = () => {
   // Load any cached tasks from localStorage on initial load
   useEffect(() => {
     try {
-      const cachedTasks = localStorage.getItem(TASK_CACHE_KEY);
+      const cachedTasks = safeStorage.getItem(TASK_CACHE_KEY);
       if (cachedTasks) {
         const parsedTasks = JSON.parse(cachedTasks) as AITask[];
         if (parsedTasks.length > 0) {
@@ -128,7 +130,7 @@ export const GlobalStatistics = () => {
       }
 
       // Load the last refresh time from localStorage here inside useEffect
-      const savedLastRefreshTime = localStorage.getItem(LAST_REFRESH_KEY);
+      const savedLastRefreshTime = safeStorage.getItem(LAST_REFRESH_KEY);
       if (savedLastRefreshTime) {
         setLastRefreshTime(Number(savedLastRefreshTime));
       }
@@ -141,7 +143,7 @@ export const GlobalStatistics = () => {
   useEffect(() => {
     if (allTasks.length > 0) {
       try {
-        localStorage.setItem(TASK_CACHE_KEY, JSON.stringify(allTasks));
+        safeStorage.setItem(TASK_CACHE_KEY, JSON.stringify(allTasks));
       } catch (error) {
         console.error("Error saving task cache:", error);
       }
@@ -255,7 +257,7 @@ export const GlobalStatistics = () => {
 
           // Update last refresh time
           setLastRefreshTime(now);
-          localStorage.setItem(LAST_REFRESH_KEY, now.toString());
+          safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
 
           // Calculate stats from the fetched tasks (not the Redux store)
           if (tasks.length > 0) {

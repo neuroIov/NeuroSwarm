@@ -1,5 +1,6 @@
 import { AITask } from './types';
-import { logger } from '../utils/logger';
+import { logger } from '@/utils/logger';
+import { safeStorage } from '@/utils/storage';
 import { TASK_PROCESSING_CONFIG } from './config';
 
 // Define a type for task processing result
@@ -331,39 +332,39 @@ class TaskCacheService {
     private saveToLocalStorage(): void {
         try {
             // Save tasks array
-            localStorage.setItem(
+            safeStorage.setItem(
                 TASK_PROCESSING_CONFIG.STORAGE_KEYS.CACHED_TASKS,
                 JSON.stringify(this._cache.tasks)
             );
 
             // Save timestamps
-            localStorage.setItem(
+            safeStorage.setItem(
                 TASK_PROCESSING_CONFIG.STORAGE_KEYS.LAST_FETCH_TIMESTAMP,
                 this._cache.lastFetchTime.toString()
             );
 
-            localStorage.setItem(
+            safeStorage.setItem(
                 'task_cache_last_successful_fetch',
                 this._cache.lastSuccessfulFetch.toString()
             );
 
             // Save processing task
             if (this._cache.processingTask) {
-                localStorage.setItem(
+                safeStorage.setItem(
                     'task_cache_processing_task',
                     JSON.stringify(this._cache.processingTask)
                 );
             } else {
-                localStorage.removeItem('task_cache_processing_task');
+                safeStorage.removeItem('task_cache_processing_task');
             }
 
             // Save the set of added prompts
-            localStorage.setItem(
+            safeStorage.setItem(
                 TASK_PROCESSING_CONFIG.STORAGE_KEYS.ADDED_TO_SWARM,
                 JSON.stringify(Array.from(this._cache.addedToSwarm))
             );
 
-            localStorage.setItem(
+            safeStorage.setItem(
                 'task_cache_fetch_failure_count',
                 this._cache.fetchFailureCount.toString()
             );
@@ -377,12 +378,12 @@ class TaskCacheService {
      */
     private loadFromLocalStorage(): void {
         try {
-            const cachedTasksJson = localStorage.getItem(TASK_PROCESSING_CONFIG.STORAGE_KEYS.CACHED_TASKS);
-            const lastFetchTimeStr = localStorage.getItem(TASK_PROCESSING_CONFIG.STORAGE_KEYS.LAST_FETCH_TIMESTAMP);
-            const addedToSwarmJson = localStorage.getItem(TASK_PROCESSING_CONFIG.STORAGE_KEYS.ADDED_TO_SWARM);
-            const lastSuccessfulFetchStr = localStorage.getItem('task_cache_last_successful_fetch');
-            const processingTaskJson = localStorage.getItem('task_cache_processing_task');
-            const fetchFailureCountStr = localStorage.getItem('task_cache_fetch_failure_count');
+            const cachedTasksJson = safeStorage.getItem(TASK_PROCESSING_CONFIG.STORAGE_KEYS.CACHED_TASKS);
+            const lastFetchTimeStr = safeStorage.getItem(TASK_PROCESSING_CONFIG.STORAGE_KEYS.LAST_FETCH_TIMESTAMP);
+            const addedToSwarmJson = safeStorage.getItem(TASK_PROCESSING_CONFIG.STORAGE_KEYS.ADDED_TO_SWARM);
+            const lastSuccessfulFetchStr = safeStorage.getItem('task_cache_last_successful_fetch');
+            const processingTaskJson = safeStorage.getItem('task_cache_processing_task');
+            const fetchFailureCountStr = safeStorage.getItem('task_cache_fetch_failure_count');
 
             if (cachedTasksJson) {
                 this._cache.tasks = JSON.parse(cachedTasksJson);
