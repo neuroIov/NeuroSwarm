@@ -9,8 +9,9 @@ import { ReferralProgram } from "@/components/ReferralProgram";
 import { GlobalStatistics } from "@/components/GlobalStatistics";
 import { HowItWorks } from "@/components/HowItWorks";
 import { Sidebar } from "@/components/Sidebar";
-import { useSelector } from "react-redux";
-import { RootState } from "@/store";
+import { useAppDispatch, useAppSelector } from "@/store";
+import { updateUsername } from "@/store/slices/sessionSlice";
+import { UsernameDialog } from "@/components/UsernameDialog";
 
 const Dashboard = () => (
   <div className="flex flex-col gap-6">
@@ -24,7 +25,10 @@ const Dashboard = () => (
 
 const Index = () => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [showUsernameDialog, setShowUsernameDialog] = useState(false);
   const location = useLocation();
+  const dispatch = useAppDispatch();
+  const { userProfile } = useAppSelector((state) => state.session);
 
   const getActiveSection = () => {
     const path = location.pathname.split("/")[1];
@@ -37,6 +41,21 @@ const Index = () => {
     }, 300);
     return () => clearTimeout(timer);
   }, []);
+
+  // Check if we need to show the username dialog
+  useEffect(() => {
+    // Show dialog if user is logged in but doesn't have a username
+    if (userProfile && userProfile?.id && userProfile.user_name === null) {
+      setShowUsernameDialog(true);
+    }
+  }, [userProfile, userProfile?.id]);
+
+  const handleSaveUsername = (username: string) => {
+    if (userProfile?.id) {
+      dispatch(updateUsername({ userId: userProfile?.id, username }));
+      setShowUsernameDialog(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex relative">
@@ -84,6 +103,14 @@ const Index = () => {
 
         <HowItWorks />
       </div>
+
+      {/* Username dialog for new users */}
+      <UsernameDialog
+        isOpen={showUsernameDialog}
+        onClose={() => setShowUsernameDialog(false)}
+        onSave={handleSaveUsername}
+        initialUsername={userProfile?.user_name || ""}
+      />
     </div>
   );
 };

@@ -27,4 +27,5 @@ export interface UserProfile {
     total_tasks_completed: number;
     reputation_score: number;
     joined_at: string;
+    user_name: string | null;
 } 
