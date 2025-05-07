@@ -106,13 +106,15 @@ export function Sidebar({
                   <h2 className="text-sm font-medium text-white truncate mr-2">
                     {getDisplayName()}
                   </h2>
-                  <button
-                    onClick={() => setIsUsernameDialogOpen(true)}
-                    className="text-gray-400  hover:text-blue-400 transition-colors"
-                    title="Edit username"
-                  >
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </button>
+                  {userProfile?.wallet_address && (
+                    <button
+                      onClick={() => setIsUsernameDialogOpen(true)}
+                      className="text-gray-400  hover:text-blue-400 transition-colors"
+                      title="Edit username"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
                 {/* <p className="text-xs text-gray-400">
                   {userProfile ? "Level 2 Node" : "Not Connected"}
@@ -165,7 +167,7 @@ export function Sidebar({
         isOpen={isUsernameDialogOpen}
         onClose={() => setIsUsernameDialogOpen(false)}
         onSave={handleSaveUsername}
-        initialUsername={userProfile?.user_name || ""}
+        initialUsername={userProfile?.user_name}
       />
     </>
   );

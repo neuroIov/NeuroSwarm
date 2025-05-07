@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useSearchParams,
+} from "react-router-dom";
 import { Header } from "@/components/Header";
 import { NetworkStats } from "@/components/NetworkStats";
 import { NodeControlPanel } from "@/components/NodeControlPanel";
@@ -10,8 +16,28 @@ import { GlobalStatistics } from "@/components/GlobalStatistics";
 import { HowItWorks } from "@/components/HowItWorks";
 import { Sidebar } from "@/components/Sidebar";
 import { useAppDispatch, useAppSelector } from "@/store";
-import { updateUsername } from "@/store/slices/sessionSlice";
+import {
+  updateUsername,
+  createReferralRelationship,
+} from "@/store/slices/sessionSlice";
 import { UsernameDialog } from "@/components/UsernameDialog";
+import { toast } from "sonner";
+
+// Function to extract referral code from URL or direct code
+const extractReferralCode = (code: string): string | null => {
+  // Check if it's a URL
+  if (code.startsWith("http")) {
+    try {
+      const url = new URL(code);
+      return url.searchParams.get("ref");
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Return the code itself (assuming it's directly a referral code)
+  return code;
+};
 
 const Dashboard = () => (
   <div className="flex flex-col gap-6">
@@ -27,8 +53,9 @@ const Index = () => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [showUsernameDialog, setShowUsernameDialog] = useState(false);
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const dispatch = useAppDispatch();
-  const { userProfile } = useAppSelector((state) => state.session);
+  const { userProfile, loading } = useAppSelector((state) => state.session);
 
   const getActiveSection = () => {
     const path = location.pathname.split("/")[1];
@@ -42,6 +69,16 @@ const Index = () => {
     return () => clearTimeout(timer);
   }, []);
 
+  // Check for referral code in URL and save to localStorage
+  useEffect(() => {
+    const refCode = searchParams.get("ref");
+    if (refCode) {
+      localStorage.setItem("ref_code", refCode);
+      toast.success("Referral code detected and saved");
+      console.log(`Referral code saved: ${refCode}`);
+    }
+  }, [searchParams]);
+
   // Check if we need to show the username dialog
   useEffect(() => {
     // Show dialog if user is logged in but doesn't have a username
@@ -50,11 +87,10 @@ const Index = () => {
     }
   }, [userProfile, userProfile?.id]);
 
+  // This is now just a callback to close the dialog since the actual operations are handled in the dialog
   const handleSaveUsername = (username: string) => {
-    if (userProfile?.id) {
-      dispatch(updateUsername({ userId: userProfile?.id, username }));
-      setShowUsernameDialog(false);
-    }
+    // The dialog now handles both username and referral internally
+    setShowUsernameDialog(false);
   };
 
   return (
@@ -104,7 +140,7 @@ const Index = () => {
         <HowItWorks />
       </div>
 
-      {/* Username dialog for new users */}
+      {/* Username dialog for new users - now handles both username and referral */}
       <UsernameDialog
         isOpen={showUsernameDialog}
         onClose={() => setShowUsernameDialog(false)}
