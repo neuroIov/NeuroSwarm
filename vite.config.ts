@@ -16,5 +16,13 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    mainFields: ['browser', 'module', 'main']
   },
+  define: {
+    'process.env': {},
+    'global': {}
+  },
+  optimizeDeps: {
+    include: ['@solana/web3.js', 'rpc-websockets']
+  }
 }));
