@@ -80,10 +80,35 @@ export const useSession = () => {
     // Check if running on mobile
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-    if ("solana" in window && window.solana?.isPhantom) {
+    // Define Phantom provider interface
+    interface PhantomWindow extends Window {
+      phantom?: {
+        solana?: {
+          isPhantom?: boolean;
+          connect(): Promise<{ publicKey: { toString(): string } }>;
+        };
+      };
+    }
+
+    const getProvider = () => {
+      if ('phantom' in window) {
+        const provider = (window as PhantomWindow).phantom?.solana;
+        if (provider?.isPhantom) return provider;
+      }
+
+      if ('solana' in window && window.solana?.isPhantom) {
+        return window.solana;
+      }
+      
+      return null;
+    };
+
+    const provider = getProvider();
+
+    if (provider) {
       try {
         console.log("Connecting to Phantom wallet...");
-        const resp = await window.solana.connect();
+        const resp = await provider.connect();
         const publicKey = new PublicKey(resp.publicKey.toString());
         const walletAddress = publicKey.toString();
 
@@ -115,13 +140,12 @@ export const useSession = () => {
       }
     } else {
       console.log("Phantom wallet not detected");
-      if (isMobile) {
-        // For mobile users, provide deep link to Phantom
-        const phantomUrl = `https://phantom.app/ul/browse/${window.location.href}`;
-        window.location.href = phantomUrl;
-      } else {
-        // For desktop users, show install instructions
-        window.open('https://phantom.app/', '_blank');
+      const phantomAppUrl = isMobile 
+        ? 'https://phantom.app/download'
+        : 'https://phantom.app/';
+      
+      if (confirm('Phantom wallet is required. Would you like to install it?')) {
+        window.open(phantomAppUrl, '_blank');
       }
     }
   };
