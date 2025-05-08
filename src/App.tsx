@@ -21,6 +21,28 @@ const AppContent = () => {
   const dispatch = useAppDispatch();
   const { isActive } = useSelector((state: RootState) => state.node);
 
+  // Inject Google Analytics gtag.js script
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://www.googletagmanager.com/gtag/js?id=G-LC4ZMF7G9K";
+    script.async = true;
+    document.head.appendChild(script);
+
+    const inlineScript = document.createElement("script");
+    inlineScript.innerHTML = `
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-LC4ZMF7G9K');
+    `;
+    document.head.appendChild(inlineScript);
+
+    return () => {
+      document.head.removeChild(script);
+      document.head.removeChild(inlineScript);
+    };
+  }, []);
+
   useEffect(() => {
     if (userProfile) {
       console.log("User profile in App:", userProfile);
@@ -29,16 +51,13 @@ const AppContent = () => {
 
   // Set up event listeners for app closure/refresh to sync uptime data
   useEffect(() => {
-    // Function to sync uptime before app is closed or refreshed
     const handleBeforeUnload = () => {
       if (isActive) {
-        // Sync uptime data to the database
         console.log("App closing/refreshing - syncing uptime data...");
         dispatch(syncUptime());
       }
     };
 
-    // Handle page visibility change (switching tabs, minimizing)
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden" && isActive) {
         console.log("Page hidden - syncing uptime data");
@@ -46,29 +65,24 @@ const AppContent = () => {
       }
     };
 
-    // Add event listeners
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // Periodic sync every 5 minutes as a safety measure
     const syncInterval = isActive
       ? setInterval(() => dispatch(syncUptime()), 5 * 60 * 1000)
       : null;
 
     return () => {
-      // Clean up event listeners
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (syncInterval) clearInterval(syncInterval);
     };
   }, [isActive, dispatch]);
 
-  // Update uptime counter more frequently for UI display
   useEffect(() => {
     let uptimeInterval: NodeJS.Timeout | null = null;
 
     if (isActive) {
-      // Update uptime in Redux store every second for real-time UI display
       uptimeInterval = setInterval(() => {
         dispatch(updateUptime());
       }, 1000);
