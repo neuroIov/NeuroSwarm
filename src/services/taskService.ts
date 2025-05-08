@@ -4,7 +4,7 @@ import { getSwarmSupabase } from '@/lib/supabase-client';
 import { AITask, TaskStatus } from './types';
 import { logger } from '../utils/logger';
 import { TASK_PROCESSING_CONFIG } from './config';
-import { recordTaskEarning, updateEarningsHistory } from './earningsService';
+import { recordTaskEarning, updateEarningsHistory, processReferralRewards } from './earningsService';
 
 // Simple cache to track current processing task
 const taskProcessingState = {
@@ -247,6 +247,11 @@ export const processTask = async (taskId, userId) => {
         if (userError || !userProfile?.wallet_address) {
             logger.error(`Error fetching user wallet address for earnings record:`, userError);
         } else {
+            // Determine amount based on task type
+            const amount = task.type === 'image'
+                ? TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.image
+                : TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.text;
+
             // Record earnings for the completed task
             const earningResult = await recordTaskEarning(taskId, userProfile.wallet_address, task.type);
 
@@ -257,6 +262,14 @@ export const processTask = async (taskId, userId) => {
                 const historyResult = await updateEarningsHistory(userId, task.type);
                 if (historyResult.success) {
                     logger.log(`Successfully updated earnings history for user ${userId}`);
+
+                    // Process referral rewards if task earning was successful
+                    const referralResult = await processReferralRewards(userId, amount);
+                    if (referralResult.success) {
+                        logger.log(`Successfully processed referral rewards for user ${userId}`);
+                    } else {
+                        logger.error(`Failed to process referral rewards for user ${userId}: ${referralResult.message || 'Unknown error'}`);
+                    }
                 } else {
                     logger.error(`Failed to update earnings history for user ${userId}`);
                 }

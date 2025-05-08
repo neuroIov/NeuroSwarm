@@ -25,6 +25,116 @@ import {
   ReferralReward,
 } from "@/store/slices/sessionSlice";
 import { formatDistanceToNow } from "date-fns";
+import { claimReferralReward } from "@/services/earningsService";
+
+// Separate component for reward item to use state
+const RewardItem = ({
+  reward,
+  userProfile,
+  onRefresh,
+}: {
+  reward: ReferralReward;
+  userProfile: { id: string; referral_code?: string } | null;
+  onRefresh: () => void;
+}) => {
+  const [isClaiming, setIsClaiming] = useState(false);
+
+  const username =
+    reward.referral?.user_profile?.user_name ||
+    reward.referral?.referred_name ||
+    `User ${reward.referral?.referred_id.substring(0, 6)}...`;
+
+  const handleClaimReward = async () => {
+    if (!userProfile?.id) {
+      toast.error("You need to be logged in to claim rewards");
+      return;
+    }
+
+    try {
+      setIsClaiming(true);
+      const result = await claimReferralReward(userProfile.id, reward.id);
+
+      if (result.success) {
+        toast.success("Reward claimed successfully!");
+        onRefresh(); // Call the refresh function passed from parent
+      } else {
+        toast.error(
+          `Failed to claim reward: ${result.message || "Unknown error"}`
+        );
+      }
+    } catch (err) {
+      console.error("Error claiming reward:", err);
+      toast.error("An error occurred while claiming the reward");
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
+  // Only show claim button for unclaimed rewards
+  const showClaimButton = !reward.claimed && reward.reward_amount > 0;
+
+  // Format reward type for display
+  const formatRewardType = (type: string) => {
+    switch (type) {
+      case "signup":
+        return "Sign-up Bonus";
+      case "task_completion":
+        return "Task Completion";
+      case "others":
+        return "Other Reward";
+      default:
+        return type;
+    }
+  };
+
+  return (
+    <div
+      key={reward.id}
+      className="flex justify-between items-center p-3 bg-slate-800/50 rounded-lg"
+    >
+      <div className="flex items-center gap-2">
+        <DollarSign className="w-4 h-4 text-green-400" />
+        <div>
+          <div className="font-medium">
+            {formatRewardType(reward.reward_type)}{" "}
+            <span className="text-xs">from {username}</span>
+          </div>
+          <div className="text-xs text-slate-400">
+            {formatDistanceToNow(new Date(reward.reward_timestamp), {
+              addSuffix: true,
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="text-green-400 font-medium">
+          +{reward.reward_amount.toFixed(2)}
+        </div>
+        {showClaimButton && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-2 bg-green-600 hover:bg-green-700 text-white border-0"
+            onClick={handleClaimReward}
+            disabled={isClaiming}
+          >
+            {isClaiming ? (
+              <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+            ) : (
+              <CheckCircle className="w-3 h-3 mr-1" />
+            )}
+            <span>{isClaiming ? "Claiming..." : "Claim"}</span>
+          </Button>
+        )}
+        {reward.claimed && (
+          <span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-400">
+            Claimed
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const ReferralProgram = () => {
   const [copySuccess, setCopySuccess] = useState(false);
@@ -174,39 +284,6 @@ export const ReferralProgram = () => {
                 referral.user_profile.wallet_address.length - 4
               )}`
             : "Address unknown"}
-        </div>
-      </div>
-    );
-  };
-
-  // Render a single reward item
-  const renderRewardItem = (reward: ReferralReward) => {
-    const username =
-      reward.referral?.user_profile?.user_name ||
-      reward.referral?.referred_name ||
-      `User ${reward.referral?.referred_id.substring(0, 6)}...`;
-
-    return (
-      <div
-        key={reward.id}
-        className="flex justify-between items-center p-3 bg-slate-800/50 rounded-lg"
-      >
-        <div className="flex items-center gap-2">
-          <DollarSign className="w-4 h-4 text-green-400" />
-          <div>
-            <div className="font-medium">
-              {formatRewardType(reward.reward_type)}{" "}
-              <span className="text-xs">from {username}</span>
-            </div>
-            <div className="text-xs text-slate-400">
-              {formatDistanceToNow(new Date(reward.reward_timestamp), {
-                addSuffix: true,
-              })}
-            </div>
-          </div>
-        </div>
-        <div className="text-green-400 font-medium">
-          +{reward.reward_amount.toFixed(2)}
         </div>
       </div>
     );
@@ -397,7 +474,14 @@ export const ReferralProgram = () => {
             </div>
           ) : referralRewards && referralRewards.length > 0 ? (
             <div className="space-y-2">
-              {referralRewards.slice(0, 3).map(renderRewardItem)}
+              {referralRewards.slice(0, 3).map((reward) => (
+                <RewardItem
+                  key={reward.id}
+                  reward={reward}
+                  userProfile={userProfile}
+                  onRefresh={loadReferralData}
+                />
+              ))}
 
               {referralRewards.length > 3 && (
                 <div className="flex justify-center mt-2">
