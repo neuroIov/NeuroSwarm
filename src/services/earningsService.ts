@@ -1,5 +1,3 @@
-
-
 import { getSwarmSupabase } from '@/lib/supabase-client';
 import { logger } from '../utils/logger';
 import { TASK_PROCESSING_CONFIG } from './config';
@@ -288,5 +286,193 @@ export const getUserEarningsTransactions = async (userId, limit = 20, offset = 0
     } catch (error) {
         logger.error('Error in getUserEarningsTransactions:', error);
         return [];
+    }
+};
+
+/**
+ * Process referral rewards when a user earns from completed tasks
+ * @param {string} userId - The ID of the user who completed the task
+ * @param {number} amount - The amount earned from the task 
+ * @returns {Promise<{success: boolean, message?: string}>}
+ */
+export const processReferralRewards = async (userId, amount) => {
+    try {
+        if (!userId || !amount) {
+            logger.error('Cannot process referral rewards: Missing required parameters');
+            return { success: false, message: 'Missing required parameters' };
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return { success: false, message: 'Supabase client not initialized' };
+        }
+
+        // Call the RPC function to process referral rewards
+        const { error } = await client
+            .rpc('process_referral_rewards', {
+                p_user_id: userId,
+                p_earning_amount: amount
+            });
+
+        if (error) {
+            logger.error('Error processing referral rewards:', error);
+            return { success: false, message: error.message };
+        }
+
+        logger.log(`Successfully processed referral rewards for user ${userId}`);
+        return { success: true };
+    } catch (error) {
+        logger.error('Error in processReferralRewards:', error);
+        return { success: false, message: error.message };
+    }
+};
+
+/**
+ * Claim referral rewards for a user
+ * @param {string} userId - The ID of the user claiming rewards
+ * @param {string} rewardId - The ID of the reward being claimed
+ * @returns {Promise<{success: boolean, message?: string, earningId?: string}>}
+ */
+export const claimReferralReward = async (userId, rewardId) => {
+    try {
+        if (!userId || !rewardId) {
+            logger.error('Cannot claim referral reward: Missing required parameters');
+            return { success: false, message: 'Missing required parameters' };
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return { success: false, message: 'Supabase client not initialized' };
+        }
+
+        // Get user's wallet address and the reward details
+        const { data: userProfile, error: userError } = await client
+            .from('user_profiles')
+            .select('wallet_address')
+            .eq('id', userId)
+            .single();
+
+        if (userError || !userProfile?.wallet_address) {
+            logger.error('Error fetching user wallet address:', userError);
+            return { success: false, message: 'Unable to fetch user wallet address' };
+        }
+
+        // Get the reward details
+        const { data: reward, error: rewardError } = await client
+            .from('referral_rewards')
+            .select('*')
+            .eq('id', rewardId)
+            .eq('claimed', false)
+            .single();
+
+        if (rewardError || !reward) {
+            logger.error('Error fetching reward or reward already claimed:', rewardError);
+            return { success: false, message: 'Reward not found or already claimed' };
+        }
+
+        // Store the reward amount before updating
+        const rewardAmount = reward.reward_amount;
+
+        // 1. Mark reward as claimed
+        const { error: updateError } = await client
+            .from('referral_rewards')
+            .update({
+                claimed: true,
+                claimed_at: new Date().toISOString(),
+                reward_amount: 0  // Reset amount to 0 since it's claimed
+            })
+            .eq('id', rewardId);
+
+        if (updateError) {
+            logger.error('Error updating reward:', updateError);
+            return { success: false, message: 'Failed to update reward status' };
+        }
+
+        // 2. Add the earnings entry with type "referral"
+        const { data: earning, error: insertError } = await client
+            .from('earnings')
+            .insert({
+                user_address: userProfile.wallet_address,
+                amount: rewardAmount,
+                task_id: null,  // No task associated with referral earnings
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                earning_type: 'referral'  // Mark as referral type
+            })
+            .select('*')
+            .single();
+
+        if (insertError) {
+            logger.error('Error recording referral earning:', insertError);
+            // Try to revert the reward update
+            await client
+                .from('referral_rewards')
+                .update({
+                    claimed: false,
+                    claimed_at: null,
+                    reward_amount: rewardAmount
+                })
+                .eq('id', rewardId);
+            return { success: false, message: 'Failed to record referral earning' };
+        }
+
+        // 3. Update the earnings history
+        const { data: latestHistory, error: fetchError } = await client
+            .from('earnings_history')
+            .select('*')
+            .eq('user_id', userId)
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (fetchError) {
+            logger.error('Error fetching earnings history:', fetchError);
+            return { success: false, message: 'Failed to fetch earnings history' };
+        }
+
+        try {
+            if (latestHistory && latestHistory.payout_status === 'pending') {
+                // Update existing record
+                const { error: updateHistoryError } = await client
+                    .from('earnings_history')
+                    .update({
+                        amount: latestHistory.amount + rewardAmount,
+                        timestamp: new Date().toISOString()
+                    })
+                    .eq('id', latestHistory.id);
+
+                if (updateHistoryError) {
+                    throw new Error(`Failed to update earnings history: ${updateHistoryError.message}`);
+                }
+            } else {
+                // Create new history record
+                const { error: insertHistoryError } = await client
+                    .from('earnings_history')
+                    .insert({
+                        user_id: userId,
+                        amount: rewardAmount,
+                        task_count: 0,  // No tasks associated with this earning
+                        timestamp: new Date().toISOString(),
+                        payout_status: 'pending'
+                    });
+
+                if (insertHistoryError) {
+                    throw new Error(`Failed to create earnings history: ${insertHistoryError.message}`);
+                }
+            }
+        } catch (historyError) {
+            logger.error('Error updating earnings history:', historyError);
+            // The claim was successful, but history update failed
+            // This is not critical, so we'll log but still return success
+            logger.warn('Warning: Earnings history update failed but claim was successful');
+        }
+
+        logger.log(`Successfully claimed referral reward ${rewardId} for user ${userId}`);
+        return { success: true, earningId: earning.id };
+    } catch (error) {
+        logger.error('Error in claimReferralReward:', error);
+        return { success: false, message: error.message };
     }
 };

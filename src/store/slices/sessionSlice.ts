@@ -41,6 +41,8 @@ export interface ReferralReward {
   reward_type: 'signup' | 'task_completion' | 'others';
   reward_amount: number;
   reward_timestamp: string;
+  claimed: boolean;
+  claimed_at: string | null;
   referral?: Referral;
 }
 
@@ -343,6 +345,8 @@ export const fetchReferralRewards = createAsyncThunk(
           reward_type,
           reward_amount,
           reward_timestamp,
+          claimed,
+          claimed_at,
           referral:referral_id (
             id,
             referrer_id,

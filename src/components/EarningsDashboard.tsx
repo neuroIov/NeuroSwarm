@@ -789,7 +789,7 @@ export const EarningsDashboard = () => {
                       {formatDate(tx.created_at)}
                     </span>
                     <span className="text-xs text-[#515194]">
-                      {tx.tasks?.type || "Task"} Completed
+                      {tx.tasks?.type ? "Task completed" : "Referral reward"}
                     </span>
                   </div>
 

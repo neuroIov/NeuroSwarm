@@ -25,11 +25,126 @@ import {
   ReferralReward,
 } from "@/store/slices/sessionSlice";
 import { formatDistanceToNow } from "date-fns";
+import { claimReferralReward } from "@/services/earningsService";
+import { getSwarmSupabase } from "@/lib/supabase-client";
+
+// Separate component for reward item to use state
+const RewardItem = ({
+  reward,
+  userProfile,
+  onRefresh,
+}: {
+  reward: ReferralReward;
+  userProfile: { id: string; referral_code?: string } | null;
+  onRefresh: () => void;
+}) => {
+  const [isClaiming, setIsClaiming] = useState(false);
+
+  const username =
+    reward.referral?.user_profile?.user_name ||
+    reward.referral?.referred_name ||
+    `User ${reward.referral?.referred_id.substring(0, 6)}...`;
+
+  const handleClaimReward = async () => {
+    if (!userProfile?.id) {
+      toast.error("You need to be logged in to claim rewards");
+      return;
+    }
+
+    try {
+      setIsClaiming(true);
+      const result = await claimReferralReward(userProfile.id, reward.id);
+
+      if (result.success) {
+        toast.success("Reward claimed successfully!");
+        onRefresh(); // Call the refresh function passed from parent
+      } else {
+        toast.error(
+          `Failed to claim reward: ${result.message || "Unknown error"}`
+        );
+      }
+    } catch (err) {
+      console.error("Error claiming reward:", err);
+      toast.error("An error occurred while claiming the reward");
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
+  // Only show claim button for unclaimed rewards
+  const showClaimButton = !reward.claimed && reward.reward_amount > 0;
+
+  // Format reward type for display
+  const formatRewardType = (type: string) => {
+    switch (type) {
+      case "signup":
+        return "Sign-up Bonus";
+      case "task_completion":
+        return "Task Completion";
+      case "others":
+        return "Other Reward";
+      default:
+        return type;
+    }
+  };
+
+  return (
+    <div
+      key={reward.id}
+      className="flex justify-between items-center p-3 bg-slate-800/50 rounded-lg"
+    >
+      <div className="flex items-center gap-2">
+        <DollarSign className="w-4 h-4 text-green-400" />
+        <div>
+          <div className="font-medium">
+            {formatRewardType(reward.reward_type)}{" "}
+            <span className="text-xs">from {username}</span>
+          </div>
+          <div className="text-xs text-slate-400">
+            {formatDistanceToNow(new Date(reward.reward_timestamp), {
+              addSuffix: true,
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="text-green-400 font-medium">
+          +{reward.reward_amount.toFixed(2)}
+        </div>
+        {showClaimButton && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-2 bg-green-600 hover:bg-green-700 text-white border-0"
+            onClick={handleClaimReward}
+            disabled={isClaiming}
+          >
+            {isClaiming ? (
+              <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+            ) : (
+              <CheckCircle className="w-3 h-3 mr-1" />
+            )}
+            <span>{isClaiming ? "Claiming..." : "Claim"}</span>
+          </Button>
+        )}
+        {reward.claimed && (
+          <span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-400">
+            Claimed
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const ReferralProgram = () => {
   const [copySuccess, setCopySuccess] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [totalReferralEarnings, setTotalReferralEarnings] = useState(0);
+  const [claimedRewards, setClaimedRewards] = useState(0);
+  const [pendingRewards, setPendingRewards] = useState(0);
+
   const dispatch = useDispatch<AppDispatch>();
   const { userProfile, loading, referrals, referralRewards } = useSelector(
     (state: RootState) => state.session
@@ -51,11 +166,59 @@ export const ReferralProgram = () => {
   // Calculate totals
   const directReferrals = tier1Referrals.length;
   const indirectReferrals = tier2Referrals.length + tier3Referrals.length;
-  const totalRewards =
+
+  // Calculate total pending rewards from referral_rewards table
+  const pendingReferralRewards =
     referralRewards?.reduce(
-      (total, reward) => total + Number(reward.reward_amount),
+      (total, reward) =>
+        total +
+        (!reward.claimed && reward.reward_amount > 0
+          ? Number(reward.reward_amount)
+          : 0),
       0
     ) || 0;
+
+  // Function to fetch claimed referral earnings from the earnings table
+  const fetchReferralEarnings = async (userWalletAddress: string) => {
+    if (!userWalletAddress) {
+      console.error("Cannot fetch referral earnings without wallet address");
+      return;
+    }
+
+    try {
+      const client = getSwarmSupabase();
+
+      // Get total referral earnings where task_id is null and type is referral
+      const { data: earnings, error } = await client
+        .from("earnings")
+        .select("amount")
+        .eq("user_address", userWalletAddress)
+        .eq("earning_type", "referral")
+        .is("task_id", null);
+
+      if (error) {
+        console.error("Error fetching referral earnings:", error);
+        return;
+      }
+
+      // Calculate total earnings
+      const totalEarnings = earnings.reduce(
+        (sum, record) => sum + Number(record.amount),
+        0
+      );
+      setClaimedRewards(totalEarnings);
+      setTotalReferralEarnings(totalEarnings + pendingReferralRewards);
+      setPendingRewards(pendingReferralRewards);
+
+      console.log(
+        `Fetched referral earnings: Claimed=${totalEarnings}, Pending=${pendingReferralRewards}, Total=${
+          totalEarnings + pendingReferralRewards
+        }`
+      );
+    } catch (error) {
+      console.error("Error in fetchReferralEarnings:", error);
+    }
+  };
 
   // Load referral data when component mounts or when userProfile changes
   useEffect(() => {
@@ -63,6 +226,13 @@ export const ReferralProgram = () => {
       loadReferralData();
     }
   }, [userProfile?.id]);
+
+  // Fetch referral earnings whenever referralRewards change
+  useEffect(() => {
+    if (userProfile?.wallet_address) {
+      fetchReferralEarnings(userProfile.wallet_address);
+    }
+  }, [referralRewards, userProfile?.wallet_address]);
 
   const loadReferralData = async () => {
     if (!userProfile?.id) return;
@@ -179,39 +349,6 @@ export const ReferralProgram = () => {
     );
   };
 
-  // Render a single reward item
-  const renderRewardItem = (reward: ReferralReward) => {
-    const username =
-      reward.referral?.user_profile?.user_name ||
-      reward.referral?.referred_name ||
-      `User ${reward.referral?.referred_id.substring(0, 6)}...`;
-
-    return (
-      <div
-        key={reward.id}
-        className="flex justify-between items-center p-3 bg-slate-800/50 rounded-lg"
-      >
-        <div className="flex items-center gap-2">
-          <DollarSign className="w-4 h-4 text-green-400" />
-          <div>
-            <div className="font-medium">
-              {formatRewardType(reward.reward_type)}{" "}
-              <span className="text-xs">from {username}</span>
-            </div>
-            <div className="text-xs text-slate-400">
-              {formatDistanceToNow(new Date(reward.reward_timestamp), {
-                addSuffix: true,
-              })}
-            </div>
-          </div>
-        </div>
-        <div className="text-green-400 font-medium">
-          +{reward.reward_amount.toFixed(2)}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="stat-card">
       <div className="flex justify-between items-center mb-4">
@@ -285,8 +422,41 @@ export const ReferralProgram = () => {
         </div>
 
         <div className="flex flex-col items-center p-4 bg-slate-800/30 rounded-lg">
-          <div className="text-xl font-bold">{totalRewards.toFixed(2)}</div>
+          <div className="text-xl font-bold">
+            {totalReferralEarnings.toFixed(2)}
+          </div>
           <div className="text-sm text-slate-400">Total Rewards</div>
+        </div>
+      </div>
+
+      {/* Rewards Status */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="flex flex-col p-4 bg-slate-800/30 rounded-lg">
+          <div className="flex justify-between items-center mb-2">
+            <div className="text-sm font-medium text-slate-300">
+              Claimed Rewards
+            </div>
+            <div className="text-green-400 font-medium">
+              {claimedRewards.toFixed(2)}
+            </div>
+          </div>
+          <div className="text-xs text-slate-500">
+            Total earnings from claimed referral rewards
+          </div>
+        </div>
+
+        <div className="flex flex-col p-4 bg-slate-800/30 rounded-lg">
+          <div className="flex justify-between items-center mb-2">
+            <div className="text-sm font-medium text-slate-300">
+              Pending Rewards
+            </div>
+            <div className="text-amber-400 font-medium">
+              {pendingRewards.toFixed(2)}
+            </div>
+          </div>
+          <div className="text-xs text-slate-500">
+            Available rewards ready to claim
+          </div>
         </div>
       </div>
 
@@ -397,7 +567,14 @@ export const ReferralProgram = () => {
             </div>
           ) : referralRewards && referralRewards.length > 0 ? (
             <div className="space-y-2">
-              {referralRewards.slice(0, 3).map(renderRewardItem)}
+              {referralRewards.slice(0, 3).map((reward) => (
+                <RewardItem
+                  key={reward.id}
+                  reward={reward}
+                  userProfile={userProfile}
+                  onRefresh={loadReferralData}
+                />
+              ))}
 
               {referralRewards.length > 3 && (
                 <div className="flex justify-center mt-2">
