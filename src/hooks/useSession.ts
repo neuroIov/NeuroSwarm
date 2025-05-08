@@ -9,13 +9,106 @@ import {
   fetchOrCreateUserProfile
 } from "@/store/slices/sessionSlice";
 import { AppDispatch } from "@/store";
+import { getSwarmSupabase } from "@/lib/supabase-client";
 
 export const useSession = () => {
   const dispatch = useDispatch<AppDispatch>();
   const session = useSelector((state: RootState) => state.session);
+  const supabase = getSwarmSupabase();
 
   const [walletConnected, setWalletConnected] = useState(false);
   const [userPublicKey, setUserPublicKey] = useState<PublicKey | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+
+  const loginWithEmail = async (email: string, password: string) => {
+    setIsAuthLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+      if (!data.user) throw new Error('No user data');
+
+      // Start session
+      dispatch(
+        startSession({
+          userId: data.user.id,
+          authMethod: 'email',
+          walletAddress: null
+        })
+      );
+
+      // Fetch or create user profile
+      dispatch(fetchOrCreateUserProfile(data.user.id));
+
+      // Log email login activity
+      dispatch(logActivity({
+        type: 'email_login',
+        details: { email }
+      }));
+
+    } catch (error) {
+      console.error('Email login failed:', error);
+      throw error;
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const signupWithEmail = async (email: string, password: string, username: string) => {
+    setIsAuthLoading(true);
+    try {
+      // Create auth user
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username
+          }
+        }
+      });
+
+      if (error) throw error;
+      if (!data.user) throw new Error('No user data');
+
+      // Start session
+      dispatch(
+        startSession({
+          userId: data.user.id,
+          authMethod: 'email',
+          walletAddress: null
+        })
+      );
+
+      // Create user profile
+      await supabase
+        .from('user_profiles')
+        .insert([
+          {
+            id: data.user.id,
+            user_name: username,
+            total_earnings: 0,
+            total_tasks_completed: 0,
+            reputation_score: 0
+          }
+        ]);
+
+      // Log signup activity
+      dispatch(logActivity({
+        type: 'email_signup',
+        details: { email, username }
+      }));
+
+    } catch (error) {
+      console.error('Email signup failed:', error);
+      throw error;
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
 
   // Start guest session on mount or restore saved session
   useEffect(() => {
@@ -184,6 +277,8 @@ export const useSession = () => {
     logout,
     isLoading: session.loading,
     error: session.error,
-    userProfile: session.userProfile
+    userProfile: session.userProfile,
+    loginWithEmail,
+    signupWithEmail,
   };
 };

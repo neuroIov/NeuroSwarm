@@ -8,7 +8,7 @@ export type Activity = {
     details: Record<string, unknown>;
 };
 
-export type AuthMethod = 'wallet' | 'gmail' | 'both' | null;
+export type AuthMethod = 'wallet' | 'email' | 'both' | null;
 
 export interface UserSession {
     sessionId: string;
