@@ -59,6 +59,8 @@ import {
   getUserEarnings,
   getUserTotalEarnings,
 } from "@/services/earningsService";
+import { VscDebugStart } from "react-icons/vsc";
+import { IoStopOutline } from "react-icons/io5";
 
 type DeviceGroup = "desktop_laptop" | "mobile_tablet";
 
@@ -116,6 +118,7 @@ export const NodeControlPanel = () => {
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
@@ -423,6 +426,7 @@ export const NodeControlPanel = () => {
 
     if (isActive) {
       // Stop the node
+      setIsStopping(true);
       try {
         // Update device status in database
         const { error: updateError } = await client
@@ -446,6 +450,8 @@ export const NodeControlPanel = () => {
       } catch (error) {
         console.error("Error stopping node:", error);
         toast.error("Failed to stop node. Please try again.");
+      } finally {
+        setIsStopping(false);
       }
     } else if (selectedNode) {
       // Start the node
@@ -577,12 +583,36 @@ export const NodeControlPanel = () => {
 
           <Button
             variant="default"
-            disabled={isStarting || !selectedNodeId}
+            disabled={isStarting || isStopping || !selectedNodeId}
             onClick={toggleNodeStatus}
-            className="rounded-full bg-green-600 shadow-green-500 transition-all duration-300 shadow-md hover:shadow-lg  hover:bg-green-700 text-white hover:translate-y-[-0.5px] hover:shadow-green-500/30"
+            className={`rounded-full transition-all duration-300 shadow-md hover:shadow-lg text-white hover:translate-y-[-0.5px] ${
+              isActive
+                ? "bg-red-600 hover:bg-red-700 hover:shadow-red-500/30 shadow-red-500"
+                : "bg-green-600 hover:bg-green-700 hover:shadow-green-500/30 shadow-green-500"
+            }`}
           >
-            {isStarting ? "Starting..." : "Start Node"}
-            {!isStarting && <span className="ml-2">+</span>}
+            {isStarting && (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Starting...
+              </>
+            )}
+            {isStopping && (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Stopping...
+              </>
+            )}
+            {!isStarting && !isStopping && (
+              <>
+                {isActive ? "Stop Node" : "Start Node"}
+                {!isActive ? (
+                  <VscDebugStart className="text-white/90 " />
+                ) : (
+                  <IoStopOutline className="text-white/90" />
+                )}
+              </>
+            )}
           </Button>
         </div>
 
