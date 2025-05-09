@@ -226,6 +226,33 @@ export const getUserEarnings = async (userId) => {
     }
 };
 
+export const getUserTotalEarnings = async (userId) => {
+    try {
+        if (!userId) {
+            logger.error('Cannot get user total earnings: No user ID provided');
+            return 0;
+        }
+
+        const client = getSwarmSupabase();
+
+        const { data: totalEarnings, error: earningsError } = await client
+            .from('earnings_history')
+            .select('amount')
+            .eq('user_id', userId);
+
+        if (earningsError) {
+            logger.error('Error fetching user earnings:', earningsError);
+            return 0;
+        }
+
+        return totalEarnings[0].amount;
+
+    } catch (error) {
+        logger.error('Error in getUsetTotalEarnings:', error);
+        return 0;
+    }
+}
+
 /**
  * Get list of user's earnings transactions
  * @param {string} userId - User ID from profile
