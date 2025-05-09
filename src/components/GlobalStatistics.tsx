@@ -17,11 +17,10 @@ import { formatUptime } from "@/utils/timeUtils";
 import { updateUptime } from "@/store/slices/nodeSlice";
 
 // Default refresh interval in milliseconds
-const AUTO_REFRESH_INTERVAL = 300000; // Increased to 5 minutes
+const AUTO_REFRESH_INTERVAL = 120000; // Increased to 120 seconds (2 minutes)
 const TASK_CACHE_KEY = "global_statistics_task_cache";
 const LAST_REFRESH_KEY = "global_statistics_last_refresh";
-const MIN_REFRESH_INTERVAL = 60000; // Minimum time between refreshes (60 seconds)
-const REFRESH_ATTEMPT_LIMIT = 3; // Maximum number of failed refresh attempts before backing off
+const MIN_REFRESH_INTERVAL = 30000; // Minimum time between refreshes (30 seconds)
 
 export const GlobalStatistics = () => {
   const dispatch = useAppDispatch();
@@ -32,9 +31,6 @@ export const GlobalStatistics = () => {
   const [taskCache, setTaskCache] = useState<AITask[]>([]);
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
   const [forceUpdate, setForceUpdate] = useState(0);
-  const [failedRefreshAttempts, setFailedRefreshAttempts] = useState(0);
-  const [refreshCount, setRefreshCount] = useState(0); // Track total refresh attempts for debugging
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false); // Separate control variable
 
   // Get tasks from Redux store
   const { allTasks } = useSelector((state: RootState) => state.tasks);
@@ -216,198 +212,122 @@ export const GlobalStatistics = () => {
   const loadTasks = useCallback(
     async (showToast = true, forceRefresh = false) => {
       try {
-        setRefreshCount((prev) => prev + 1);
-        const refreshAttempt = refreshCount + 1;
-        console.log(
-          `Refresh attempt #${refreshAttempt} at ${new Date().toLocaleTimeString()}`
-        );
-
         // Check if we're already refreshing
         if (isRefreshing) {
-          console.log("Already refreshing, skipping this attempt");
           return;
         }
 
         // Check if it's too soon to refresh again
         const now = Date.now();
         const timeSinceLastRefresh = now - lastRefreshTime;
-
-        console.log(
-          `Last refresh: ${new Date(
-            lastRefreshTime
-          ).toLocaleTimeString()}, Time since: ${(
-            timeSinceLastRefresh / 1000
-          ).toFixed(1)}s, Min interval: ${MIN_REFRESH_INTERVAL / 1000}s`
-        );
-
         if (!forceRefresh && timeSinceLastRefresh < MIN_REFRESH_INTERVAL) {
-          console.log(
-            `Skipping refresh, last refresh was ${(
-              timeSinceLastRefresh / 1000
-            ).toFixed(1)}s ago`
-          );
+          // Only log occasionally to reduce console spam
+          if (Math.random() < 0.1) {
+            console.log(
+              `Skipping refresh, last refresh was ${(
+                timeSinceLastRefresh / 1000
+              ).toFixed(1)}s ago`
+            );
+          }
           return;
         }
 
-        // Check if we've had too many failed refreshes in a row
-        if (failedRefreshAttempts >= REFRESH_ATTEMPT_LIMIT && !forceRefresh) {
-          console.log(
-            `Too many failed refresh attempts (${failedRefreshAttempts}), backing off`
-          );
-          return;
-        }
-
-        // Set refreshing flag at the start and make sure we clear it at the end
         setIsRefreshing(true);
-        console.log(
-          `Starting refresh #${refreshAttempt} at`,
-          new Date().toLocaleTimeString()
-        );
 
-        // Critical: Always update the refresh time to prevent rapid re-requests
-        setLastRefreshTime(now);
-        safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
-
+        // Check for available unassigned tasks, but only log success
+        let availableTaskCount = 0;
         try {
-          // Only try to fetch available tasks if there are fewer than 5 in the store
-          // to reduce duplicate API calls
-          const existingTasksCount = allTasks.length;
-          let availableTaskCount = 0;
+          const availableTasks = await getQueuedTasks(10);
+          availableTaskCount = availableTasks.length;
+          if (availableTaskCount > 0) {
+            console.log(
+              `Found ${availableTaskCount} available unassigned tasks in the database`
+            );
+          }
+        } catch (error) {
+          // Log error but continue with existing tasks
+          console.error("Error checking available tasks:", error);
+        }
 
-          if (existingTasksCount < 5) {
-            try {
-              // Use a smaller limit to reduce load
-              const availableTasks = await getQueuedTasks(5);
-              availableTaskCount = availableTasks.length;
+        // Only fetch tasks if we need them (no tasks or forced refresh)
+        if (allTasks.length === 0 || forceRefresh || availableTaskCount > 0) {
+          // Dispatch the fetchPendingTasks action to update Redux store
+          const tasks = await dispatch(fetchPendingTasks()).unwrap();
 
-              if (availableTaskCount > 0) {
-                console.log(
-                  `Found ${availableTaskCount} available unassigned tasks`
-                );
-              }
-            } catch (error) {
-              console.error("Error checking available tasks:", error);
-              setFailedRefreshAttempts((prev) => prev + 1);
-            }
+          // Only log if we get tasks or occasionally
+          if (tasks.length > 0 || Math.random() < 0.1) {
+            console.log(`Fetched ${tasks.length} tasks total`);
           }
 
-          // Only fetch tasks if we need them (no tasks or forced refresh)
-          let newTasks: AITask[] = [];
-          if (allTasks.length === 0 || forceRefresh || availableTaskCount > 0) {
-            try {
-              // Dispatch the fetchPendingTasks action to update Redux store
-              newTasks = await dispatch(fetchPendingTasks()).unwrap();
+          // Update last refresh time
+          setLastRefreshTime(now);
+          safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
 
-              // Reset failed attempt counter on success
-              setFailedRefreshAttempts(0);
+          // Calculate stats from the fetched tasks (not the Redux store)
+          if (tasks.length > 0) {
+            await calculateAndUpdateStats(tasks);
+          } else if (availableTaskCount > 0) {
+            // We found new tasks but didn't fetch them, try again
+            const moreTasks = await dispatch(fetchPendingTasks()).unwrap();
 
-              // Only log if we get tasks
-              if (newTasks.length > 0) {
-                console.log(`Fetched ${newTasks.length} tasks total`);
-              }
-
-              // Calculate stats from the fetched tasks
-              if (newTasks.length > 0) {
-                await calculateAndUpdateStats(newTasks);
-              }
-            } catch (error) {
-              console.error("Error fetching pending tasks:", error);
-              setFailedRefreshAttempts((prev) => prev + 1);
-            }
-          } else {
-            // No need to fetch, use existing tasks
-            if (allTasks.length > 0) {
-              await calculateAndUpdateStats(allTasks);
+            if (moreTasks.length > 0) {
+              await calculateAndUpdateStats(moreTasks);
             }
           }
-
-          if (showToast && (newTasks.length > 0 || forceRefresh)) {
-            toast.success("Global statistics refreshed");
+        } else {
+          // Only log occasionally
+          if (Math.random() < 0.1) {
+            console.log("Using existing tasks for stats");
           }
-        } finally {
-          // Make absolutely sure we clear the refreshing flag
-          console.log(
-            `Ending refresh #${refreshAttempt} at`,
-            new Date().toLocaleTimeString()
-          );
-          setIsRefreshing(false);
+
+          if (allTasks.length > 0) {
+            await calculateAndUpdateStats(allTasks);
+          }
+        }
+
+        setIsRefreshing(false);
+        if (showToast) {
+          toast.success("Global statistics refreshed");
         }
       } catch (error) {
         console.error("Error loading tasks:", error);
         setIsRefreshing(false);
-        setFailedRefreshAttempts((prev) => prev + 1);
         if (showToast) {
           toast.error("Failed to refresh statistics");
         }
       }
     },
-    [
-      dispatch,
-      allTasks,
-      lastRefreshTime,
-      calculateAndUpdateStats,
-      isRefreshing,
-      failedRefreshAttempts,
-      refreshCount,
-    ]
+    [dispatch, allTasks, lastRefreshTime, calculateAndUpdateStats, isRefreshing]
   );
 
   // Load initial tasks - using useEffect with empty dependency array runs only once
   useEffect(() => {
-    // For debugging
-    console.log(
-      "Initial load effect triggered",
-      new Date().toLocaleTimeString()
-    );
-
-    let cleanup = () => {};
-
     // If we have cached tasks, use them first and then refresh in the background
     if (taskCache.length > 0) {
+      // Only log once
       console.log(
         `Using ${taskCache.length} cached tasks from previous session`
       );
       calculateAndUpdateStats(taskCache);
-
       // Refresh in the background without showing toast, with a small delay
-      const timer = setTimeout(() => loadTasks(false, false), 5000);
-      cleanup = () => clearTimeout(timer);
+      setTimeout(() => loadTasks(false, false), 3000);
     } else {
       // No cached tasks, do a normal load
       loadTasks(true, true);
     }
 
-    return () => {
-      cleanup();
-    };
-    // Only run this effect once on component mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Set up auto-refresh in a separate effect to control it better
-  useEffect(() => {
     // Set up auto-refresh with a random offset to prevent multiple components
     // refreshing at exactly the same time
     let interval: NodeJS.Timeout | null = null;
-
-    if (autoRefresh && !autoRefreshEnabled) {
-      setAutoRefreshEnabled(true);
-
-      // Add a random offset (between 0-30 seconds) to stagger refreshes
-      const randomOffset = Math.floor(Math.random() * 30000);
+    if (autoRefresh) {
+      // Add a random offset (between 0-15 seconds) to stagger refreshes
+      const randomOffset = Math.floor(Math.random() * 15000);
       const refreshInterval = AUTO_REFRESH_INTERVAL + randomOffset;
 
       interval = setInterval(() => {
-        // Only refresh if not already refreshing and we haven't had too many failures
-        if (!isRefreshing && failedRefreshAttempts < REFRESH_ATTEMPT_LIMIT) {
-          console.log(
-            "Auto-refresh triggered",
-            new Date().toLocaleTimeString()
-          );
+        // Only refresh if not already refreshing
+        if (!isRefreshing) {
           loadTasks(false, false);
-        } else if (failedRefreshAttempts >= REFRESH_ATTEMPT_LIMIT) {
-          // If we've had too many failures, reduce the counter over time
-          setFailedRefreshAttempts((prev) => Math.max(0, prev - 1));
         }
       }, refreshInterval);
 
@@ -417,33 +337,23 @@ export const GlobalStatistics = () => {
           refreshInterval / 1000
         )}s`
       );
-    } else if (!autoRefresh && autoRefreshEnabled) {
-      setAutoRefreshEnabled(false);
-      console.log("Auto-refresh disabled");
     }
 
     return () => {
-      if (interval) {
-        console.log("Clearing auto-refresh interval");
-        clearInterval(interval);
-      }
+      if (interval) clearInterval(interval);
     };
   }, [
     autoRefresh,
-    autoRefreshEnabled,
-    isRefreshing,
-    failedRefreshAttempts,
     loadTasks,
+    calculateAndUpdateStats,
+    taskCache,
+    isRefreshing,
   ]);
 
   // Watch for tasks completed count changes to refresh the global task list
   useEffect(() => {
     // Only proceed if tasks completed counter increased
     if (tasksCompleted > prevCompletedTasks) {
-      console.log(
-        `Tasks completed increased from ${prevCompletedTasks} to ${tasksCompleted}`
-      );
-
       // Update our tracking counter
       setPrevCompletedTasks(tasksCompleted);
 
@@ -452,48 +362,67 @@ export const GlobalStatistics = () => {
       const now = Date.now();
       const timeSinceLastRefresh = now - lastRefreshTime;
 
-      if (allTasks.length < 5 && timeSinceLastRefresh > MIN_REFRESH_INTERVAL) {
-        console.log(
-          `Task completed and only ${allTasks.length} tasks visible, refreshing task list`
-        );
+      if (allTasks.length < 10 && timeSinceLastRefresh > MIN_REFRESH_INTERVAL) {
+        // Only log this occasionally
+        if (Math.random() < 0.3) {
+          console.log(
+            `Task completed and only ${allTasks.length} tasks visible, refreshing task list`
+          );
+        }
 
         // Add a small delay before refreshing to avoid multiple rapid refreshes
-        const timer = setTimeout(() => {
+        setTimeout(() => {
           if (!isRefreshing) {
             loadTasks(false, true);
           }
-        }, 3000);
-
-        return () => clearTimeout(timer);
+        }, 2000);
       }
     }
-    // Use only tasksCompleted to trigger this useEffect
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasksCompleted]);
+  }, [
+    tasksCompleted,
+    prevCompletedTasks,
+    allTasks.length,
+    loadTasks,
+    lastRefreshTime,
+    isRefreshing,
+  ]);
 
-  // Update stats when allTasks changes - using useEffect instead of useMemo for side effects
-  useEffect(() => {
-    console.log(`allTasks changed: ${allTasks.length} tasks available`);
-
+  // Update stats when allTasks changes - using useMemo to avoid unnecessary calculations
+  useMemo(() => {
     if (allTasks.length > 0) {
       // Calculate stats from allTasks
       calculateAndUpdateStats(allTasks);
-    }
-    // Only run this effect when allTasks changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allTasks]);
 
-  // Use the tasks from Redux or cache if Redux is empty
-  const displayTasks = useMemo(() => {
-    return allTasks.length > 0 ? allTasks : taskCache;
-  }, [allTasks, taskCache]);
+      console.log(
+        `Stats updated from allTasks: ${allTasks.length} tasks found`
+      );
+      console.log(
+        `Task types: Image=${
+          allTasks.filter((t) => t.type === "image").length
+        }, Text=${allTasks.filter((t) => t.type === "text").length}`
+      );
+    } else if (
+      allTasks.length === 0 &&
+      !isRefreshing &&
+      taskCache.length === 0
+    ) {
+      // If no tasks are visible, we're not refreshing, and have no cache, try to get more
+      console.log("No tasks visible in global view, triggering refresh");
+      loadTasks(false, true);
+    }
+  }, [
+    allTasks,
+    isRefreshing,
+    taskCache.length,
+    calculateAndUpdateStats,
+    loadTasks,
+  ]);
 
   const handleRefresh = useCallback(() => {
     loadTasks(true, true);
   }, [loadTasks]);
 
   const toggleAutoRefresh = useCallback((checked: boolean) => {
-    console.log(`Auto-refresh ${checked ? "enabled" : "disabled"}`);
     setAutoRefresh(checked);
     toast(checked ? "Auto-refresh enabled" : "Auto-refresh disabled");
   }, []);
@@ -521,6 +450,11 @@ export const GlobalStatistics = () => {
         return "text-slate-300";
     }
   }, []);
+
+  // Use the tasks from Redux or cache if Redux is empty
+  const displayTasks = useMemo(() => {
+    return allTasks.length > 0 ? allTasks : taskCache;
+  }, [allTasks, taskCache]);
 
   // Memoize stats cards to prevent unnecessary re-renders
   const statsCards = useMemo(

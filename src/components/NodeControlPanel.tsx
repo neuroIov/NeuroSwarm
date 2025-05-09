@@ -54,6 +54,13 @@ import { useSession } from "@/hooks/useSession";
 
 import { RootState, useAppDispatch } from "@/store";
 import { assignTasksToUser } from "@/services/swarmTaskService";
+import { useEarnings } from "@/hooks/useEarnings";
+import {
+  getUserEarnings,
+  getUserTotalEarnings,
+} from "@/services/earningsService";
+import { VscDebugStart } from "react-icons/vsc";
+import { IoStopOutline } from "react-icons/io5";
 
 type DeviceGroup = "desktop_laptop" | "mobile_tablet";
 
@@ -111,10 +118,14 @@ export const NodeControlPanel = () => {
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
   const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStage, setScanStage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [totalEarnings, setTotalEarnings] = useState(0);
 
   // Device selection state
   const [showDeviceTypeDialog, setShowDeviceTypeDialog] = useState(false);
@@ -133,6 +144,42 @@ export const NodeControlPanel = () => {
   }>({});
   const [selectedVRAM, setSelectedVRAM] = useState<number>(0);
   const [isCreatingDevice, setIsCreatingDevice] = useState(false);
+
+  // Add useEffect for refreshing total earnings every 30 seconds
+  useEffect(() => {
+    // Skip if user is not logged in
+    if (!userProfile?.id) return;
+
+    // Initial fetch
+    fetchEarningsData(true);
+
+    // Set up interval to refresh earnings every 30 seconds
+    const earningsInterval = setInterval(() => {
+      fetchEarningsData(true);
+    }, 30000); // 30 seconds
+
+    // Clean up interval on component unmount
+    return () => {
+      clearInterval(earningsInterval);
+    };
+  }, [userProfile?.id]);
+
+  const fetchEarningsData = async (silent = false) => {
+    if (!userProfile?.id) return;
+
+    if (!silent) setLoading(true);
+    setError(null);
+
+    try {
+      const totalAmount = await getUserTotalEarnings(userProfile?.id);
+      setTotalEarnings(totalAmount);
+    } catch (err) {
+      setError("Failed to load earnings data");
+      console.error("Error fetching earnings:", err);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
 
   // Update selectedNodeId when nodeId from redux changes
   useEffect(() => {
@@ -300,6 +347,7 @@ export const NodeControlPanel = () => {
 
   const confirmDeviceType = async () => {
     if (
+      !userProfile?.id ||
       !detectedHardware ||
       !selectedDeviceType ||
       !selectedBrand ||
@@ -333,7 +381,7 @@ export const NodeControlPanel = () => {
           vram: selectedVRAM,
           hash_rate: 84,
           device_specs: deviceSpecs,
-          owner: userProfile.id,
+          owner: userProfile?.id,
         })
         .select("id")
         .single();
@@ -370,8 +418,15 @@ export const NodeControlPanel = () => {
   };
 
   const toggleNodeStatus = async () => {
+    // Skip if user profile is not loaded yet
+    if (!userProfile?.id) {
+      toast.error("User profile not loaded. Please reload the page.");
+      return;
+    }
+
     if (isActive) {
       // Stop the node
+      setIsStopping(true);
       try {
         // Update device status in database
         const { error: updateError } = await client
@@ -395,6 +450,8 @@ export const NodeControlPanel = () => {
       } catch (error) {
         console.error("Error stopping node:", error);
         toast.error("Failed to stop node. Please try again.");
+      } finally {
+        setIsStopping(false);
       }
     } else if (selectedNode) {
       // Start the node
@@ -445,7 +502,12 @@ export const NodeControlPanel = () => {
           // Fetch and assign tasks to this node
           try {
             // This thunk action will fetch tasks and assign them to the node
-            dispatch(fetchAndAssignTasks(selectedNode.id));
+            dispatch(
+              fetchAndAssignTasks({
+                nodeId: selectedNode.id,
+                userId: userProfile?.id,
+              })
+            );
           } catch (error) {
             console.error("Error assigning tasks:", error);
             toast.error("Failed to assign tasks to node");
@@ -477,11 +539,11 @@ export const NodeControlPanel = () => {
   };
 
   return (
-    <div className="p-6 rounded-3xl" style={{ backgroundColor: "#0A1A2F" }}>
+    <div className="p-6 rounded-3xl stat-card">
       <div className="flex flex-col">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-medium text-white/90">
+            <h2 className="text-lg font-medium tex-white/90">
               Node Control Panel
             </h2>
             <InfoTooltip content="Manage your computing nodes, start or stop them, and view performance metrics" />
@@ -491,7 +553,7 @@ export const NodeControlPanel = () => {
             size="sm"
             onClick={startScan}
             disabled={isScanning}
-            className="rounded-full bg-[#112544] text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
+            className=" gradient-button rounded-full  text-[#8BBEFF] "
           >
             <Scan className="w-4 h-4 mr-2" />
             Scan Device
@@ -500,7 +562,7 @@ export const NodeControlPanel = () => {
 
         <div className="flex gap-4 items-center mb-6">
           <Select value={selectedNodeId} onValueChange={handleNodeSelect}>
-            <SelectTrigger className="flex-1 bg-[#112544] border-0 rounded-full text-white/80">
+            <SelectTrigger className="flex-1 bg-[#1D1D33] border-0 rounded-full text-[#515194]">
               <SelectValue placeholder="Select Node" />
             </SelectTrigger>
             <SelectContent className="bg-[#0A1A2F] border-[#1E293B]">
@@ -508,7 +570,7 @@ export const NodeControlPanel = () => {
                 <SelectItem
                   key={node.id}
                   value={node.id}
-                  className="text-white/80"
+                  className="text-[#515194]"
                 >
                   <div className="flex items-center gap-2">
                     {getDeviceIcon(node.type)}
@@ -521,81 +583,121 @@ export const NodeControlPanel = () => {
 
           <Button
             variant="default"
-            disabled={isStarting || !selectedNodeId}
+            disabled={isStarting || isStopping || !selectedNodeId}
             onClick={toggleNodeStatus}
-            className="rounded-full bg-green-600 hover:bg-green-700 text-white"
+            className={`rounded-full transition-all duration-300 shadow-md hover:shadow-lg text-white hover:translate-y-[-0.5px] ${
+              isActive
+                ? "bg-red-600 hover:bg-red-700 hover:shadow-red-500/30 shadow-red-500"
+                : "bg-green-600 hover:bg-green-700 hover:shadow-green-500/30 shadow-green-500"
+            }`}
           >
-            {isStarting ? "Starting..." : "Start Node"}
-            {!isStarting && <span className="ml-2">+</span>}
+            {isStarting && (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Starting...
+              </>
+            )}
+            {isStopping && (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Stopping...
+              </>
+            )}
+            {!isStarting && !isStopping && (
+              <>
+                {isActive ? "Stop Node" : "Start Node"}
+                {!isActive ? (
+                  <VscDebugStart className="text-white/90 " />
+                ) : (
+                  <IoStopOutline className="text-white/90" />
+                )}
+              </>
+            )}
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="p-4 rounded-xl bg-[#112544] flex flex-col">
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="p-4 rounded-xl bg-[#1D1D33] flex flex-col">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                <img src="/icons/cpu.svg" alt="CPU" className="w-4 h-4" />
-              </div>
-              <span className="text-white/60 text-sm">CPU Usage</span>
-            </div>
-            <div className="text-xl font-medium text-white">
-              {cpuUsage.toFixed(2)}%
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-[#112544] flex flex-col">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                <img src="/icons/memory.svg" alt="Memory" className="w-4 h-4" />
-              </div>
-              <span className="text-white/60 text-sm">Memory</span>
-            </div>
-            <div className="text-xl font-medium text-white">
-              {memoryUsage.toFixed(2)}%
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-[#112544] flex flex-col">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <div className="icon-bg flex items-center justify-center">
                 <img
-                  src="/icons/network.svg"
-                  alt="Network"
-                  className="w-4 h-4"
+                  src="/images/cpu_usage.png"
+                  alt="CPU"
+                  className="w-8 h-8 object-contain z-10"
                 />
               </div>
-              <span className="text-white/60 text-sm">Network</span>
-            </div>
-            <div className="text-xl font-medium text-white">
-              {networkUsage.toFixed(2)} MB/s
+              <div className="flex flex-col">
+                <span className="text-[#515194] text-sm">CPU Usage</span>
+                <div className="text-xl font-medium text-white">
+                  {cpuUsage.toFixed(2)}%
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#112544] flex flex-col">
+          <div className="p-4 rounded-xl bg-[#1D1D33] flex flex-col">
             <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <div className="icon-bg flex items-center justify-center">
                 <img
-                  src="/icons/success.svg"
-                  alt="Success"
-                  className="w-4 h-4"
+                  src="/images/memory_usage.png"
+                  alt="CPU"
+                  className="w-8 h-8 object-contain z-10"
                 />
               </div>
-              <span className="text-white/60 text-sm">Success Rate</span>
+              <div>
+                <span className="text-[#515194] text-sm">Memory</span>
+                <div className="text-xl font-medium text-white">
+                  {memoryUsage.toFixed(2)}%
+                </div>
+              </div>
             </div>
-            <div className="text-xl font-medium text-white">
-              {successRate.toFixed(2)}%
+          </div>
+
+          <div className="p-4 rounded-xl bg-[#1D1D33] flex flex-col">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="icon-bg flex items-center justify-center">
+                <img
+                  src="/images/network_usage.png"
+                  alt="CPU"
+                  className="w-8 h-8 object-contain z-10"
+                />
+              </div>
+              <div>
+                <span className="text-[#515194] text-sm">Network</span>
+                <div className="text-xl font-medium text-white">
+                  {networkUsage.toFixed(2)} MB/s
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-[#1D1D33] flex flex-col">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="icon-bg flex items-center justify-center">
+                <img
+                  src="/images/success.png"
+                  alt="CPU"
+                  className="w-8 h-8 object-contain z-10"
+                />
+              </div>
+              <div>
+                <span className="text-[#515194] text-sm">Success Rate</span>
+                <div className="text-xl font-medium text-white">
+                  {successRate.toFixed(2)}%
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-[#112544] mb-6">
+        <div className="p-4 rounded-xl bg-[#1D1D33] mb-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-white/60">Reward Tier</span>
+            <span className="text-[#515194]">Reward Tier</span>
             <span className="px-3 py-1 bg-purple-500/20 text-purple-400 text-xs font-medium rounded-full uppercase">
               {rewardTier}
             </span>
           </div>
-          <p className="text-sm text-white/70">
+          <p className="text-sm text-[#515194]">
             {rewardTier === "webgpu" &&
               "This device supports WebGPU acceleration, earning maximum NLOV token rewards."}
             {rewardTier === "wasm" &&
@@ -607,16 +709,16 @@ export const NodeControlPanel = () => {
           </p>
           {selectedNode && selectedNode.cpuCores && (
             <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
-              <div className="text-white/60">
+              <div className="text-[#515194]">
                 CPU Cores:{" "}
                 <span className="text-white">{selectedNode.cpuCores}</span>
               </div>
-              <div className="text-white/60">
+              <div className="text-[#515194]">
                 Memory:{" "}
                 <span className="text-white">{selectedNode.memory} GB</span>
               </div>
               {selectedNode.gpuInfo && (
-                <div className="col-span-2 text-white/60">
+                <div className="col-span-2 text-[#515194]">
                   GPU:{" "}
                   <span className="text-white">{selectedNode.gpuInfo}</span>
                 </div>
@@ -625,18 +727,22 @@ export const NodeControlPanel = () => {
           )}
         </div>
 
-        <div className="p-4 rounded-xl bg-[#112544] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center">
-              <img src="/icons/coin.svg" alt="Coin" className="w-5 h-5" />
+        <div className="p-6 flex items-center justify-between rounded-2xl bg-gradient-to-r from-[#090C18] to-[#14273F] border border-[#1D5AB3] relative overflow-hidden">
+          <div className="flex items-center gap-4 z-10">
+            <div className="flex items-center justify-center">
+              <img
+                src="/images/nlov-coin.png"
+                alt="coin"
+                className="w-11 h-11 object-contain z-10"
+              />
             </div>
-            <span className="text-white/60">Total Earnings</span>
+            <span className="text-white/90 text-2xl">Total Earnings</span>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-[32px] font-medium text-blue-400">
-              27.053
+          <div className="flex items-baseline gap-2 z-10">
+            <span className="text-[42px] font-medium bg-clip-text text-transparent bg-gradient-to-b from-[#20A5EF] to-[#0361DA]">
+              {totalEarnings}
             </span>
-            <span className="text-white/40 text-sm">NLOV</span>
+            <span className="text-white/90 text-sm">NLOV</span>
           </div>
         </div>
       </div>
@@ -647,22 +753,26 @@ export const NodeControlPanel = () => {
           style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
         >
           <DialogHeader>
-            <DialogTitle>Scanning Device Hardware</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-[#515194]">
+              Scanning Device Hardware
+            </DialogTitle>
+            <DialogDescription className="text-[#515194]/80">
               Analyzing your device capabilities to determine the optimal reward
               tier
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4">
-            <div className="mb-2 text-sm font-medium">{scanStage}</div>
+            <div className="mb-2 text-sm font-medium text-[#515194]">
+              {scanStage}
+            </div>
             <div className="w-full bg-slate-800 rounded-full h-2.5">
               <div
                 className="bg-gradient-to-r from-purple-500 to-blue-500 h-2.5 rounded-full transition-all duration-300 ease-in-out"
                 style={{ width: `${scanProgress}%` }}
               ></div>
             </div>
-            <div className="mt-4 text-sm text-slate-400">
+            <div className="mt-4 text-sm text-[#515194]">
               {scanProgress < 100
                 ? "Please wait while we analyze your device. Do not close this window."
                 : "Scan completed successfully!"}
@@ -680,12 +790,12 @@ export const NodeControlPanel = () => {
           style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
         >
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-[#515194]">
               {deviceGroup === "desktop_laptop"
                 ? "Desktop & Laptop Setup"
                 : "Mobile & Tablet Setup"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-[#515194]/80">
               {deviceGroup === "desktop_laptop"
                 ? "We detected a desktop or laptop device. Please specify your exact device type."
                 : "We detected a mobile or tablet device. Please specify your exact device type."}
@@ -707,7 +817,7 @@ export const NodeControlPanel = () => {
               >
                 <SelectTrigger
                   style={{
-                    backgroundColor: "rgba(15, 23, 42, 0.3)",
+                    backgroundColor: "#1D1D33",
                     padding: "8px 12px",
                     borderRadius: "6px",
                     border: "1px solid rgba(15, 23, 42, 0.3)",
@@ -716,7 +826,7 @@ export const NodeControlPanel = () => {
                   <SelectValue
                     placeholder="Select device type"
                     style={{
-                      color: "rgba(255, 255, 255, 0.7)",
+                      color: "#515194",
                       fontSize: "14px",
                     }}
                   />
@@ -747,7 +857,7 @@ export const NodeControlPanel = () => {
                         <span
                           className="ml-2"
                           style={{
-                            color: "rgba(255, 255, 255, 0.7)",
+                            color: "#515194",
                             fontSize: "14px",
                           }}
                         >
@@ -767,10 +877,11 @@ export const NodeControlPanel = () => {
                     setSelectedModel("");
                   }}
                 >
-                  <SelectTrigger
-                    style={{ backgroundColor: "rgba(15, 23, 42, 0.3)" }}
-                  >
-                    <SelectValue placeholder="Select brand" />
+                  <SelectTrigger style={{ backgroundColor: "#1D1D33" }}>
+                    <SelectValue
+                      placeholder="Select brand"
+                      style={{ color: "#515194" }}
+                    />
                   </SelectTrigger>
                   <SelectContent
                     style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
@@ -780,7 +891,10 @@ export const NodeControlPanel = () => {
                         <SelectItem
                           key={brand}
                           value={brand}
-                          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+                          style={{
+                            backgroundColor: "rgba(9, 12, 24, 1)",
+                            color: "#515194",
+                          }}
                         >
                           {brand}
                         </SelectItem>
@@ -792,10 +906,11 @@ export const NodeControlPanel = () => {
 
               {selectedBrand && (
                 <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger
-                    style={{ backgroundColor: "rgba(15, 23, 42, 0.3)" }}
-                  >
-                    <SelectValue placeholder="Select model" />
+                  <SelectTrigger style={{ backgroundColor: "#1D1D33" }}>
+                    <SelectValue
+                      placeholder="Select model"
+                      style={{ color: "#515194" }}
+                    />
                   </SelectTrigger>
                   <SelectContent
                     style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
@@ -808,7 +923,10 @@ export const NodeControlPanel = () => {
                       <SelectItem
                         key={model}
                         value={model}
-                        style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+                        style={{
+                          backgroundColor: "rgba(9, 12, 24, 1)",
+                          color: "#515194",
+                        }}
                       >
                         {model}
                       </SelectItem>
@@ -823,13 +941,13 @@ export const NodeControlPanel = () => {
                     <div>
                       <label
                         htmlFor="cpu"
-                        className="block text-sm font-medium mb-1"
+                        className="block text-sm font-medium mb-1 text-[#515194]"
                       >
                         CPU Model
                       </label>
                       <Input
                         id="cpu"
-                        style={{ backgroundColor: "rgba(15, 23, 42, 0.3)" }}
+                        style={{ backgroundColor: "#1D1D33" }}
                         placeholder="e.g. Intel Core i7-12700K"
                         value={customSpecs.cpu || ""}
                         onChange={(e) =>
@@ -843,13 +961,13 @@ export const NodeControlPanel = () => {
                     <div>
                       <label
                         htmlFor="gpu"
-                        className="block text-sm font-medium mb-1"
+                        className="block text-sm font-medium mb-1 text-[#515194]"
                       >
                         GPU Model
                       </label>
                       <Input
                         id="gpu"
-                        style={{ backgroundColor: "rgba(15, 23, 42, 0.3)" }}
+                        style={{ backgroundColor: "#1D1D33" }}
                         placeholder="e.g. NVIDIA RTX 4070"
                         value={customSpecs.gpu || ""}
                         onChange={(e) =>
@@ -863,7 +981,7 @@ export const NodeControlPanel = () => {
                     <div>
                       <label
                         htmlFor="vram"
-                        className="block text-sm font-medium mb-1"
+                        className="block text-sm font-medium mb-1 text-[#515194]"
                       >
                         VRAM (GB)
                       </label>
@@ -873,12 +991,23 @@ export const NodeControlPanel = () => {
                           setSelectedVRAM(Number(value))
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger
+                          style={{
+                            backgroundColor: "#1D1D33",
+                            color: "#515194",
+                          }}
+                        >
                           <SelectValue placeholder="Select VRAM" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent
+                          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+                        >
                           {[4, 8, 12, 16, 32, 64].map((vram) => (
-                            <SelectItem key={vram} value={vram.toString()}>
+                            <SelectItem
+                              key={vram}
+                              value={vram.toString()}
+                              style={{ color: "#515194" }}
+                            >
                               {vram} GB
                             </SelectItem>
                           ))}

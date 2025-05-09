@@ -30,6 +30,7 @@ import {
 import { processTask } from "@/services/swarmTaskService";
 import { AITask, TaskStatus, TaskType } from "@/services/types";
 import { Button } from "@/components/ui/button";
+import { TASK_PROCESSING_CONFIG } from "@/services/config";
 
 export const TaskPipeline = () => {
   const dispatch = useAppDispatch();
@@ -411,14 +412,14 @@ export const TaskPipeline = () => {
   };
 
   return (
-    <div className="stat-card">
-      <div className="flex justify-between items-center mb-4">
+    <div className="p-6 rounded-3xl stat-card relative">
+      <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold">Task Pipeline</h2>
+          <h2 className="text-lg font-medium text-white/90">Task Pipeline</h2>
           <InfoTooltip content="The task pipeline shows all tasks assigned to your nodes. Tasks are automatically processed when your nodes are active." />
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 mr-2">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <span className="text-green-400 text-xs">
               Image ({stats.imageTasksCount})
             </span>
@@ -427,67 +428,97 @@ export const TaskPipeline = () => {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-swarm-text-secondary">Auto</span>
+            <span className="text-sm text-white/60">NLOV Network Auto</span>
             <Switch checked={autoMode} onCheckedChange={toggleAutoMode} />
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-green-500" />
-            <span className="text-xl font-bold">{stats.completed}</span>
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="rounded-xl overflow-hidden bg-[#1D1D33] relative">
+          <div className="p-4 pb-3 flex flex-col items-center">
+            <img
+              src="/images/completed.png"
+              alt="Completed"
+              className="w-5 h-5 object-contain mb-2"
+            />
+            <span className="text-sm text-white/60">Completed</span>
+            <span className="text-2xl font-semibold text-white mt-1">
+              {stats.completed}
+            </span>
           </div>
-          <span className="text-xs text-slate-400">Completed</span>
+          <div className="h-2 w-full bg-[#0361DA]"></div>
         </div>
 
-        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-blue-500" />
-            <span className="text-xl font-bold">{stats.processing}</span>
+        <div className="rounded-xl overflow-hidden bg-[#1D1D33] relative">
+          <div className="p-4 pb-3 flex flex-col items-center">
+            <img
+              src="/images/processing.png"
+              alt="Processing"
+              className="w-5 h-5 object-contain mb-2"
+            />
+            <span className="text-sm text-white/60">Processing</span>
+            <span className="text-2xl font-semibold text-white mt-1">
+              {stats.processing}
+            </span>
           </div>
-          <span className="text-xs text-slate-400">Processing</span>
+          <div className="h-2 w-full bg-[#0361DA]"></div>
         </div>
 
-        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-500" />
-            <span className="text-xl font-bold">{stats.pending}</span>
+        <div className="rounded-xl overflow-hidden bg-[#1D1D33] relative">
+          <div className="p-4 pb-3 flex flex-col items-center">
+            <img
+              src="/images/pending.png"
+              alt="Pending"
+              className="w-5 h-5 object-contain mb-2"
+            />
+            <span className="text-sm text-white/60">Pending</span>
+            <span className="text-2xl font-semibold text-white mt-1">
+              {stats.pending}
+            </span>
           </div>
-          <span className="text-xs text-slate-400">Pending</span>
+          <div className="h-2 w-full bg-[#0361DA]"></div>
         </div>
 
-        <div className="flex flex-col items-center p-3 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center gap-2">
-            <XCircle className="w-4 h-4 text-red-500" />
-            <span className="text-xl font-bold">{stats.failed}</span>
+        <div className="rounded-xl overflow-hidden bg-[#1D1D33] relative">
+          <div className="p-4 pb-3 flex flex-col items-center">
+            <img
+              src="/images/error.png"
+              alt="Failed"
+              className="w-5 h-5 object-contain mb-2"
+            />
+            <span className="text-sm text-white/60">Failed</span>
+            <span className="text-2xl font-semibold text-white mt-1">
+              {stats.failed}
+            </span>
           </div>
-          <span className="text-xs text-slate-400">Failed</span>
+          <div className="h-2 w-full bg-[#0361DA]"></div>
         </div>
       </div>
 
       {!isActive ? (
-        <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-          <FileCode className="w-12 h-12 mb-4 text-slate-600" />
-          <p className="text-lg">Node is not active</p>
+        <div className="flex flex-col items-center justify-center py-16 text-white/60">
+          <div className="w-16 h-16 flex items-center justify-center rounded-md bg-[#1D1D33]/50 mb-6">
+            <FileCode className="w-8 h-8 text-white/30" />
+          </div>
+          <p className="text-xl font-medium">Node is not active</p>
           <p className="text-sm mt-2">
             Start your node to receive and view tasks
           </p>
         </div>
       ) : isLoading ? (
         <div className="flex justify-center items-center py-16">
-          <Loader2 className="w-8 h-8 animate-spin text-swarm-accent-purple" />
-          <span className="ml-3 text-lg">Loading tasks...</span>
+          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+          <span className="ml-3 text-lg text-white/70">Loading tasks...</span>
         </div>
       ) : assignedTasks.length > 0 ? (
-        <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
           {!autoMode && currentTask && currentTask.status === "pending" && (
             <div className="mb-4 flex justify-center">
               <Button
                 disabled={localProcessing}
                 onClick={handleProcessCurrentTask}
-                className="bg-swarm-accent-purple hover:bg-swarm-accent-purple/80"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
                 {localProcessing ? (
                   <>
@@ -507,137 +538,95 @@ export const TaskPipeline = () => {
           {assignedTasks.map((task) => (
             <div
               key={task.id}
-              className={`task-card ${
-                currentTask?.id === task.id
-                  ? "border border-swarm-accent-purple/50"
-                  : ""
-              }`}
+              className="rounded-xl overflow-hidden bg-[#1D1D33] border border-[#252547] transition-all duration-200 hover:border-blue-600/30"
             >
-              <div className="flex items-start gap-3">
-                <div className="mt-1">{getTaskTypeIcon(task.type)}</div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-sm font-medium ${
-                        task.type === "image"
-                          ? "text-green-400"
-                          : "text-blue-400"
-                      }`}
-                    >
-                      {task.type}
-                    </span>
-                    <span className="text-xs bg-slate-700/50 px-2 py-0.5 rounded text-slate-300">
-                      {task.model || "default"}
-                    </span>
-                    {currentTask?.id === task.id && (
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ml-2 flex items-center gap-1 
-                        ${
-                          task.status === "processing"
-                            ? "bg-blue-900/40 text-blue-300"
-                            : "bg-amber-900/40 text-amber-300"
-                        }`}
-                      >
-                        {task.status === "processing" ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Processing
-                          </>
-                        ) : (
-                          <>
-                            <Clock className="w-3 h-3" />
-                            Selected
-                          </>
-                        )}
-                      </span>
-                    )}
+              <div className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 mt-1.5">
+                    {getTaskTypeIcon(task.type)}
                   </div>
-                  <p className="text-sm mt-1 text-slate-200">
-                    {task.prompt.substring(0, 100)}
-                    {task.prompt.length > 100 ? "..." : ""}
-                  </p>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
-                    {task.result ? (
-                      <span className="text-green-400">
-                        {task.type === "image"
-                          ? "Image generated successfully"
-                          : task.result.substring(0, 50) +
-                            (task.result.length > 50 ? "..." : "")}
-                      </span>
-                    ) : task.status === "processing" ? (
-                      <span className="text-blue-400">Processing...</span>
-                    ) : (
-                      <span>Awaiting processing...</span>
-                    )}
-                    <span>{task.compute_time || 0}s</span>
-                  </div>
-
-                  {task.status === "processing" && (
-                    <div className="w-full bg-slate-700/50 h-1 mt-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-blue-500 to-purple-500 h-1 rounded-full animate-pulse"
-                        style={{ width: "60%" }}
-                      ></div>
-                    </div>
-                  )}
-                </div>
-                <div className="ml-2 flex flex-col items-end">
-                  <div
-                    className={`
-                    text-xs rounded-full px-2 py-0.5
-                    ${
-                      task.status === "completed"
-                        ? "bg-green-900/50 text-green-300"
-                        : ""
-                    }
-                    ${
-                      task.status === "processing"
-                        ? "bg-blue-900/50 text-blue-300"
-                        : ""
-                    }
-                    ${
-                      task.status === "pending"
-                        ? "bg-amber-900/50 text-amber-300"
-                        : ""
-                    }
-                    ${
-                      task.status === "failed"
-                        ? "bg-red-900/50 text-red-300"
-                        : ""
-                    }
-                  `}
-                  >
-                    {task.status === "processing" ? (
-                      <div className="flex items-center gap-1">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Processing</span>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center rounded-full  py-1">
+                        <span className="text-sm text-[#0361DA] font-medium ">
+                          {task.type === "image"
+                            ? "neuro-image-gen"
+                            : "freedomai-llm"}
+                        </span>
                       </div>
-                    ) : (
-                      task.status.charAt(0).toUpperCase() + task.status.slice(1)
+                      <div>
+                        {task.status === "completed" && (
+                          <div className="border rounded-full border-green-500 bg-green-500/10 text-green-400 text-xs font-medium px-3 py-1 ">
+                            Completed
+                          </div>
+                        )}
+                        {task.status === "processing" && (
+                          <div className="border rounded-full border-blue-500 bg-blue-500/10 text-blue-400 text-xs font-medium px-3 py-1 ">
+                            Processing
+                          </div>
+                        )}
+                        {task.status === "pending" && (
+                          <div className="border border-amber-500 bg-amber-500/10 text-amber-400 text-xs font-medium px-3 py-1 rounded-full">
+                            Pending
+                          </div>
+                        )}
+                        {task.status === "failed" && (
+                          <div className="border border-red-500 bg-red-500/10 text-red-400 text-xs font-medium px-3 py-1 rounded-full">
+                            Failed
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-sm text-white/80 mt-2.5">
+                      Task ID: {task.id}
+                    </p>
+
+                    {task.status === "completed" && (
+                      <div className="flex items-center gap-2 ">
+                        <p className="text-xs text-[#515194] mt-1">
+                          Task completed successfully
+                        </p>
+                        <span className="text-xs mt-1 text-stone-50">
+                          {task.type === "image"
+                            ? TASK_PROCESSING_CONFIG.PROCESSING_TIME.image
+                            : TASK_PROCESSING_CONFIG.PROCESSING_TIME.text}
+                          s
+                        </span>
+                      </div>
+                    )}
+
+                    {task.status === "processing" && (
+                      <>
+                        <p className="text-xs text-white/55 mt-1">
+                          Processing...
+                        </p>
+                        <div className="w-full h-1.5 bg-[#1A1A4C] rounded-full overflow-hidden mt-2">
+                          <div className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-full w-1/2 animate-pulse"></div>
+                        </div>
+                      </>
+                    )}
+
+                    {task.status === "pending" && (
+                      <p className="text-xs text-[#515194] mt-1">
+                        Awaiting transaction...
+                      </p>
+                    )}
+
+                    {task.status === "failed" && (
+                      <p className="text-xs text-[#515194] mt-1">Task failed</p>
                     )}
                   </div>
-                  {task.status === "processing" && (
-                    <span className="text-xs mt-1 text-slate-400">
-                      ~{getEstimatedTime(task)}s estimated
-                    </span>
-                  )}
-                  {task.type === "image" && task.status !== "processing" && (
-                    <span className="text-xs mt-1 text-green-400">
-                      30s task
-                    </span>
-                  )}
-                  {task.type === "text" && task.status !== "processing" && (
-                    <span className="text-xs mt-1 text-blue-400">15s task</span>
-                  )}
                 </div>
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-          <FileCode className="w-12 h-12 mb-4 text-slate-600" />
-          <p className="text-lg">No tasks assigned yet</p>
+        <div className="flex flex-col items-center justify-center py-16 text-white/60">
+          <div className="w-16 h-16 flex items-center justify-center rounded-md bg-[#1D1D33]/50 mb-6">
+            <FileCode className="w-8 h-8 text-white/30" />
+          </div>
+          <p className="text-xl font-medium">No tasks assigned yet</p>
           <p className="text-sm mt-2">
             {isActive
               ? "Tasks will be assigned when they become available"
@@ -646,7 +635,7 @@ export const TaskPipeline = () => {
           {isActive && (
             <Button
               size="sm"
-              className="mt-4"
+              className="mt-6 bg-blue-600 hover:bg-blue-700 text-white"
               disabled={isLoading || localProcessing}
               onClick={() =>
                 nodeId &&

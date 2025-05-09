@@ -60,6 +60,26 @@
     );
   }
 
+  .network-stat-card {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .network-stat-card:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 25px rgba(3, 97, 218, 0.3);
+  }
+
+  .network-stat-card:hover .network-stat-glow {
+    opacity: 0.7;
+  }
+
+  .network-stat-card:hover .network-stat-shine {
+    transform: translateX(100%);
+    transition: transform 1.5s ease;
+  }
+
   .task-card {
     @apply bg-[#161628] border border-[#1a1a36]/50 rounded-lg p-4 transition-all duration-200;
   }
