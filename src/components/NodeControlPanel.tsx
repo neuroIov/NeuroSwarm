@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { getTierByName } from "@/lib/subscriptionTiers";
+
 import {
   Cpu,
   HardDrive,
@@ -126,6 +128,9 @@ export const NodeControlPanel = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalEarnings, setTotalEarnings] = useState(0);
+  const { subscriptionTier } = useSession();
+const tierInfo = getTierByName(subscriptionTier);
+
 
   // Device selection state
   const [showDeviceTypeDialog, setShowDeviceTypeDialog] = useState(false);
@@ -475,7 +480,7 @@ export const NodeControlPanel = () => {
               nodeName: selectedNode.name,
               nodeType: selectedNode.type,
               rewardTier: selectedNode.rewardTier,
-            })
+              maxUptime: tierInfo.maxUptime            })
           );
 
           // Update node status in local state

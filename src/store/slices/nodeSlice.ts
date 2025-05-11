@@ -1,8 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { getSwarmSupabase } from '@/lib/supabase-client';
 
-// Constants
-export const FREE_TIER_LIMIT_SECONDS = 4 * 60 * 60; // 4 hours in seconds
+// --- Removed: FREE_TIER_LIMIT_SECONDS ---
 
 export interface NodeState {
     isActive: boolean;
@@ -15,19 +14,19 @@ export interface NodeState {
     networkUsage: number;
     tasksCompleted: number;
     successRate: number;
-    // New uptime fields
     startTime: number | null;
     currentSessionUptime: number;
     totalUptime: number;
     remainingFreeTierTime: number;
+    maxUptime: number; // ✅ Added for tier logic
 }
 
-// Helper to load uptime from localStorage
+// Updated: load from storage helper (no longer relies on constant)
 const loadUptimeFromStorage = (nodeId: string | null): {
     totalUptime: number,
     remainingFreeTierTime: number
 } => {
-    if (!nodeId) return { totalUptime: 0, remainingFreeTierTime: FREE_TIER_LIMIT_SECONDS };
+    if (!nodeId) return { totalUptime: 0, remainingFreeTierTime: 0 };
 
     try {
         const storedData = localStorage.getItem(`node-uptime-${nodeId}`);
@@ -35,16 +34,14 @@ const loadUptimeFromStorage = (nodeId: string | null): {
             const parsedData = JSON.parse(storedData);
             return {
                 totalUptime: parsedData.totalUptime || 0,
-                remainingFreeTierTime: parsedData.remainingFreeTierTime !== undefined
-                    ? parsedData.remainingFreeTierTime
-                    : FREE_TIER_LIMIT_SECONDS - (parsedData.totalUptime || 0)
+                remainingFreeTierTime: parsedData.remainingFreeTierTime ?? 0
             };
         }
     } catch (e) {
         console.error('Error loading uptime from storage:', e);
     }
 
-    return { totalUptime: 0, remainingFreeTierTime: FREE_TIER_LIMIT_SECONDS };
+    return { totalUptime: 0, remainingFreeTierTime: 0 };
 };
 
 const initialState: NodeState = {
@@ -58,14 +55,14 @@ const initialState: NodeState = {
     networkUsage: 0,
     tasksCompleted: 0,
     successRate: 100,
-    // New uptime fields
     startTime: null,
     currentSessionUptime: 0,
     totalUptime: 0,
-    remainingFreeTierTime: FREE_TIER_LIMIT_SECONDS,
+    remainingFreeTierTime: 0,
+    maxUptime: 4 * 60 * 60, // fallback default 4 hours
 };
 
-// Helper function to sync uptime to Supabase
+// Sync helper
 export const syncUptimeToDatabase = async (nodeId: string, totalUptimeSeconds: number) => {
     if (!nodeId) return;
 
@@ -89,18 +86,14 @@ export const nodeSlice = createSlice({
             nodeName: string,
             nodeType: 'desktop' | 'laptop' | 'tablet' | 'mobile',
             rewardTier: 'webgpu' | 'wasm' | 'webgl' | 'cpu',
+            maxUptime: number, // ✅ Required input from session
             storedUptime?: number
         }>) => {
-            const { nodeId, nodeName, nodeType, rewardTier, storedUptime } = action.payload;
+            const { nodeId, nodeName, nodeType, rewardTier, maxUptime, storedUptime } = action.payload;
 
-            // Load saved uptime data from localStorage
             const savedData = loadUptimeFromStorage(nodeId);
-
-            // Use stored uptime from database if provided, otherwise use localStorage value
             const totalUptime = storedUptime !== undefined ? storedUptime : savedData.totalUptime;
-
-            // Calculate remaining free tier time
-            const remainingFreeTierTime = Math.max(0, FREE_TIER_LIMIT_SECONDS - totalUptime);
+            const remainingFreeTierTime = Math.max(0, maxUptime - totalUptime);
 
             state.isActive = true;
             state.nodeId = nodeId;
@@ -111,30 +104,26 @@ export const nodeSlice = createSlice({
             state.currentSessionUptime = 0;
             state.totalUptime = totalUptime;
             state.remainingFreeTierTime = remainingFreeTierTime;
+            state.maxUptime = maxUptime;
 
-            // Store current values in localStorage
             localStorage.setItem(`node-uptime-${nodeId}`, JSON.stringify({
                 totalUptime,
                 remainingFreeTierTime
             }));
         },
         stopNode: (state) => {
-            // Calculate final uptime for this session
             if (state.startTime && state.nodeId) {
                 const sessionUptime = Math.floor((Date.now() - state.startTime) / 1000);
                 const newTotalUptime = state.totalUptime + sessionUptime;
-                const newRemainingFreeTierTime = Math.max(0, state.remainingFreeTierTime - sessionUptime);
+                const newRemainingFreeTierTime = Math.max(0, state.maxUptime - newTotalUptime);
 
-                // Update localStorage
                 localStorage.setItem(`node-uptime-${state.nodeId}`, JSON.stringify({
                     totalUptime: newTotalUptime,
                     remainingFreeTierTime: newRemainingFreeTierTime
                 }));
 
-                // Sync to database
                 syncUptimeToDatabase(state.nodeId, newTotalUptime);
 
-                // Update state
                 state.totalUptime = newTotalUptime;
                 state.remainingFreeTierTime = newRemainingFreeTierTime;
             }
@@ -168,44 +157,39 @@ export const nodeSlice = createSlice({
             state.successRate = action.payload;
         },
         updateUptime: (state) => {
-            // Only update if node is active and has a start time
             if (state.isActive && state.startTime) {
                 const currentTime = Date.now();
                 const elapsedSeconds = Math.floor((currentTime - state.startTime) / 1000);
                 state.currentSessionUptime = elapsedSeconds;
 
-                // Check if we need to stop the node because free tier time is up
-                if (state.remainingFreeTierTime <= 0) {
+                const totalUsed = state.totalUptime + elapsedSeconds;
+
+                if (totalUsed >= state.maxUptime) {
+                    state.remainingFreeTierTime = 0;
                     state.isActive = false;
                     state.startTime = null;
 
-                    // Sync to database before stopping
                     if (state.nodeId) {
                         syncUptimeToDatabase(state.nodeId, state.totalUptime);
                     }
                 } else {
-                    // Update remaining free tier time
-                    state.remainingFreeTierTime = Math.max(0, FREE_TIER_LIMIT_SECONDS - (state.totalUptime + elapsedSeconds));
+                    state.remainingFreeTierTime = Math.max(0, state.maxUptime - totalUsed);
                 }
             }
         },
         syncUptime: (state) => {
-            // Used to manually trigger uptime sync to database
             if (state.isActive && state.startTime && state.nodeId) {
                 const currentSessionUptime = Math.floor((Date.now() - state.startTime) / 1000);
                 const newTotalUptime = state.totalUptime + currentSessionUptime;
-
-                // Update database without stopping the node
                 syncUptimeToDatabase(state.nodeId, newTotalUptime);
             }
         },
         resetFreeTime: (state) => {
-            // For testing/development purposes
-            state.remainingFreeTierTime = FREE_TIER_LIMIT_SECONDS;
+            state.remainingFreeTierTime = state.maxUptime;
             if (state.nodeId) {
                 localStorage.setItem(`node-uptime-${state.nodeId}`, JSON.stringify({
                     totalUptime: state.totalUptime,
-                    remainingFreeTierTime: FREE_TIER_LIMIT_SECONDS
+                    remainingFreeTierTime: state.maxUptime
                 }));
             }
         }
@@ -223,4 +207,4 @@ export const {
     resetFreeTime
 } = nodeSlice.actions;
 
-export default nodeSlice.reducer; 
+export default nodeSlice.reducer;
