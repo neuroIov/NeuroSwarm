@@ -11,6 +11,20 @@ import {
 import { AppDispatch } from "@/store";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 
+// ✅ Helper function for max uptime by subscription tier
+export const getMaxUptimeByTier = (tier: string): number => {
+  switch (tier) {
+    case "Basic":
+      return (4 + 6) * 60 * 60; // 10 hours
+    case "Pro":
+      return (4 + 8) * 60 * 60; // 12 hours
+    case "Elite":
+      return 24 * 60 * 60; // 24 hours
+    default:
+      return 4 * 60 * 60; // Guest or unrecognized
+  }
+};
+
 export const useSession = () => {
   const dispatch = useDispatch<AppDispatch>();
   const session = useSelector((state: RootState) => state.session);
@@ -31,7 +45,6 @@ export const useSession = () => {
       if (error) throw error;
       if (!data.user) throw new Error('No user data');
 
-      // Start session
       dispatch(
         startSession({
           userId: data.user.id,
@@ -40,10 +53,8 @@ export const useSession = () => {
         })
       );
 
-      // Fetch or create user profile
       dispatch(fetchOrCreateUserProfile(data.user.id));
 
-      // Log email login activity
       dispatch(logActivity({
         type: 'email_login',
         details: { email }
@@ -60,7 +71,6 @@ export const useSession = () => {
   const signupWithEmail = async (email: string, password: string, username: string) => {
     setIsAuthLoading(true);
     try {
-      // Create auth user
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -74,7 +84,6 @@ export const useSession = () => {
       if (error) throw error;
       if (!data.user) throw new Error('No user data');
 
-      // Start session
       dispatch(
         startSession({
           userId: data.user.id,
@@ -83,7 +92,6 @@ export const useSession = () => {
         })
       );
 
-      // Create user profile
       await supabase
         .from('user_profiles')
         .insert([
@@ -96,7 +104,6 @@ export const useSession = () => {
           }
         ]);
 
-      // Log signup activity
       dispatch(logActivity({
         type: 'email_signup',
         details: { email, username }
@@ -110,7 +117,6 @@ export const useSession = () => {
     }
   };
 
-  // Start guest session on mount or restore saved session
   useEffect(() => {
     if (!session.sessionId) {
       const savedSession = localStorage.getItem("swarm-session");
@@ -119,14 +125,12 @@ export const useSession = () => {
         try {
           const parsed = JSON.parse(savedSession);
 
-          // Start session in Redux
           dispatch(startSession({
             userId: parsed.userId,
             authMethod: parsed.authMethod,
             walletAddress: parsed.walletAddress
           }));
 
-          // If wallet address exists, fetch the user profile
           if (parsed.walletAddress) {
             dispatch(fetchOrCreateUserProfile(parsed.walletAddress));
             setWalletConnected(true);
@@ -140,18 +144,15 @@ export const useSession = () => {
           }
         } catch (e) {
           console.error("Failed to parse saved session:", e);
-          // Start a guest session
           dispatch(startSession({ userId: "guest", authMethod: null }));
         }
       } else {
-        // Start a guest session if no saved session
         console.log("Starting new guest session");
         dispatch(startSession({ userId: "guest", authMethod: null }));
       }
     }
   }, [dispatch, session.sessionId]);
 
-  // Save session to localStorage when it changes
   useEffect(() => {
     if (session.sessionId) {
       localStorage.setItem("swarm-session", JSON.stringify({
@@ -163,17 +164,14 @@ export const useSession = () => {
     }
   }, [session.sessionId, session.userId, session.authMethod, session.walletAddress]);
 
-  // Function to connect wallet
   const connectWallet = async () => {
     if (walletConnected) {
       logout();
       return;
     }
 
-    // Check if running on mobile
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-    // Define Phantom provider interface
     interface PhantomWindow extends Window {
       phantom?: {
         solana?: {
@@ -192,7 +190,7 @@ export const useSession = () => {
       if ('solana' in window && window.solana?.isPhantom) {
         return window.solana;
       }
-      
+
       return null;
     };
 
@@ -209,7 +207,6 @@ export const useSession = () => {
         setWalletConnected(true);
         console.log(`Connected to wallet: ${walletAddress}`);
 
-        // Start session with wallet info
         dispatch(
           startSession({
             userId: walletAddress,
@@ -218,10 +215,8 @@ export const useSession = () => {
           })
         );
 
-        // Fetch or create user profile in Supabase
         dispatch(fetchOrCreateUserProfile(walletAddress));
 
-        // Log wallet connection activity
         dispatch(logActivity({
           type: "wallet_connected",
           details: { walletAddress }
@@ -233,40 +228,37 @@ export const useSession = () => {
       }
     } else {
       console.log("Phantom wallet not detected");
-      const phantomAppUrl = isMobile 
+      const phantomAppUrl = isMobile
         ? 'https://phantom.app/download'
         : 'https://phantom.app/';
-      
+
       if (confirm('Phantom wallet is required. Would you like to install it?')) {
         window.open(phantomAppUrl, '_blank');
       }
     }
   };
 
-  // Function to log user activity
   const logUserActivity = (type: string, details: Record<string, unknown>) => {
     dispatch(logActivity({ type, details }));
   };
 
-  // Function to logout
   const logout = () => {
     console.log("Logging out user...");
 
-    // Clear the session from Redux
     dispatch(endSession());
-
-    // Clear local storage
     localStorage.removeItem("swarm-session");
     console.log("Session data cleared from localStorage");
 
-    // Reset wallet connection state
     setWalletConnected(false);
     setUserPublicKey(null);
 
-    // Set guest session
     console.log("Starting new guest session");
     dispatch(startSession({ userId: "guest", authMethod: null }));
   };
+
+  // ✅ Tier logic
+  const subscriptionTier = session.userProfile?.subscription_tier || "Basic";
+  const maxUptime = getMaxUptimeByTier(subscriptionTier);
 
   return {
     session,
@@ -280,5 +272,7 @@ export const useSession = () => {
     userProfile: session.userProfile,
     loginWithEmail,
     signupWithEmail,
+    subscriptionTier,
+    maxUptime, // ✅ Export max uptime in seconds based on tier
   };
 };

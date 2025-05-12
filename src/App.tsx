@@ -1,9 +1,10 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { SubscriptionNotice } from "@/components/SubscriptionNotice";
 
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -12,14 +13,33 @@ import { WalletButton } from "./components/WalletButton";
 import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "./store";
 import { syncUptime, updateUptime } from "./store/slices/nodeSlice";
+import { useToast } from "@/components/ui/use-toast"; // ✅ added
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
-  const { session, logUserActivity, userProfile, walletConnected } =
-    useSession();
+  const { session, logUserActivity, userProfile, walletConnected, subscriptionTier } = useSession();
   const dispatch = useAppDispatch();
-  const { isActive } = useSelector((state: RootState) => state.node);
+  const { toast } = useToast(); // ✅ added
+  const { isActive, remainingFreeTierTime } = useSelector((state: RootState) => state.node); // ✅ merged selectors
+  const hasShownLimitToast = useRef(false); // ✅ to prevent duplicate toasts
+
+  // ✅ Notify when time limit reached
+  useEffect(() => {
+    if (
+      remainingFreeTierTime === 0 &&
+      isActive &&
+      !hasShownLimitToast.current
+    ) {
+      hasShownLimitToast.current = true;
+
+      toast({
+        title: "⚠️ Swarm Node Limit Reached",
+        description: `Your ${subscriptionTier} tier session time is up. Please upgrade to continue.`,
+        duration: 7000,
+      });
+    }
+  }, [remainingFreeTierTime, isActive, subscriptionTier]);
 
   // Inject Google Analytics gtag.js script
   useEffect(() => {
@@ -49,7 +69,7 @@ const AppContent = () => {
     }
   }, [userProfile]);
 
-  // Set up event listeners for app closure/refresh to sync uptime data
+  // Sync uptime on app close/refresh
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (isActive) {
@@ -102,6 +122,7 @@ const AppContent = () => {
     <>
       <Toaster />
       <Sonner />
+      <SubscriptionNotice />
       <BrowserRouter>
         <Routes>
           <Route path="/*" element={<Index />} />

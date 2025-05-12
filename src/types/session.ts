@@ -29,4 +29,5 @@ export interface UserProfile {
     joined_at: string;
     user_name: string | null;
     referral_code: string | null;
+    subscription_tier?: string;
 } 
