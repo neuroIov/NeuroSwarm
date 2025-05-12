@@ -30,4 +30,8 @@ export interface UserProfile {
     user_name: string | null;
     referral_code: string | null;
     subscription_tier?: string;
-} 
+    // New subscription-related fields
+    credits?: number;
+    max_devices?: number;
+    swarm_hours_remaining?: number;
+}

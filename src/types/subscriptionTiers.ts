@@ -1,4 +1,24 @@
-export const subscriptionTiers = [
+// src/types/subscriptionTiers.ts
+
+export interface AiCredits {
+    neuroImageGen: number | 'limited' | 'unlimited';
+    freedomAI: number | 'unlimited';
+    musicVideo: number;
+    deepfake: number;
+    videoGenerator: number;
+    creator3D: boolean | 'unlimited';
+  }
+  
+  export interface SubscriptionTier {
+    name: string;
+    price: number;
+    maxUptime: number; // in seconds
+    deviceLimit: number;
+    aiCredits: AiCredits;
+    benefits: string[];
+  }
+  
+  export const subscriptionTiers: SubscriptionTier[] = [
     {
       name: "Basic",
       price: 10,
@@ -10,13 +30,13 @@ export const subscriptionTiers = [
         musicVideo: 0,
         deepfake: 0,
         videoGenerator: 0,
-        creator3D: false,
+        creator3D: false
       },
       benefits: [
         "Neuro Image Gen",
         "Freedom AI with 10,000 credits",
-        "+6 Hr on 1 device Swarm Node connection",
-      ],
+        "+6 Hr on 1 device Swarm Node connection"
+      ]
     },
     {
       name: "Pro",
@@ -29,13 +49,13 @@ export const subscriptionTiers = [
         musicVideo: 0,
         deepfake: 0,
         videoGenerator: 0,
-        creator3D: false,
+        creator3D: false
       },
       benefits: [
         "Neuro Image Gen",
         "Freedom AI with unlimited credits",
-        "+8 Hr on 2 device Swarm Node connection",
-      ],
+        "+8 Hr on 2 device Swarm Node connection"
+      ]
     },
     {
       name: "Elite",
@@ -48,7 +68,7 @@ export const subscriptionTiers = [
         musicVideo: 20000,
         deepfake: 20000,
         videoGenerator: 10000,
-        creator3D: "unlimited",
+        creator3D: "unlimited"
       },
       benefits: [
         "Neuro Image Gen - unlimited",
@@ -57,18 +77,30 @@ export const subscriptionTiers = [
         "AI Music Video - 20,000 credits",
         "AI Deepfake Studio - 20,000 credits",
         "AI Video Generator - 10,000 credits",
-        "Full day on 6 device Swarm Node connection",
-      ],
-    },
+        "Full day on 6 device Swarm Node connection"
+      ]
+    }
   ];
   
-  // ✅ Helper: Get full tier object by name
-  export const getTierByName = (name: string) =>
+  export const getTierByName = (name: string): SubscriptionTier => 
     subscriptionTiers.find((tier) => tier.name === name) ?? subscriptionTiers[0];
   
-  // ✅ Helper: Return max uptime for a tier name
-  export const getMaxUptimeByTier = (tierName: string): number => {
-    const tier = getTierByName(tierName);
-    return tier.maxUptime;
+  // Optional: Add a default free tier
+  export const freeSubscriptionTier: SubscriptionTier = {
+    name: "Free",
+    price: 0,
+    maxUptime: 1 * 60 * 60, // 1 hour
+    deviceLimit: 1,
+    aiCredits: {
+      neuroImageGen: 100,
+      freedomAI: 100,
+      musicVideo: 0,
+      deepfake: 0,
+      videoGenerator: 0,
+      creator3D: false
+    },
+    benefits: [
+      "Basic Access",
+      "Limited AI Credits"
+    ]
   };
-  

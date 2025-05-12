@@ -2,6 +2,8 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import { getSwarmSupabase } from '@/lib/supabase-client';
 import { Activity, AuthMethod, UserProfile } from '@/types/session';
+import { SubscriptionTier, subscriptionTiers, getTierByName } from '@/types/subscriptionTiers';
+
 
 // Helper function to create a unique referral code
 const createUniqueReferralCode = async (userId: string, walletAddress: string): Promise<string> => {
