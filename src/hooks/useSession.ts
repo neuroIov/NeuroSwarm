@@ -1,29 +1,17 @@
 import { useDispatch, useSelector } from "react-redux";
 import { useEffect, useState } from "react";
 import { PublicKey } from "@solana/web3.js";
+
 import { RootState } from "@/store";
 import {
   startSession,
   logActivity,
   endSession,
-  fetchOrCreateUserProfile
+  fetchOrCreateUserProfile,
 } from "@/store/slices/sessionSlice";
 import { AppDispatch } from "@/store";
 import { getSwarmSupabase } from "@/lib/supabase-client";
-
-// ✅ Helper function for max uptime by subscription tier
-export const getMaxUptimeByTier = (tier: string): number => {
-  switch (tier) {
-    case "Basic":
-      return (4 + 6) * 60 * 60; // 10 hours
-    case "Pro":
-      return (4 + 8) * 60 * 60; // 12 hours
-    case "Elite":
-      return 24 * 60 * 60; // 24 hours
-    default:
-      return 4 * 60 * 60; // Guest or unrecognized
-  }
-};
+import { getMaxUptimeByTier } from "@/lib/subscriptionTiers"; // ✅ NEW
 
 export const useSession = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -43,32 +31,37 @@ export const useSession = () => {
       });
 
       if (error) throw error;
-      if (!data.user) throw new Error('No user data');
+      if (!data.user) throw new Error("No user data");
 
       dispatch(
         startSession({
           userId: data.user.id,
-          authMethod: 'email',
-          walletAddress: null
+          authMethod: "email",
+          walletAddress: null,
         })
       );
 
       dispatch(fetchOrCreateUserProfile(data.user.id));
 
-      dispatch(logActivity({
-        type: 'email_login',
-        details: { email }
-      }));
-
+      dispatch(
+        logActivity({
+          type: "email_login",
+          details: { email },
+        })
+      );
     } catch (error) {
-      console.error('Email login failed:', error);
+      console.error("Email login failed:", error);
       throw error;
     } finally {
       setIsAuthLoading(false);
     }
   };
 
-  const signupWithEmail = async (email: string, password: string, username: string) => {
+  const signupWithEmail = async (
+    email: string,
+    password: string,
+    username: string
+  ) => {
     setIsAuthLoading(true);
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -76,41 +69,40 @@ export const useSession = () => {
         password,
         options: {
           data: {
-            username
-          }
-        }
+            username,
+          },
+        },
       });
 
       if (error) throw error;
-      if (!data.user) throw new Error('No user data');
+      if (!data.user) throw new Error("No user data");
 
       dispatch(
         startSession({
           userId: data.user.id,
-          authMethod: 'email',
-          walletAddress: null
+          authMethod: "email",
+          walletAddress: null,
         })
       );
 
-      await supabase
-        .from('user_profiles')
-        .insert([
-          {
-            id: data.user.id,
-            user_name: username,
-            total_earnings: 0,
-            total_tasks_completed: 0,
-            reputation_score: 0
-          }
-        ]);
+      await supabase.from("user_profiles").insert([
+        {
+          id: data.user.id,
+          user_name: username,
+          total_earnings: 0,
+          total_tasks_completed: 0,
+          reputation_score: 0,
+        },
+      ]);
 
-      dispatch(logActivity({
-        type: 'email_signup',
-        details: { email, username }
-      }));
-
+      dispatch(
+        logActivity({
+          type: "email_signup",
+          details: { email, username },
+        })
+      );
     } catch (error) {
-      console.error('Email signup failed:', error);
+      console.error("Email signup failed:", error);
       throw error;
     } finally {
       setIsAuthLoading(false);
@@ -125,11 +117,13 @@ export const useSession = () => {
         try {
           const parsed = JSON.parse(savedSession);
 
-          dispatch(startSession({
-            userId: parsed.userId,
-            authMethod: parsed.authMethod,
-            walletAddress: parsed.walletAddress
-          }));
+          dispatch(
+            startSession({
+              userId: parsed.userId,
+              authMethod: parsed.authMethod,
+              walletAddress: parsed.walletAddress,
+            })
+          );
 
           if (parsed.walletAddress) {
             dispatch(fetchOrCreateUserProfile(parsed.walletAddress));
@@ -155,14 +149,22 @@ export const useSession = () => {
 
   useEffect(() => {
     if (session.sessionId) {
-      localStorage.setItem("swarm-session", JSON.stringify({
-        userId: session.userId,
-        authMethod: session.authMethod,
-        walletAddress: session.walletAddress
-      }));
+      localStorage.setItem(
+        "swarm-session",
+        JSON.stringify({
+          userId: session.userId,
+          authMethod: session.authMethod,
+          walletAddress: session.walletAddress,
+        })
+      );
       console.log("Session saved to localStorage");
     }
-  }, [session.sessionId, session.userId, session.authMethod, session.walletAddress]);
+  }, [
+    session.sessionId,
+    session.userId,
+    session.authMethod,
+    session.walletAddress,
+  ]);
 
   const connectWallet = async () => {
     if (walletConnected) {
@@ -182,12 +184,12 @@ export const useSession = () => {
     }
 
     const getProvider = () => {
-      if ('phantom' in window) {
+      if ("phantom" in window) {
         const provider = (window as PhantomWindow).phantom?.solana;
         if (provider?.isPhantom) return provider;
       }
 
-      if ('solana' in window && window.solana?.isPhantom) {
+      if ("solana" in window && window.solana?.isPhantom) {
         return window.solana;
       }
 
@@ -211,17 +213,18 @@ export const useSession = () => {
           startSession({
             userId: walletAddress,
             authMethod: "wallet",
-            walletAddress
+            walletAddress,
           })
         );
 
         dispatch(fetchOrCreateUserProfile(walletAddress));
 
-        dispatch(logActivity({
-          type: "wallet_connected",
-          details: { walletAddress }
-        }));
-
+        dispatch(
+          logActivity({
+            type: "wallet_connected",
+            details: { walletAddress },
+          })
+        );
       } catch (err) {
         console.error("Wallet connection failed:", err);
         alert("Phantom Wallet connection failed.");
@@ -229,16 +232,21 @@ export const useSession = () => {
     } else {
       console.log("Phantom wallet not detected");
       const phantomAppUrl = isMobile
-        ? 'https://phantom.app/download'
-        : 'https://phantom.app/';
+        ? "https://phantom.app/download"
+        : "https://phantom.app/";
 
-      if (confirm('Phantom wallet is required. Would you like to install it?')) {
-        window.open(phantomAppUrl, '_blank');
+      if (
+        confirm("Phantom wallet is required. Would you like to install it?")
+      ) {
+        window.open(phantomAppUrl, "_blank");
       }
     }
   };
 
-  const logUserActivity = (type: string, details: Record<string, unknown>) => {
+  const logUserActivity = (
+    type: string,
+    details: Record<string, unknown>
+  ) => {
     dispatch(logActivity({ type, details }));
   };
 
