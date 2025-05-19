@@ -11,6 +11,12 @@ import {
   RefreshCw,
   AlertCircle,
   Share2,
+  Twitter,
+  Check,
+  X as CloseIcon,
+  Facebook,
+  Linkedin,
+  Link as LinkIcon,
 } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "@/components/ui/button";
@@ -27,6 +33,11 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { claimReferralReward } from "@/services/earningsService";
 import { getSwarmSupabase } from "@/lib/supabase-client";
+import { ReferralStatCard } from "./ReferralStatCard";
+import { User as LucideUser } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { FaWhatsapp } from "react-icons/fa6";
+import { FaSquareXTwitter } from "react-icons/fa6";
 
 // Separate component for reward item to use state
 const RewardItem = ({
@@ -137,7 +148,192 @@ const RewardItem = ({
   );
 };
 
+// Add these new components before the main return statement
+const DailyRewardCard = ({
+  day,
+  points,
+  isActive,
+  isCompleted,
+}: {
+  day: number;
+  points: number;
+  isActive: boolean;
+  isCompleted: boolean;
+}) => {
+  return (
+    <div
+      className={`relative group transition-all duration-300 ${
+        isActive ? "scale-105" : ""
+      }`}
+    >
+      <div
+        className={`
+          relative overflow-hidden rounded-2xl p-4 
+          ${
+            isActive
+              ? "bg-gradient-to-br from-blue-500/20 to-purple-600/20 border-2 border-blue-500/50"
+              : isCompleted
+              ? "bg-[#161628] border-2 border-green-500/50"
+              : "bg-gradient-to-br from-[#1a1a36] to-[#090C18] border-2 border-[#1a1a36]"
+          }
+          hover:scale-105 transition-all duration-300 hover:border-blue-500/50
+          hover:shadow-[0_0_20px_rgba(59,130,246,0.2)]
+        `}
+      >
+        <div className="text-center">
+          <div
+            className={`text-lg font-medium ${
+              isActive ? "text-blue-400" : "text-white"
+            }`}
+          >
+            Day {day}
+          </div>
+          <div className="text-sm text-blue-400/80 mt-1">{points} Points</div>
+        </div>
+        {isCompleted && (
+          <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-1">
+            <Check className="w-3 h-3 text-white" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Social Share Modal Component
+const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
+  const [isCopied, setIsCopied] = useState(false);
+
+  const socialPlatforms = [
+    {
+      name: "Facebook",
+      icon: <Facebook className="w-6 h-6" />,
+      color: "from-[#1877F2] to-[#1877F2]",
+    },
+    {
+      name: "LinkedIn",
+      icon: <Linkedin className="w-6 h-6" />,
+      color: "from-[#0077B5] to-[#0077B5]",
+    },
+    {
+      name: "WhatsApp",
+      icon: <FaWhatsapp className="w-6 h-6" />,
+      color: "from-[#25D366] to-[#25D366]",
+    },
+  ];
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setIsCopied(true);
+      toast.success("Link copied!", { icon: "📋", duration: 2000 });
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      toast.error("Failed to copy link");
+    }
+  };
+
+  const openSocialShare = (shareUrl) => {
+    window.open(shareUrl, "_blank", "width=600,height=400");
+  };
+
+  const getShareMessage = (platform) => {
+    const message = `Check out this new earning resource Neuro Swarm: ${inviteLink}`;
+    const encodedMessage = encodeURIComponent(message);
+    switch (platform) {
+      case "Facebook":
+        return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+          inviteLink
+        )}&quote=${encodedMessage}`;
+      case "LinkedIn":
+        return `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
+          inviteLink
+        )}&summary=${encodedMessage}`;
+      case "WhatsApp":
+        return `https://wa.me/?text=${encodedMessage}`;
+      case "Twitter":
+        return `https://twitter.com/intent/tweet?text=${encodedMessage}`;
+      default:
+        return inviteLink;
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-gradient-to-br from-[#1a1a2e] to-[#16213e] rounded-2xl shadow-2xl w-96 p-8 relative overflow-hidden"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          >
+            <motion.button
+              className="absolute top-4 right-4 text-gray-300 hover:text-white"
+              onClick={onClose}
+              whileHover={{ rotate: 90 }}
+              whileTap={{ scale: 0.9 }}
+            >
+              <CloseIcon className="w-5 h-5" />
+            </motion.button>
+
+            <div className="text-center mb-6">
+              <Share2 className="mx-auto w-12 h-12 text-blue-400 mb-4" />
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 text-transparent bg-clip-text">
+                Share Referral
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              {socialPlatforms.map((platform) => (
+                <motion.button
+                  key={platform.name}
+                  className={`p-3 rounded-xl bg-gradient-to-br ${platform.color} text-white`}
+                  onClick={() => {
+                    const shareUrl = getShareMessage(platform.name);
+                    openSocialShare(shareUrl);
+                  }}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  {platform.icon}
+                </motion.button>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <input
+                type="text"
+                value={inviteLink}
+                readOnly
+                className="flex-1 bg-transparent text-sm text-white focus:outline-none"
+              />
+              <motion.button
+                className={`ml-2 ${
+                  isCopied ? "text-green-400" : "text-gray-300"
+                }`}
+                onClick={copyToClipboard}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+              >
+                {isCopied ? "✓" : <Copy className="w-4 h-4" />}
+              </motion.button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 export const ReferralProgram = () => {
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -349,311 +545,353 @@ export const ReferralProgram = () => {
     );
   };
 
+  // Paths to images in public/images
+  const flower1 = "/images/flower_1.png";
+  const flower2 = "/images/flower_2.png";
+
+  const openSocialShare = (shareUrl: string) => {
+    window.open(shareUrl, "_blank", "width=600,height=400");
+  };
+
+  const getShareMessage = (platform: string) => {
+    const message = `Check out this new earning resource Neuro Swarm: ${referralLink}`;
+    const encodedMessage = encodeURIComponent(message);
+    switch (platform) {
+      case "Facebook":
+        return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+          referralLink
+        )}&quote=${encodedMessage}`;
+      case "LinkedIn":
+        return `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
+          referralLink
+        )}&summary=${encodedMessage}`;
+      case "WhatsApp":
+        return `https://wa.me/?text=${encodedMessage}`;
+      case "Twitter":
+        return `https://twitter.com/intent/tweet?text=${encodedMessage}`;
+      default:
+        return referralLink;
+    }
+  };
+
   return (
-    <div className="stat-card">
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold">Referral Program</h2>
-          <InfoTooltip content="Invite friends to join Swarm Network and earn a percentage of their rewards" />
-        </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-slate-300 border-slate-700"
-          onClick={handleRefresh}
-          disabled={isLoading}
-        >
-          <RefreshCw
-            className={`w-4 h-4 mr-1 ${isLoading ? "animate-spin" : ""}`}
-          />
-          <span>Refresh</span>
-        </Button>
+    <div className="space-y-8 p-6 rounded-3xl">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <ReferralStatCard
+          label="First Tier"
+          value={directReferrals}
+          icon={<LucideUser className="w-5 h-5 text-white" />}
+          backgroundImage={flower1}
+        />
+        <ReferralStatCard
+          label="Second Tier"
+          value={tier2Referrals.length}
+          icon={<LucideUser className="w-5 h-5 text-white" />}
+          backgroundImage={flower1}
+        />
+        <ReferralStatCard
+          label="Third Tier"
+          value={tier3Referrals.length}
+          icon={<LucideUser className="w-5 h-5 text-white" />}
+          backgroundImage={flower1}
+        />
+        <ReferralStatCard
+          label="Total Referral Rewards"
+          value={`${totalReferralEarnings.toFixed(2)} NLOV`}
+          backgroundImage={flower2}
+          highlight
+        />
       </div>
 
-      {/* Referral Earnings Breakdown */}
-      <div className="bg-slate-800/30 p-4 rounded-lg mb-6">
-        <h3 className="text-md font-semibold mb-3">
-          Referral Earnings Breakdown:
-        </h3>
-        <ul className="space-y-2">
-          <li className="flex items-start">
-            <span className="font-bold mr-2">•</span>
-            <div>
-              <span className="font-medium">Tier 1:</span> Earn{" "}
-              <span className="text-blue-400 font-bold">10%</span> from your
-              direct referrals
-            </div>
-          </li>
-          <li className="flex items-start">
-            <span className="font-bold mr-2">•</span>
-            <div>
-              <span className="font-medium">Tier 2:</span> Earn{" "}
-              <span className="text-blue-400 font-bold">5%</span> from their
-              referrals
-            </div>
-          </li>
-          <li className="flex items-start">
-            <span className="font-bold mr-2">•</span>
-            <div>
-              <span className="font-medium">Tier 3:</span> Earn{" "}
-              <span className="text-blue-400 font-bold">2.5%</span> from the
-              next level
-            </div>
-          </li>
-        </ul>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="flex flex-col items-center p-4 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center gap-2 mb-1">
-            <User className="w-5 h-5 text-blue-400" />
-            <span className="text-xl font-bold">{directReferrals}</span>
-          </div>
-          <div className="text-sm text-slate-400">Direct Referrals</div>
-        </div>
-
-        <div className="flex flex-col items-center p-4 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center gap-2 mb-1">
-            <Users className="w-5 h-5 text-indigo-400" />
-            <span className="text-xl font-bold">{indirectReferrals}</span>
-          </div>
-          <div className="text-sm text-slate-400">Indirect Referrals</div>
-        </div>
-
-        <div className="flex flex-col items-center p-4 bg-slate-800/30 rounded-lg">
-          <div className="text-xl font-bold">
-            {totalReferralEarnings.toFixed(2)}
-          </div>
-          <div className="text-sm text-slate-400">Total Rewards</div>
-        </div>
-      </div>
-
-      {/* Rewards Status */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className="flex flex-col p-4 bg-slate-800/30 rounded-lg">
-          <div className="flex justify-between items-center mb-2">
-            <div className="text-sm font-medium text-slate-300">
-              Claimed Rewards
-            </div>
-            <div className="text-green-400 font-medium">
-              {claimedRewards.toFixed(2)}
-            </div>
-          </div>
-          <div className="text-xs text-slate-500">
-            Total earnings from claimed referral rewards
-          </div>
-        </div>
-
-        <div className="flex flex-col p-4 bg-slate-800/30 rounded-lg">
-          <div className="flex justify-between items-center mb-2">
-            <div className="text-sm font-medium text-slate-300">
-              Pending Rewards
-            </div>
-            <div className="text-amber-400 font-medium">
-              {pendingRewards.toFixed(2)}
-            </div>
-          </div>
-          <div className="text-xs text-slate-500">
-            Available rewards ready to claim
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-6">
-        <div className="text-sm text-slate-300 mb-2">Your Referral Link</div>
-        <div className="flex gap-2">
-          <div className="flex-1 bg-slate-800 rounded-lg py-2 px-3 text-slate-400 border border-slate-700">
-            {referralLink || "Generate a referral code to get your unique link"}
-          </div>
-          <Button
-            className={`${
-              copySuccess
-                ? "bg-green-600 hover:bg-green-700"
-                : "bg-swarm-accent-blue hover:bg-swarm-accent-blue/90"
-            }`}
-            onClick={handleCopyReferralLink}
-            disabled={!referralLink}
-          >
-            {copySuccess ? (
-              <>
-                <CheckCircle className="w-4 h-4 mr-1" />
-                <span>Copied</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4 mr-1" />
-                <span>Copy</span>
-              </>
-            )}
-          </Button>
-        </div>
-        {!referralCode && (
-          <div className="mt-3">
-            <Button
-              className="bg-swarm-accent-blue hover:bg-swarm-accent-blue/90"
-              onClick={handleGenerateReferralCode}
-              disabled={loading || isGenerating || !userProfile?.id}
-            >
-              <Key className="w-4 h-4 mr-1" />
-              <span>
-                {isGenerating ? "Generating..." : "Generate Referral Code"}
-              </span>
-            </Button>
-            {!userProfile?.id && (
-              <div className="text-xs text-amber-400 mt-1">
-                You need to connect your wallet to generate a referral code
-              </div>
-            )}
-          </div>
-        )}
-        <div className="text-sm text-slate-400 mt-2">
-          Share this link to earn 10% of your direct referrals' earnings, 5%
-          from their referrals, and 2.5% from the next level!
-        </div>
-      </div>
-
+      {/* Share and Tweet Buttons */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-slate-300">
-              Direct Referrals (Tier 1)
-            </h3>
-            <span className="text-xs text-slate-400">
-              {directReferrals} total
-            </span>
-          </div>
+        <button
+          className="gradient-button"
+          onClick={() => setIsShareModalOpen(true)}
+        >
+          <Share2 className="w-5 h-5" />
+          <span>Share Referral</span>
+        </button>
 
-          {isLoading ? (
-            <div className="flex justify-center items-center py-6">
-              <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
-            </div>
-          ) : tier1Referrals && tier1Referrals.length > 0 ? (
-            <div className="space-y-2">
-              {tier1Referrals.slice(0, 3).map(renderReferralItem)}
+        <button
+          className="gradient-button"
+          onClick={() => openSocialShare(getShareMessage("Twitter"))}
+        >
+          <FaSquareXTwitter className="w-5 h-5" />
+          <span>Tweet Referral</span>
+        </button>
+      </div>
 
-              {tier1Referrals.length > 3 && (
-                <div className="flex justify-center mt-2">
-                  <Button variant="link" className="text-blue-400 text-xs">
-                    View all direct referrals{" "}
-                    <ArrowRight className="w-3 h-3 ml-1" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-6 bg-slate-800/30 rounded-lg text-center">
-              <Share2 className="w-8 h-8 text-slate-600 mb-2" />
-              <div className="text-sm text-slate-400">
-                No direct referrals yet. Share your link to start earning!
+      <SocialShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        inviteLink={referralLink}
+        referralCode={referralCode}
+      />
+
+      {/* Claims and Pending Rewards Container */}
+      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-6 rounded-2xl border border-[#0361DA]/80">
+        {/* Referral Link Section */}
+        <div className="mb-6">
+          <h3 className="text-white font-medium mb-2">Your Referral Link</h3>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 bg-gradient-to-r from-blue-600/20 to-blue-400/5 rounded-full px-4 py-3 border border-blue-500/20">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                <input
+                  type="text"
+                  value={referralLink || "https://swarm.network/r/xxxxx"}
+                  readOnly
+                  className="bg-transparent text-white w-full outline-none text-sm"
+                />
               </div>
             </div>
-          )}
+            <button
+              onClick={handleCopyReferralLink}
+              className="gradient-button bg-gradient-to-r from-blue-600 to-blue-500 text-white h-11 w-28 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300 flex items-center justify-center gap-2"
+            >
+              <Copy className="w-4 h-4" />
+              <span className="text-sm font-medium">Copy</span>
+            </button>
+          </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-slate-300">
-              Recent Rewards
-            </h3>
-            <span className="text-xs text-slate-400">
-              {referralRewards.length} total
-            </span>
-          </div>
-
-          {isLoading ? (
-            <div className="flex justify-center items-center py-6">
-              <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
-            </div>
-          ) : referralRewards && referralRewards.length > 0 ? (
-            <div className="space-y-2">
-              {referralRewards.slice(0, 3).map((reward) => (
-                <RewardItem
-                  key={reward.id}
-                  reward={reward}
-                  userProfile={userProfile}
-                  onRefresh={loadReferralData}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center gap-4">
+              <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+                <img
+                  src="/images/claimed_reward.png"
+                  alt="Claimed"
+                  className="w-8 h-8 relative z-10"
                 />
-              ))}
-
-              {referralRewards.length > 3 && (
-                <div className="flex justify-center mt-2">
-                  <Button variant="link" className="text-blue-400 text-xs">
-                    View all rewards <ArrowRight className="w-3 h-3 ml-1" />
-                  </Button>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-white font-medium">Claimed Rewards</h3>
+                  <span className="text-green-400 font-bold">
+                    {claimedRewards.toFixed(2)}
+                  </span>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-6 bg-slate-800/30 rounded-lg text-center">
-              <DollarSign className="w-8 h-8 text-slate-600 mb-2" />
-              <div className="text-sm text-slate-400">
-                No rewards yet. Invite friends to earn passive income!
+                <p className="text-[#515194]/80 text-sm mt-1">
+                  Total earning from claimed referral rewards
+                </p>
               </div>
             </div>
-          )}
+          </div>
+
+          <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center gap-4">
+              <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+                <img
+                  src="/images/pending_reward.png"
+                  alt="Pending"
+                  className="w-8 h-8 relative z-10"
+                />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-white font-medium">Pending Rewards</h3>
+                  <span className="text-amber-400 font-bold">
+                    {pendingRewards.toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-[#515194]/80 text-sm mt-1">
+                  Available rewards ready to claim
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Referral Earnings Breakdown */}
+        <div className="space-y-4 mt-6">
+          <h3 className="text-white font-medium">
+            Referral Earnings Breakdown
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
+              <div className="flex items-center gap-4">
+                <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+                  <img
+                    src="/images/referrals.png"
+                    alt="Tier 1"
+                    className="w-8 h-8 relative z-10"
+                    style={{ objectFit: "contain" }}
+                  />
+                </div>
+                <div>
+                  <h4 className="text-white font-medium">Tier 1</h4>
+                  <p className="text-blue-400 text-sm">
+                    Earn 10% from your direct referrals
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
+              <div className="flex items-center gap-4">
+                <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+                  <img
+                    src="/images/referrals.png"
+                    alt="Tier 2"
+                    className="w-8 h-8 relative z-10"
+                    style={{ objectFit: "contain" }}
+                  />
+                </div>
+                <div>
+                  <h4 className="text-white font-medium">Tier 2</h4>
+                  <p className="text-blue-400 text-sm">
+                    Earn 5% from their referrals
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
+              <div className="flex items-center gap-4">
+                <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+                  <img
+                    src="/images/referrals.png"
+                    alt="Tier 3"
+                    className="w-8 h-8 relative z-10"
+                    style={{ objectFit: "contain" }}
+                  />
+                </div>
+                <div>
+                  <h4 className="text-white font-medium">Tier 3</h4>
+                  <p className="text-blue-400 text-sm">
+                    Earn 2.5% from the next level
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Indirect Referrals Section */}
-      {indirectReferrals > 0 && (
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-slate-300">
-              Indirect Referrals Network
-            </h3>
-            <span className="text-xs text-slate-400">
-              {indirectReferrals} total
-            </span>
+      {/* Referrals and Rewards Lists */}
+      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-6 rounded-2xl border border-[#0361DA]/80">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-[#161628] rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white font-medium">
+                Direct Referrals (Tier 1)
+              </h3>
+              <span className="text-[#515194]/80">{directReferrals} total</span>
+            </div>
+
+            {isLoading ? (
+              <div className="flex justify-center items-center py-6">
+                <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
+              </div>
+            ) : tier1Referrals && tier1Referrals.length > 0 ? (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                {tier1Referrals.map(renderReferralItem)}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-6 bg-[#090C18]/50 rounded-lg text-center">
+                <Share2 className="w-8 h-8 text-[#515194] mb-2" />
+                <div className="text-sm text-[#515194]/80">
+                  No direct referrals yet. Share your link to start earning!
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-slate-800/30 p-4 rounded-lg">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="bg-blue-900/30 p-1 rounded">
-                  <Users className="w-4 h-4 text-blue-400" />
-                </div>
-                <h4 className="text-sm font-medium">Tier 2 Referrals</h4>
-                <span className="text-xs text-slate-400 ml-auto">
-                  {tier2Referrals.length} total
-                </span>
-              </div>
-
-              {tier2Referrals.length > 0 ? (
-                <div className="text-xs text-slate-300">
-                  You earn 5% from these referrals' activities
-                </div>
-              ) : (
-                <div className="text-xs text-slate-400 italic">
-                  No tier 2 referrals yet
-                </div>
-              )}
+          <div className="bg-[#161628] rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white font-medium">Recent Rewards</h3>
+              <span className="text-[#515194]/80">
+                {referralRewards.length} total
+              </span>
             </div>
 
-            <div className="bg-slate-800/30 p-4 rounded-lg">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="bg-indigo-900/30 p-1 rounded">
-                  <Users className="w-4 h-4 text-indigo-400" />
-                </div>
-                <h4 className="text-sm font-medium">Tier 3 Referrals</h4>
-                <span className="text-xs text-slate-400 ml-auto">
-                  {tier3Referrals.length} total
-                </span>
+            {isLoading ? (
+              <div className="flex justify-center items-center py-6">
+                <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
               </div>
-
-              {tier3Referrals.length > 0 ? (
-                <div className="text-xs text-slate-300">
-                  You earn 2.5% from these referrals' activities
+            ) : referralRewards && referralRewards.length > 0 ? (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                {referralRewards.map((reward) => (
+                  <RewardItem
+                    key={reward.id}
+                    reward={reward}
+                    userProfile={userProfile}
+                    onRefresh={loadReferralData}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-6 bg-[#090C18]/50 rounded-lg text-center">
+                <DollarSign className="w-8 h-8 text-[#515194] mb-2" />
+                <div className="text-sm text-[#515194]/80">
+                  No rewards yet. Invite friends to earn passive income!
                 </div>
-              ) : (
-                <div className="text-xs text-slate-400 italic">
-                  No tier 3 referrals yet
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Daily Rewards Section */}
+      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-6 rounded-2xl border border-[#0361DA]/80">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-blue-400" />
+            <h2 className="text-white text-lg font-medium">Daily Rewards</h2>
+          </div>
+          <button className="gradient-button bg-gradient-to-r from-blue-600 to-blue-400 text-white px-6 py-2 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300">
+            Check In
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-4">
+          <DailyRewardCard
+            day={1}
+            points={10}
+            isActive={true}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={2}
+            points={20}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={3}
+            points={30}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={4}
+            points={40}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={5}
+            points={50}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={6}
+            points={60}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={7}
+            points={70}
+            isActive={false}
+            isCompleted={false}
+          />
+        </div>
+      </div>
     </div>
   );
 };
