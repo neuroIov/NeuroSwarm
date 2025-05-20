@@ -7,6 +7,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Menu,
 } from "lucide-react";
 import { useSession } from "@/hooks/useSession";
 import {
@@ -21,9 +22,15 @@ import { AuthModal } from "./auth/AuthModal";
 
 interface HeaderProps {
   className?: string;
+  onMenuToggle?: () => void;
+  sidebarOpen?: boolean;
 }
 
-export const Header = ({ className }: HeaderProps) => {
+export const Header = ({
+  className,
+  onMenuToggle,
+  sidebarOpen,
+}: HeaderProps) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [activeButton, setActiveButton] = useState<"email" | "wallet">(
     "wallet"
@@ -58,19 +65,30 @@ export const Header = ({ className }: HeaderProps) => {
   return (
     <header
       className={cn(
-        "flex  justify-between items-center h-[60px] rounded-full border bordder-[#064C94] hover:shadow-sm transition-all z-50 duration-300 hover:-translate-y-0.5 hover:shadow-[#0874E3]",
+        "flex justify-between items-center h-[50px] sm:h-[60px] rounded-full border bordder-[#064C94] hover:shadow-sm transition-all z-50 duration-300 hover:-translate-y-0.5 hover:shadow-[#0874E3]",
         className
       )}
       style={{
         background: "linear-gradient(270deg, #0874E3 7.24%, #010405 57.23%)",
-        width: "90%",
+        width: "95%",
         maxWidth: "100%",
         margin: "8px auto",
       }}
     >
-      <div className="flex items-center gap-3 ml-8 mr-2">
+      <div className="flex items-center gap-1 sm:gap-2 md:gap-3 ml-3 sm:ml-4 md:ml-8 mr-2">
+        {/* Mobile sidebar toggle button */}
+        {!sidebarOpen && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMenuToggle}
+            className="md:hidden text-white/70 hover:text-white hover:bg-transparent"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        )}
         <h1
-          className="text-lg md:text-xl font-medium"
+          className="text-xs sm:text-sm md:text-xl font-medium truncate max-w-[120px] sm:max-w-[140px] md:max-w-full"
           style={{
             background: "linear-gradient(to right, #3b82f6 0%, #ffffff 50%)",
             WebkitBackgroundClip: "text",
@@ -83,7 +101,7 @@ export const Header = ({ className }: HeaderProps) => {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger>
-              <HelpCircle className="w-4 h-4 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer" />
+              <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer" />
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-md">
               <p>
@@ -95,12 +113,12 @@ export const Header = ({ className }: HeaderProps) => {
           </Tooltip>
         </TooltipProvider>
       </div>
-      <div className="flex items-center h-full py-1.5">
-        <div className="bg-[#040404] rounded-full p-1.5 flex gap-2 items-center relative group w-fit">
-          {/* Collapse Toggle */}
+      <div className="flex items-center h-full py-1 sm:py-1.5">
+        <div className="bg-[#040404] rounded-full p-1 sm:p-1.5 flex gap-1 sm:gap-2 items-center relative group w-fit">
+          {/* Collapse Toggle - Only visible on larger screens */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="absolute -left-8 opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-gray-400 hover:text-white"
+            className="absolute -left-8 opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-gray-400 hover:text-white hidden md:block"
           >
             {isCollapsed ? (
               <ChevronRight size={20} />
@@ -113,8 +131,10 @@ export const Header = ({ className }: HeaderProps) => {
             variant="outline"
             onClick={() => handleModeSwitch("email")}
             className={cn(
-              "flex items-center gap-2 font-medium rounded-full h-auto transition-all duration-300 min-w-[44px]",
-              isCollapsed ? "px-3 py-3 justify-center" : "w-[160px] px-6 py-3",
+              "flex items-center gap-1 md:gap-2 font-medium rounded-full h-auto transition-all duration-300 min-w-[36px] sm:min-w-[40px]",
+              isCollapsed || window.innerWidth < 640
+                ? "px-1.5 py-1.5 sm:px-2 sm:py-2 justify-center"
+                : "w-[100px] sm:w-[160px] px-3 sm:px-6 py-2 sm:py-3",
               session.authMethod === "email"
                 ? "bg-gradient-to-r from-[#22c55e] to-[#15803d] text-white border-green-500"
                 : activeButton === "email"
@@ -125,11 +145,13 @@ export const Header = ({ className }: HeaderProps) => {
             <Mail
               className={cn(
                 "transition-all duration-300",
-                isCollapsed ? "w-5 h-5" : "w-4 h-4"
+                isCollapsed || window.innerWidth < 640
+                  ? "w-3.5 h-3.5 sm:w-4 sm:h-4"
+                  : "w-3 h-3 sm:w-4 sm:h-4"
               )}
             />
-            {!isCollapsed && (
-              <span className="transition-all duration-300">
+            {!isCollapsed && window.innerWidth >= 640 && (
+              <span className="transition-all duration-300 text-xs sm:text-sm whitespace-nowrap">
                 {session.authMethod === "email" ? "Connected" : "Email Login"}
               </span>
             )}
@@ -140,8 +162,10 @@ export const Header = ({ className }: HeaderProps) => {
             variant="outline"
             onClick={() => handleModeSwitch("wallet")}
             className={cn(
-              "flex items-center gap-2 font-medium rounded-full h-auto transition-all duration-300 min-w-[44px]",
-              isCollapsed ? "px-3 py-3 justify-center" : "w-[160px] px-6 py-3",
+              "flex items-center gap-1 md:gap-2 font-medium rounded-full h-auto transition-all duration-300 min-w-[36px] sm:min-w-[40px]",
+              isCollapsed || window.innerWidth < 640
+                ? "px-1.5 py-1.5 sm:px-2 sm:py-2 justify-center"
+                : "w-[100px] sm:w-[160px] px-3 sm:px-6 py-2 sm:py-3",
               session.authMethod === "wallet"
                 ? "bg-gradient-to-r from-[#22c55e] to-[#15803d] text-white border-green-500"
                 : activeButton === "wallet"
@@ -152,11 +176,13 @@ export const Header = ({ className }: HeaderProps) => {
             <Wallet
               className={cn(
                 "transition-all duration-300",
-                isCollapsed ? "w-5 h-5" : "w-4 h-4"
+                isCollapsed || window.innerWidth < 640
+                  ? "w-3.5 h-3.5 sm:w-4 sm:h-4"
+                  : "w-3 h-3 sm:w-4 sm:h-4"
               )}
             />
-            {!isCollapsed && (
-              <span className="transition-all duration-300">
+            {!isCollapsed && window.innerWidth >= 640 && (
+              <span className="transition-all duration-300 text-xs sm:text-sm whitespace-nowrap">
                 {session.authMethod === "wallet"
                   ? "Connected"
                   : "Connect Wallet"}

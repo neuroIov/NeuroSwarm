@@ -412,14 +412,14 @@ export const TaskPipeline = () => {
   };
 
   return (
-    <div className="p-6 rounded-3xl stat-card relative">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-3 sm:p-6 rounded-3xl stat-card relative">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 sm:gap-0 mb-4 sm:mb-6">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-medium text-white/90">Task Pipeline</h2>
+          <h2 className="text-base sm:text-lg font-medium text-white/90">Task Pipeline</h2>
           <InfoTooltip content="The task pipeline shows all tasks assigned to your nodes. Tasks are automatically processed when your nodes are active." />
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-3 order-2 sm:order-1">
             <span className="text-green-400 text-xs">
               Image ({stats.imageTasksCount})
             </span>
@@ -427,23 +427,23 @@ export const TaskPipeline = () => {
               Text ({stats.textTasksCount})
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-white/60">NLOV Network Auto</span>
+          <div className="flex items-center gap-2 order-1 sm:order-2">
+            <span className="text-xs sm:text-sm text-white/60">NLOV Network Auto</span>
             <Switch checked={autoMode} onCheckedChange={toggleAutoMode} />
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6">
         <div className="rounded-xl overflow-hidden bg-[#1D1D33] relative">
-          <div className="p-4 pb-3 flex flex-col items-center">
+          <div className="p-3 sm:p-4 pb-2 sm:pb-3 flex flex-col items-center">
             <img
               src="/images/completed.png"
               alt="Completed"
-              className="w-5 h-5 object-contain mb-2"
+              className="w-4 h-4 sm:w-5 sm:h-5 object-contain mb-1 sm:mb-2"
             />
-            <span className="text-sm text-white/60">Completed</span>
-            <span className="text-2xl font-semibold text-white mt-1">
+            <span className="text-xs sm:text-sm text-white/60">Completed</span>
+            <span className="text-xl sm:text-2xl font-semibold text-white mt-1">
               {stats.completed}
             </span>
           </div>
@@ -451,14 +451,14 @@ export const TaskPipeline = () => {
         </div>
 
         <div className="rounded-xl overflow-hidden bg-[#1D1D33] relative">
-          <div className="p-4 pb-3 flex flex-col items-center">
+          <div className="p-3 sm:p-4 pb-2 sm:pb-3 flex flex-col items-center">
             <img
               src="/images/processing.png"
               alt="Processing"
-              className="w-5 h-5 object-contain mb-2"
+              className="w-4 h-4 sm:w-5 sm:h-5 object-contain mb-1 sm:mb-2"
             />
-            <span className="text-sm text-white/60">Processing</span>
-            <span className="text-2xl font-semibold text-white mt-1">
+            <span className="text-xs sm:text-sm text-white/60">Processing</span>
+            <span className="text-xl sm:text-2xl font-semibold text-white mt-1">
               {stats.processing}
             </span>
           </div>
@@ -466,14 +466,14 @@ export const TaskPipeline = () => {
         </div>
 
         <div className="rounded-xl overflow-hidden bg-[#1D1D33] relative">
-          <div className="p-4 pb-3 flex flex-col items-center">
+          <div className="p-3 sm:p-4 pb-2 sm:pb-3 flex flex-col items-center">
             <img
               src="/images/pending.png"
               alt="Pending"
-              className="w-5 h-5 object-contain mb-2"
+              className="w-4 h-4 sm:w-5 sm:h-5 object-contain mb-1 sm:mb-2"
             />
-            <span className="text-sm text-white/60">Pending</span>
-            <span className="text-2xl font-semibold text-white mt-1">
+            <span className="text-xs sm:text-sm text-white/60">Pending</span>
+            <span className="text-xl sm:text-2xl font-semibold text-white mt-1">
               {stats.pending}
             </span>
           </div>
@@ -481,14 +481,14 @@ export const TaskPipeline = () => {
         </div>
 
         <div className="rounded-xl overflow-hidden bg-[#1D1D33] relative">
-          <div className="p-4 pb-3 flex flex-col items-center">
+          <div className="p-3 sm:p-4 pb-2 sm:pb-3 flex flex-col items-center">
             <img
               src="/images/error.png"
               alt="Failed"
-              className="w-5 h-5 object-contain mb-2"
+              className="w-4 h-4 sm:w-5 sm:h-5 object-contain mb-1 sm:mb-2"
             />
-            <span className="text-sm text-white/60">Failed</span>
-            <span className="text-2xl font-semibold text-white mt-1">
+            <span className="text-xs sm:text-sm text-white/60">Failed</span>
+            <span className="text-xl sm:text-2xl font-semibold text-white mt-1">
               {stats.failed}
             </span>
           </div>
@@ -497,37 +497,37 @@ export const TaskPipeline = () => {
       </div>
 
       {!isActive ? (
-        <div className="flex flex-col items-center justify-center py-16 text-white/60">
-          <div className="w-16 h-16 flex items-center justify-center rounded-md bg-[#1D1D33]/50 mb-6">
-            <FileCode className="w-8 h-8 text-white/30" />
+        <div className="flex flex-col items-center justify-center py-10 sm:py-16 text-white/60">
+          <div className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded-md bg-[#1D1D33]/50 mb-4 sm:mb-6">
+            <FileCode className="w-6 h-6 sm:w-8 sm:h-8 text-white/30" />
           </div>
-          <p className="text-xl font-medium">Node is not active</p>
-          <p className="text-sm mt-2">
+          <p className="text-lg sm:text-xl font-medium">Node is not active</p>
+          <p className="text-xs sm:text-sm mt-2">
             Start your node to receive and view tasks
           </p>
         </div>
       ) : isLoading ? (
-        <div className="flex justify-center items-center py-16">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-          <span className="ml-3 text-lg text-white/70">Loading tasks...</span>
+        <div className="flex justify-center items-center py-10 sm:py-16">
+          <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-blue-500" />
+          <span className="ml-3 text-base sm:text-lg text-white/70">Loading tasks...</span>
         </div>
       ) : assignedTasks.length > 0 ? (
-        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="space-y-3 sm:space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
           {!autoMode && currentTask && currentTask.status === "pending" && (
-            <div className="mb-4 flex justify-center">
+            <div className="mb-3 sm:mb-4 flex justify-center">
               <Button
                 disabled={localProcessing}
                 onClick={handleProcessCurrentTask}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm py-2 px-3 sm:px-4"
               >
                 {localProcessing ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-2 animate-spin" />
                     Processing...
                   </>
                 ) : (
                   <>
-                    <Zap className="w-4 h-4 mr-2" />
+                    <Zap className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
                     Process Selected Task
                   </>
                 )}
@@ -540,15 +540,15 @@ export const TaskPipeline = () => {
               key={task.id}
               className="rounded-xl overflow-hidden bg-[#1D1D33] border border-[#252547] transition-all duration-200 hover:border-blue-600/30"
             >
-              <div className="p-4">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 mt-1.5">
+              <div className="p-3 sm:p-4">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <div className="flex-shrink-0 mt-1">
                     {getTaskTypeIcon(task.type)}
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center rounded-full  py-1">
-                        <span className="text-sm text-[#0361DA] font-medium ">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center rounded-full py-1">
+                        <span className="text-xs sm:text-sm text-[#0361DA] font-medium truncate">
                           {task.type === "image"
                             ? "neuro-image-gen"
                             : "freedomai-llm"}
@@ -556,33 +556,33 @@ export const TaskPipeline = () => {
                       </div>
                       <div>
                         {task.status === "completed" && (
-                          <div className="border rounded-full border-green-500 bg-green-500/10 text-green-400 text-xs font-medium px-3 py-1 ">
+                          <div className="border rounded-full border-green-500 bg-green-500/10 text-green-400 text-xs font-medium px-2 sm:px-3 py-0.5 sm:py-1">
                             Completed
                           </div>
                         )}
                         {task.status === "processing" && (
-                          <div className="border rounded-full border-blue-500 bg-blue-500/10 text-blue-400 text-xs font-medium px-3 py-1 ">
+                          <div className="border rounded-full border-blue-500 bg-blue-500/10 text-blue-400 text-xs font-medium px-2 sm:px-3 py-0.5 sm:py-1">
                             Processing
                           </div>
                         )}
                         {task.status === "pending" && (
-                          <div className="border border-amber-500 bg-amber-500/10 text-amber-400 text-xs font-medium px-3 py-1 rounded-full">
+                          <div className="border border-amber-500 bg-amber-500/10 text-amber-400 text-xs font-medium px-2 sm:px-3 py-0.5 sm:py-1 rounded-full">
                             Pending
                           </div>
                         )}
                         {task.status === "failed" && (
-                          <div className="border border-red-500 bg-red-500/10 text-red-400 text-xs font-medium px-3 py-1 rounded-full">
+                          <div className="border border-red-500 bg-red-500/10 text-red-400 text-xs font-medium px-2 sm:px-3 py-0.5 sm:py-1 rounded-full">
                             Failed
                           </div>
                         )}
                       </div>
                     </div>
-                    <p className="text-sm text-white/80 mt-2.5">
+                    <p className="text-xs sm:text-sm text-white/80 mt-2 break-all">
                       Task ID: {task.id}
                     </p>
 
                     {task.status === "completed" && (
-                      <div className="flex items-center gap-2 ">
+                      <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-[#515194] mt-1">
                           Task completed successfully
                         </p>
