@@ -168,7 +168,7 @@ const DailyRewardCard = ({
     >
       <div
         className={`
-          relative overflow-hidden rounded-2xl p-4 
+          relative overflow-hidden rounded-2xl p-2 sm:p-4 
           ${
             isActive
               ? "bg-gradient-to-br from-blue-500/20 to-purple-600/20 border-2 border-blue-500/50"
@@ -182,17 +182,17 @@ const DailyRewardCard = ({
       >
         <div className="text-center">
           <div
-            className={`text-lg font-medium ${
+            className={`text-sm sm:text-lg font-medium ${
               isActive ? "text-blue-400" : "text-white"
             }`}
           >
             Day {day}
           </div>
-          <div className="text-sm text-blue-400/80 mt-1">{points} Points</div>
+          <div className="text-xs sm:text-sm text-blue-400/80 mt-1">{points} Points</div>
         </div>
         {isCompleted && (
           <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-1">
-            <Check className="w-3 h-3 text-white" />
+            <Check className="w-2 h-2 sm:w-3 sm:h-3 text-white" />
           </div>
         )}
       </div>
@@ -575,9 +575,9 @@ export const ReferralProgram = () => {
   };
 
   return (
-    <div className="space-y-8 p-6 rounded-3xl">
+    <div className="space-y-6 sm:space-y-8 p-3 sm:p-6 rounded-3xl">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <ReferralStatCard
           label="First Tier"
           value={directReferrals}
@@ -605,21 +605,21 @@ export const ReferralProgram = () => {
       </div>
 
       {/* Share and Tweet Buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
         <button
-          className="gradient-button"
+          className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
           onClick={() => setIsShareModalOpen(true)}
         >
-          <Share2 className="w-5 h-5" />
-          <span>Share Referral</span>
+          <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
+          <span className="text-sm sm:text-base">Share Referral</span>
         </button>
 
         <button
-          className="gradient-button"
+          className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
           onClick={() => openSocialShare(getShareMessage("Twitter"))}
         >
-          <FaSquareXTwitter className="w-5 h-5" />
-          <span>Tweet Referral</span>
+          <FaSquareXTwitter className="w-4 h-4 sm:w-5 sm:h-5" />
+          <span className="text-sm sm:text-base">Tweet Referral</span>
         </button>
       </div>
 
@@ -631,73 +631,73 @@ export const ReferralProgram = () => {
       />
 
       {/* Claims and Pending Rewards Container */}
-      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-6 rounded-2xl border border-[#0361DA]/80">
+      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
         {/* Referral Link Section */}
-        <div className="mb-6">
-          <h3 className="text-white font-medium mb-2">Your Referral Link</h3>
-          <div className="flex items-center gap-3">
-            <div className="flex-1 bg-gradient-to-r from-blue-600/20 to-blue-400/5 rounded-full px-4 py-3 border border-blue-500/20">
+        <div className="mb-4 sm:mb-6">
+          <h3 className="text-white font-medium text-sm sm:text-base mb-2">Your Referral Link</h3>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <div className="flex-1 w-full bg-gradient-to-r from-blue-600/20 to-blue-400/5 rounded-full px-3 sm:px-4 py-2 sm:py-3 border border-blue-500/20">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
                 <input
                   type="text"
                   value={referralLink || "https://swarm.network/r/xxxxx"}
                   readOnly
-                  className="bg-transparent text-white w-full outline-none text-sm"
+                  className="bg-transparent text-white w-full outline-none text-xs sm:text-sm truncate"
                 />
               </div>
             </div>
             <button
               onClick={handleCopyReferralLink}
-              className="gradient-button bg-gradient-to-r from-blue-600 to-blue-500 text-white h-11 w-28 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300 flex items-center justify-center gap-2"
+              className="gradient-button bg-gradient-to-r from-blue-600 to-blue-500 text-white h-10 sm:h-11 w-full sm:w-28 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300 flex items-center justify-center gap-2"
             >
-              <Copy className="w-4 h-4" />
-              <span className="text-sm font-medium">Copy</span>
+              <Copy className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="text-xs sm:text-sm font-medium">Copy</span>
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
-            <div className="flex items-center gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
+          <div className="bg-[#161628] rounded-2xl p-4 sm:p-6 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center gap-3 sm:gap-4">
               <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
                 <img
                   src="/images/claimed_reward.png"
                   alt="Claimed"
-                  className="w-8 h-8 relative z-10"
+                  className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
                 />
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-white font-medium">Claimed Rewards</h3>
-                  <span className="text-green-400 font-bold">
+                  <h3 className="text-white font-medium text-sm sm:text-base">Claimed Rewards</h3>
+                  <span className="text-green-400 font-bold text-sm sm:text-base">
                     {claimedRewards.toFixed(2)}
                   </span>
                 </div>
-                <p className="text-[#515194]/80 text-sm mt-1">
+                <p className="text-[#515194]/80 text-xs sm:text-sm mt-1">
                   Total earning from claimed referral rewards
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
-            <div className="flex items-center gap-4">
+          <div className="bg-[#161628] rounded-2xl p-4 sm:p-6 hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center gap-3 sm:gap-4">
               <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
                 <img
                   src="/images/pending_reward.png"
                   alt="Pending"
-                  className="w-8 h-8 relative z-10"
+                  className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
                 />
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-white font-medium">Pending Rewards</h3>
-                  <span className="text-amber-400 font-bold">
+                  <h3 className="text-white font-medium text-sm sm:text-base">Pending Rewards</h3>
+                  <span className="text-amber-400 font-bold text-sm sm:text-base">
                     {pendingRewards.toFixed(2)}
                   </span>
                 </div>
-                <p className="text-[#515194]/80 text-sm mt-1">
+                <p className="text-[#515194]/80 text-xs sm:text-sm mt-1">
                   Available rewards ready to claim
                 </p>
               </div>
@@ -706,62 +706,62 @@ export const ReferralProgram = () => {
         </div>
 
         {/* Referral Earnings Breakdown */}
-        <div className="space-y-4 mt-6">
-          <h3 className="text-white font-medium">
+        <div className="space-y-3 sm:space-y-4 mt-4 sm:mt-6">
+          <h3 className="text-white font-medium text-sm sm:text-base">
             Referral Earnings Breakdown
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
-              <div className="flex items-center gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-6">
+            <div className="bg-[#161628] rounded-2xl p-3 sm:p-6 hover:shadow-lg transition-all duration-300">
+              <div className="flex items-center gap-3 sm:gap-4">
                 <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
                   <img
                     src="/images/referrals.png"
                     alt="Tier 1"
-                    className="w-8 h-8 relative z-10"
+                    className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
                     style={{ objectFit: "contain" }}
                   />
                 </div>
                 <div>
-                  <h4 className="text-white font-medium">Tier 1</h4>
-                  <p className="text-blue-400 text-sm">
+                  <h4 className="text-white font-medium text-sm sm:text-base">Tier 1</h4>
+                  <p className="text-blue-400 text-xs sm:text-sm">
                     Earn 10% from your direct referrals
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
-              <div className="flex items-center gap-4">
+            <div className="bg-[#161628] rounded-2xl p-3 sm:p-6 hover:shadow-lg transition-all duration-300">
+              <div className="flex items-center gap-3 sm:gap-4">
                 <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
                   <img
                     src="/images/referrals.png"
                     alt="Tier 2"
-                    className="w-8 h-8 relative z-10"
+                    className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
                     style={{ objectFit: "contain" }}
                   />
                 </div>
                 <div>
-                  <h4 className="text-white font-medium">Tier 2</h4>
-                  <p className="text-blue-400 text-sm">
+                  <h4 className="text-white font-medium text-sm sm:text-base">Tier 2</h4>
+                  <p className="text-blue-400 text-xs sm:text-sm">
                     Earn 5% from their referrals
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-[#161628] rounded-2xl p-6 hover:shadow-lg transition-all duration-300">
-              <div className="flex items-center gap-4">
+            <div className="bg-[#161628] rounded-2xl p-3 sm:p-6 hover:shadow-lg transition-all duration-300">
+              <div className="flex items-center gap-3 sm:gap-4">
                 <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
                   <img
                     src="/images/referrals.png"
                     alt="Tier 3"
-                    className="w-8 h-8 relative z-10"
+                    className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
                     style={{ objectFit: "contain" }}
                   />
                 </div>
                 <div>
-                  <h4 className="text-white font-medium">Tier 3</h4>
-                  <p className="text-blue-400 text-sm">
+                  <h4 className="text-white font-medium text-sm sm:text-base">Tier 3</h4>
+                  <p className="text-blue-400 text-xs sm:text-sm">
                     Earn 2.5% from the next level
                   </p>
                 </div>
@@ -772,14 +772,14 @@ export const ReferralProgram = () => {
       </div>
 
       {/* Referrals and Rewards Lists */}
-      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-6 rounded-2xl border border-[#0361DA]/80">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-[#161628] rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-medium">
+      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
+          <div className="bg-[#161628] rounded-2xl p-3 sm:p-6">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <h3 className="text-white font-medium text-sm sm:text-base">
                 Direct Referrals (Tier 1)
               </h3>
-              <span className="text-[#515194]/80">{directReferrals} total</span>
+              <span className="text-[#515194]/80 text-xs sm:text-sm">{directReferrals} total</span>
             </div>
 
             {isLoading ? (
@@ -800,10 +800,10 @@ export const ReferralProgram = () => {
             )}
           </div>
 
-          <div className="bg-[#161628] rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-white font-medium">Recent Rewards</h3>
-              <span className="text-[#515194]/80">
+          <div className="bg-[#161628] rounded-2xl p-3 sm:p-6">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <h3 className="text-white font-medium text-sm sm:text-base">Recent Rewards</h3>
+              <span className="text-[#515194]/80 text-xs sm:text-sm">
                 {referralRewards.length} total
               </span>
             </div>
@@ -836,18 +836,18 @@ export const ReferralProgram = () => {
       </div>
 
       {/* Daily Rewards Section */}
-      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-6 rounded-2xl border border-[#0361DA]/80">
-        <div className="flex items-center justify-between mb-6">
+      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-4 sm:mb-6">
           <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-blue-400" />
-            <h2 className="text-white text-lg font-medium">Daily Rewards</h2>
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
+            <h2 className="text-white text-base sm:text-lg font-medium">Daily Rewards</h2>
           </div>
-          <button className="gradient-button bg-gradient-to-r from-blue-600 to-blue-400 text-white px-6 py-2 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300">
+          <button className="gradient-button bg-gradient-to-r from-blue-600 to-blue-400 text-white w-full sm:w-auto px-4 sm:px-6 py-2 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300">
             Check In
           </button>
         </div>
 
-        <div className="grid grid-cols-7 gap-4">
+        <div className="grid grid-cols-3 sm:grid-cols-7 gap-2 sm:gap-4">
           <DailyRewardCard
             day={1}
             points={10}

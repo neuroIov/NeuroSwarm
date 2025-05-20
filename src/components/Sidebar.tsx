@@ -19,6 +19,8 @@ interface SidebarProps {
   activeSection: string;
   onSectionChange: (section: string) => void;
   className?: string;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 const sidebarItems = [
@@ -52,6 +54,8 @@ export function Sidebar({
   activeSection,
   onSectionChange,
   className,
+  isOpen = false,
+  onClose,
 }: SidebarProps) {
   const dispatch = useAppDispatch();
   const { userProfile } = useAppSelector((state) => state.session);
@@ -79,9 +83,18 @@ export function Sidebar({
 
   return (
     <>
+      {/* Mobile overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-30 md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 h-screen md:w-60 lg:w-[266px] px-4 py-6 border-r border-[#1F2937]",
+          "fixed left-0 top-0 z-40 h-screen w-[80%] sm:w-[60%] md:w-60 lg:w-[266px] px-4 py-6 border-r border-[#1F2937]",
           className
         )}
         style={{
@@ -90,8 +103,32 @@ export function Sidebar({
         }}
       >
         <div className="flex h-full flex-col">
+          {/* Close button - mobile only */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white md:hidden"
+              aria-label="Close sidebar"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          )}
+
           {/* User profile */}
-          <div className="mb-8">
+          <div className="mb-8 mt-6">
             <div className="flex items-center gap-3 bg-[#1E1E1E] p-3 rounded-full">
               <Avatar className="h-10 w-10 border-2 border-blue-600/30">
                 <AvatarImage src="/avatar-placeholder.png" alt="User" />
@@ -131,6 +168,11 @@ export function Sidebar({
                 <Link
                   key={item.id}
                   to={item.path}
+                  onClick={() => {
+                    if (onSectionChange) {
+                      onSectionChange(item.id);
+                    }
+                  }}
                   className={`flex w-full items-center rounded-full px-4 py-3 text-sm font-medium transition-all duration-200 ${
                     isActive
                       ? "bg-[#1E1E1E] text-white"

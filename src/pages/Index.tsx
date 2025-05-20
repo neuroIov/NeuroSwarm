@@ -22,6 +22,7 @@ import {
 } from "@/store/slices/sessionSlice";
 import { UsernameDialog } from "@/components/UsernameDialog";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 // Function to extract referral code from URL or direct code
 const extractReferralCode = (code: string): string | null => {
@@ -42,7 +43,7 @@ const extractReferralCode = (code: string): string | null => {
 const Dashboard = () => (
   <div className="flex flex-col gap-6">
     <NetworkStats />
-    <div className="grid grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <NodeControlPanel />
       <TaskPipeline />
     </div>
@@ -52,6 +53,7 @@ const Dashboard = () => (
 const Index = () => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [showUsernameDialog, setShowUsernameDialog] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const dispatch = useAppDispatch();
@@ -94,7 +96,7 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen flex relative">
+    <div className="min-h-screen flex relative overflow-hidden">
       {/* Radial background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
@@ -114,14 +116,22 @@ const Index = () => {
       {/* Main content with sidebar */}
       <Sidebar
         activeSection={getActiveSection()}
-        onSectionChange={() => {}}
-        className="fixed left-0 top-0 h-screen z-10"
+        onSectionChange={() => setSidebarOpen(false)}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        className={`fixed left-0 top-0 h-screen z-40 transition-transform duration-300 ease-in-out md:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
       />
 
-      <div className="flex-1 ml-64 flex flex-col relative z-10">
-        <Header className="sticky top-8 z-20" />
+      <div className="flex-1 md:ml-64 flex flex-col relative z-10 overflow-x-hidden">
+        <Header
+          className="sticky top-0 md:top-8 z-20"
+          onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
+          sidebarOpen={sidebarOpen}
+        />
 
-        <main className="p-6 flex-1 overflow-auto mt-8">
+        <main className="p-3 md:p-6 flex-1 overflow-auto mt-4 md:mt-8 overflow-x-hidden">
           <div
             className={`max-w-7xl mx-auto transition-opacity duration-500 ${
               isLoaded ? "opacity-100" : "opacity-0"

@@ -129,8 +129,7 @@ export const NodeControlPanel = () => {
   const [error, setError] = useState<string | null>(null);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const { subscriptionTier } = useSession();
-const tierInfo = getTierByName(subscriptionTier);
-
+  const tierInfo = getTierByName(subscriptionTier);
 
   // Device selection state
   const [showDeviceTypeDialog, setShowDeviceTypeDialog] = useState(false);
@@ -480,7 +479,8 @@ const tierInfo = getTierByName(subscriptionTier);
               nodeName: selectedNode.name,
               nodeType: selectedNode.type,
               rewardTier: selectedNode.rewardTier,
-              maxUptime: tierInfo.maxUptime            })
+              maxUptime: tierInfo.maxUptime,
+            })
           );
 
           // Update node status in local state
@@ -544,11 +544,11 @@ const tierInfo = getTierByName(subscriptionTier);
   };
 
   return (
-    <div className="p-6 rounded-3xl stat-card">
+    <div className="p-3 sm:p-4 md:p-6 rounded-3xl stat-card overflow-x-hidden">
       <div className="flex flex-col">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-4 sm:mb-6">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-medium tex-white/90">
+            <h2 className="text-base sm:text-lg font-medium text-white/90">
               Node Control Panel
             </h2>
             <InfoTooltip content="Manage your computing nodes, start or stop them, and view performance metrics" />
@@ -558,16 +558,16 @@ const tierInfo = getTierByName(subscriptionTier);
             size="sm"
             onClick={startScan}
             disabled={isScanning}
-            className=" gradient-button rounded-full  text-[#8BBEFF] "
+            className="gradient-button rounded-full text-[#8BBEFF] w-full sm:w-auto"
           >
             <Scan className="w-4 h-4 mr-2" />
             Scan Device
           </Button>
         </div>
 
-        <div className="flex gap-4 items-center mb-6">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-center mb-4 sm:mb-6">
           <Select value={selectedNodeId} onValueChange={handleNodeSelect}>
-            <SelectTrigger className="flex-1 bg-[#1D1D33] border-0 rounded-full text-[#515194]">
+            <SelectTrigger className="w-full bg-[#1D1D33] border-0 rounded-full text-[#515194]">
               <SelectValue placeholder="Select Node" />
             </SelectTrigger>
             <SelectContent className="bg-[#0A1A2F] border-[#1E293B]">
@@ -590,7 +590,7 @@ const tierInfo = getTierByName(subscriptionTier);
             variant="default"
             disabled={isStarting || isStopping || !selectedNodeId}
             onClick={toggleNodeStatus}
-            className={`rounded-full transition-all duration-300 shadow-md hover:shadow-lg text-white hover:translate-y-[-0.5px] ${
+            className={`w-full sm:w-auto rounded-full transition-all duration-300 shadow-md hover:shadow-lg text-white hover:translate-y-[-0.5px] ${
               isActive
                 ? "bg-red-600 hover:bg-red-700 hover:shadow-red-500/30 shadow-red-500"
                 : "bg-green-600 hover:bg-green-700 hover:shadow-green-500/30 shadow-green-500"
@@ -612,82 +612,90 @@ const tierInfo = getTierByName(subscriptionTier);
               <>
                 {isActive ? "Stop Node" : "Start Node"}
                 {!isActive ? (
-                  <VscDebugStart className="text-white/90 " />
+                  <VscDebugStart className="text-white/90 ml-2" />
                 ) : (
-                  <IoStopOutline className="text-white/90" />
+                  <IoStopOutline className="text-white/90 ml-2" />
                 )}
               </>
             )}
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="p-4 rounded-xl bg-[#1D1D33] flex flex-col">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="icon-bg flex items-center justify-center">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="p-3 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
+              <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
                 <img
                   src="/images/cpu_usage.png"
                   alt="CPU"
-                  className="w-8 h-8 object-contain z-10"
+                  className="w-6 h-6 sm:w-7 sm:h-7 object-contain z-10"
                 />
               </div>
-              <div className="flex flex-col">
-                <span className="text-[#515194] text-sm">CPU Usage</span>
-                <div className="text-xl font-medium text-white">
+              <div className="flex flex-col overflow-hidden">
+                <span className="text-[#515194] text-xs sm:text-sm whitespace-nowrap">
+                  CPU Usage
+                </span>
+                <div className="text-base sm:text-xl font-medium text-white">
                   {cpuUsage.toFixed(2)}%
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#1D1D33] flex flex-col">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="icon-bg flex items-center justify-center">
+          <div className="p-3 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
+              <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
                 <img
                   src="/images/memory_usage.png"
-                  alt="CPU"
-                  className="w-8 h-8 object-contain z-10"
+                  alt="Memory"
+                  className="w-6 h-6 sm:w-7 sm:h-7 object-contain z-10"
                 />
               </div>
-              <div>
-                <span className="text-[#515194] text-sm">Memory</span>
-                <div className="text-xl font-medium text-white">
+              <div className="flex flex-col overflow-hidden">
+                <span className="text-[#515194] text-xs sm:text-sm whitespace-nowrap">
+                  Memory
+                </span>
+                <div className="text-base sm:text-xl font-medium text-white">
                   {memoryUsage.toFixed(2)}%
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#1D1D33] flex flex-col">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="icon-bg flex items-center justify-center">
+          <div className="p-3 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
+              <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
                 <img
                   src="/images/network_usage.png"
-                  alt="CPU"
-                  className="w-8 h-8 object-contain z-10"
+                  alt="Network"
+                  className="w-6 h-6 sm:w-7 sm:h-7 object-contain z-10"
                 />
               </div>
-              <div>
-                <span className="text-[#515194] text-sm">Network</span>
-                <div className="text-xl font-medium text-white">
+              <div className="flex flex-col overflow-hidden">
+                <span className="text-[#515194] text-xs sm:text-sm whitespace-nowrap">
+                  Network
+                </span>
+                <div className="text-base sm:text-xl font-medium text-white">
                   {networkUsage.toFixed(2)} MB/s
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#1D1D33] flex flex-col">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="icon-bg flex items-center justify-center">
+          <div className="p-3 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1 sm:mb-2">
+              <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
                 <img
                   src="/images/success.png"
-                  alt="CPU"
-                  className="w-8 h-8 object-contain z-10"
+                  alt="Success Rate"
+                  className="w-6 h-6 sm:w-7 sm:h-7 object-contain z-10"
                 />
               </div>
-              <div>
-                <span className="text-[#515194] text-sm">Success Rate</span>
-                <div className="text-xl font-medium text-white">
+              <div className="flex flex-col overflow-hidden">
+                <span className="text-[#515194] text-xs sm:text-sm whitespace-nowrap">
+                  Success Rate
+                </span>
+                <div className="text-base sm:text-xl font-medium text-white">
                   {successRate.toFixed(2)}%
                 </div>
               </div>
@@ -695,14 +703,16 @@ const tierInfo = getTierByName(subscriptionTier);
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-[#1D1D33] mb-6">
+        <div className="p-3 sm:p-4 rounded-xl bg-[#1D1D33] mb-4 sm:mb-6 overflow-hidden">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[#515194]">Reward Tier</span>
-            <span className="px-3 py-1 bg-purple-500/20 text-purple-400 text-xs font-medium rounded-full uppercase">
+            <span className="text-[#515194] text-xs sm:text-sm">
+              Reward Tier
+            </span>
+            <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-purple-500/20 text-purple-400 text-xs font-medium rounded-full uppercase">
               {rewardTier}
             </span>
           </div>
-          <p className="text-sm text-[#515194]">
+          <p className="text-xs sm:text-sm text-[#515194] break-words">
             {rewardTier === "webgpu" &&
               "This device supports WebGPU acceleration, earning maximum NLOV token rewards."}
             {rewardTier === "wasm" &&
@@ -713,17 +723,17 @@ const tierInfo = getTierByName(subscriptionTier);
               "This device uses CPU processing, earning basic NLOV token rewards."}
           </p>
           {selectedNode && selectedNode.cpuCores && (
-            <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
-              <div className="text-[#515194]">
+            <div className="grid grid-cols-1 xs:grid-cols-2 gap-2 sm:gap-4 mt-3 sm:mt-4 text-xs sm:text-sm overflow-hidden">
+              <div className="text-[#515194] truncate">
                 CPU Cores:{" "}
                 <span className="text-white">{selectedNode.cpuCores}</span>
               </div>
-              <div className="text-[#515194]">
+              <div className="text-[#515194] truncate">
                 Memory:{" "}
                 <span className="text-white">{selectedNode.memory} GB</span>
               </div>
               {selectedNode.gpuInfo && (
-                <div className="col-span-2 text-[#515194]">
+                <div className="col-span-1 xs:col-span-2 text-[#515194] truncate">
                   GPU:{" "}
                   <span className="text-white">{selectedNode.gpuInfo}</span>
                 </div>
@@ -732,22 +742,24 @@ const tierInfo = getTierByName(subscriptionTier);
           )}
         </div>
 
-        <div className="p-6 flex items-center justify-between rounded-2xl bg-gradient-to-r from-[#090C18] to-[#14273F] border border-[#1D5AB3] relative overflow-hidden">
-          <div className="flex items-center gap-4 z-10">
+        <div className="p-3 sm:p-6 flex flex-col sm:flex-row items-center justify-between rounded-2xl bg-gradient-to-r from-[#090C18] to-[#14273F] border border-[#1D5AB3] relative overflow-hidden gap-3 sm:gap-0">
+          <div className="flex items-center gap-2 sm:gap-4 z-10">
             <div className="flex items-center justify-center">
               <img
                 src="/images/nlov-coin.png"
                 alt="coin"
-                className="w-11 h-11 object-contain z-10"
+                className="w-8 h-8 sm:w-11 sm:h-11 object-contain z-10"
               />
             </div>
-            <span className="text-white/90 text-2xl">Total Earnings</span>
+            <span className="text-white/90 text-lg sm:text-2xl">
+              Total Earnings
+            </span>
           </div>
-          <div className="flex items-baseline gap-2 z-10">
-            <span className="text-[42px] font-medium bg-clip-text text-transparent bg-gradient-to-b from-[#20A5EF] to-[#0361DA]">
+          <div className="flex items-baseline gap-1 sm:gap-2 z-10">
+            <span className="text-2xl sm:text-[42px] font-medium bg-clip-text text-transparent bg-gradient-to-b from-[#20A5EF] to-[#0361DA]">
               {totalEarnings}
             </span>
-            <span className="text-white/90 text-sm">NLOV</span>
+            <span className="text-white/90 text-xs sm:text-sm">NLOV</span>
           </div>
         </div>
       </div>
