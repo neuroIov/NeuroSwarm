@@ -71,10 +71,17 @@ const AppContent = () => {
 
   // Sync uptime on app close/refresh
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (isActive) {
         console.log("App closing/refreshing - syncing uptime data...");
         dispatch(syncUptime());
+        
+        // Display confirmation dialog
+        event.preventDefault();
+        // Chrome requires returnValue to be set
+        event.returnValue = 'If you reload or close this tab, the current process will be terminated. Are you sure?';
+        // For older browsers
+        return 'If you reload or close this tab, the current process will be terminated. Are you sure?';
       }
     };
 

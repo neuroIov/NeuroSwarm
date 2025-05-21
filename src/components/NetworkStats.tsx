@@ -26,17 +26,17 @@ const StatCard = ({
   isUptime = false,
 }: StatCardProps) => {
   return (
-    <div className="network-stat-card h-[120px] rounded-3xl bg-[linear-gradient(135deg,#0361DA_0%,#0240B3_50%,#02072D_100%)] text-white p-3 sm:p-4 relative overflow-hidden transition-all duration-300 hover:border hover:border-[#20A5EF] hover:transform hover:scale-[1.02] hover:shadow-lg hover:shadow-[#0361DA]/20">
+    <div className="network-stat-card h-[100px] sm:h-[120px] rounded-2xl sm:rounded-3xl bg-[linear-gradient(135deg,#0361DA_0%,#0240B3_50%,#02072D_100%)] text-white p-2.5 sm:p-4 relative overflow-hidden transition-all duration-300 hover:border hover:border-[#20A5EF] hover:transform hover:scale-[1.02] hover:shadow-lg hover:shadow-[#0361DA]/20">
       <div className="network-stat-glow absolute -inset-1 bg-[radial-gradient(circle_at_50%_-20%,#64C8FF_0%,transparent_70%)] opacity-0 transition-opacity duration-500 z-0"></div>
       <div className="network-stat-shine absolute top-0 left-0 w-full h-full bg-[linear-gradient(90deg,transparent_0%,rgba(100,200,255,0.1)_50%,transparent_100%)] -translate-x-full z-0"></div>
-      <div className="flex justify-between items-start mb-1 sm:mb-2 relative z-10">
+      <div className="flex justify-between items-start mb-0.5 sm:mb-2 relative z-10">
         <div className="text-slate-400 flex items-center gap-1 text-xs sm:text-sm">
           {title}
           {info && <InfoTooltip content={info} />}
         </div>
       </div>
       <div className="flex flex-col relative z-10">
-        <div className="text-xl sm:text-2xl font-bold flex items-baseline gap-1">
+        <div className="text-lg sm:text-2xl font-bold flex items-baseline gap-1">
           {isUptime ? (
             <div className="flex items-center">
               <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
@@ -48,7 +48,7 @@ const StatCard = ({
           {unit && <span className="text-xs sm:text-sm text-slate-400">{unit}</span>}
         </div>
         {changePercentage !== undefined && (
-          <div className="flex items-center text-xs sm:text-sm text-green-400 mt-1">
+          <div className="flex items-center text-xs sm:text-sm text-green-400 mt-0.5 sm:mt-1">
             <ArrowUp className="w-2 h-2 sm:w-3 sm:h-3 mr-1" />
             {changePercentage}%
           </div>
@@ -211,7 +211,7 @@ export const NetworkStats = () => {
   }, [client, totalNodes]);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6 md:mb-10 w-full">
+    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 md:mb-10 w-full">
       <StatCard
         title="Total Nodes"
         value={totalNodes}
