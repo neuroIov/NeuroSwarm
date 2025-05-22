@@ -13,6 +13,8 @@ import { AppDispatch } from "@/store";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { getMaxUptimeByTier } from "@/lib/subscriptionTiers"; // ✅ NEW
 
+export type WalletType = "phantom" | "metamask";
+
 export const useSession = () => {
   const dispatch = useDispatch<AppDispatch>();
   const session = useSelector((state: RootState) => state.session);
@@ -21,6 +23,7 @@ export const useSession = () => {
   const [walletConnected, setWalletConnected] = useState(false);
   const [userPublicKey, setUserPublicKey] = useState<PublicKey | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [walletType, setWalletType] = useState<WalletType>("phantom");
 
   const loginWithEmail = async (email: string, password: string) => {
     setIsAuthLoading(true);
@@ -122,6 +125,7 @@ export const useSession = () => {
               userId: parsed.userId,
               authMethod: parsed.authMethod,
               walletAddress: parsed.walletAddress,
+              walletType: parsed.walletType || "phantom",
             })
           );
 
@@ -130,6 +134,7 @@ export const useSession = () => {
             setWalletConnected(true);
             try {
               setUserPublicKey(new PublicKey(parsed.walletAddress));
+              setWalletType(parsed.walletType || "phantom");
             } catch (e) {
               console.error("Invalid wallet address in saved session:", e);
             }
@@ -155,6 +160,7 @@ export const useSession = () => {
           userId: session.userId,
           authMethod: session.authMethod,
           walletAddress: session.walletAddress,
+          walletType: session.walletType || walletType,
         })
       );
       console.log("Session saved to localStorage");
@@ -164,16 +170,27 @@ export const useSession = () => {
     session.userId,
     session.authMethod,
     session.walletAddress,
+    session.walletType,
+    walletType,
   ]);
 
-  const connectWallet = async () => {
+  const connectWallet = async (type: WalletType = "phantom") => {
     if (walletConnected) {
       logout();
       return;
     }
 
+    setWalletType(type);
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+    if (type === "phantom") {
+      await connectPhantomWallet(isMobile);
+    } else if (type === "metamask") {
+      await connectMetaMaskWallet();
+    }
+  };
+
+  const connectPhantomWallet = async (isMobile: boolean) => {
     interface PhantomWindow extends Window {
       phantom?: {
         solana?: {
@@ -207,13 +224,14 @@ export const useSession = () => {
 
         setUserPublicKey(publicKey);
         setWalletConnected(true);
-        console.log(`Connected to wallet: ${walletAddress}`);
+        console.log(`Connected to Phantom wallet: ${walletAddress}`);
 
         dispatch(
           startSession({
             userId: walletAddress,
             authMethod: "wallet",
             walletAddress,
+            walletType: "phantom",
           })
         );
 
@@ -222,11 +240,11 @@ export const useSession = () => {
         dispatch(
           logActivity({
             type: "wallet_connected",
-            details: { walletAddress },
+            details: { walletAddress, walletType: "phantom" },
           })
         );
       } catch (err) {
-        console.error("Wallet connection failed:", err);
+        console.error("Phantom wallet connection failed:", err);
         alert("Phantom Wallet connection failed.");
       }
     } else {
@@ -240,6 +258,59 @@ export const useSession = () => {
       ) {
         window.open(phantomAppUrl, "_blank");
       }
+    }
+  };
+
+  const connectMetaMaskWallet = async () => {
+    if (typeof (window as any).ethereum === 'undefined') {
+      console.log("MetaMask not detected");
+      if (
+        confirm("MetaMask is required. Would you like to install it?")
+      ) {
+        window.open("https://metamask.io/download/", "_blank");
+      }
+      return;
+    }
+
+    try {
+      console.log("Connecting to MetaMask wallet...");
+      const ethereum = (window as any).ethereum;
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+      const walletAddress = accounts[0];
+
+      if (!walletAddress) {
+        throw new Error("No wallet address received from MetaMask");
+      }
+
+      // We can't use PublicKey from Solana for MetaMask addresses
+      // Create a string version only for display
+      setUserPublicKey({
+        toString: () => walletAddress,
+      } as unknown as PublicKey);
+
+      setWalletConnected(true);
+      console.log(`Connected to MetaMask wallet: ${walletAddress}`);
+
+      dispatch(
+        startSession({
+          userId: walletAddress,
+          authMethod: "wallet",
+          walletAddress,
+          walletType: "metamask",
+        })
+      );
+
+      dispatch(fetchOrCreateUserProfile(walletAddress));
+
+      dispatch(
+        logActivity({
+          type: "wallet_connected",
+          details: { walletAddress, walletType: "metamask" },
+        })
+      );
+    } catch (err) {
+      console.error("MetaMask wallet connection failed:", err);
+      alert("MetaMask Wallet connection failed.");
     }
   };
 
@@ -282,5 +353,6 @@ export const useSession = () => {
     signupWithEmail,
     subscriptionTier,
     maxUptime, // ✅ Export max uptime in seconds based on tier
+    walletType, // Export wallet type
   };
 };

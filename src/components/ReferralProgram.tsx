@@ -188,7 +188,9 @@ const DailyRewardCard = ({
           >
             Day {day}
           </div>
-          <div className="text-xs sm:text-sm text-blue-400/80 mt-1">{points} Points</div>
+          <div className="text-xs sm:text-sm text-blue-400/80 mt-1">
+            {points} Points
+          </div>
         </div>
         {isCompleted && (
           <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-1">
@@ -634,7 +636,9 @@ export const ReferralProgram = () => {
       <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
         {/* Referral Link Section */}
         <div className="mb-4 sm:mb-6">
-          <h3 className="text-white font-medium text-sm sm:text-base mb-2">Your Referral Link</h3>
+          <h3 className="text-white font-medium text-sm sm:text-base mb-2">
+            Your Referral Link
+          </h3>
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <div className="flex-1 w-full bg-gradient-to-r from-blue-600/20 to-blue-400/5 rounded-full px-3 sm:px-4 py-2 sm:py-3 border border-blue-500/20">
               <div className="flex items-center gap-2">
@@ -648,11 +652,28 @@ export const ReferralProgram = () => {
               </div>
             </div>
             <button
-              onClick={handleCopyReferralLink}
+              onClick={
+                referralCode
+                  ? handleCopyReferralLink
+                  : handleGenerateReferralCode
+              }
               className="gradient-button bg-gradient-to-r from-blue-600 to-blue-500 text-white h-10 sm:h-11 w-full sm:w-28 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300 flex items-center justify-center gap-2"
+              disabled={isGenerating}
             >
-              <Copy className="w-3 h-3 sm:w-4 sm:h-4" />
-              <span className="text-xs sm:text-sm font-medium">Copy</span>
+              {isGenerating ? (
+                <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
+              ) : referralCode ? (
+                <Copy className="w-3 h-3 sm:w-4 sm:h-4" />
+              ) : (
+                <Key className="w-3 h-3 sm:w-4 sm:h-4" />
+              )}
+              <span className="text-xs sm:text-sm font-medium">
+                {isGenerating
+                  ? "Generating..."
+                  : referralCode
+                  ? "Copy"
+                  : "Generate"}
+              </span>
             </button>
           </div>
         </div>
@@ -669,7 +690,9 @@ export const ReferralProgram = () => {
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-white font-medium text-sm sm:text-base">Claimed Rewards</h3>
+                  <h3 className="text-white font-medium text-sm sm:text-base">
+                    Claimed Rewards
+                  </h3>
                   <span className="text-green-400 font-bold text-sm sm:text-base">
                     {claimedRewards.toFixed(2)}
                   </span>
@@ -692,7 +715,9 @@ export const ReferralProgram = () => {
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-white font-medium text-sm sm:text-base">Pending Rewards</h3>
+                  <h3 className="text-white font-medium text-sm sm:text-base">
+                    Pending Rewards
+                  </h3>
                   <span className="text-amber-400 font-bold text-sm sm:text-base">
                     {pendingRewards.toFixed(2)}
                   </span>
@@ -722,7 +747,9 @@ export const ReferralProgram = () => {
                   />
                 </div>
                 <div>
-                  <h4 className="text-white font-medium text-sm sm:text-base">Tier 1</h4>
+                  <h4 className="text-white font-medium text-sm sm:text-base">
+                    Tier 1
+                  </h4>
                   <p className="text-blue-400 text-xs sm:text-sm">
                     Earn 10% from your direct referrals
                   </p>
@@ -741,7 +768,9 @@ export const ReferralProgram = () => {
                   />
                 </div>
                 <div>
-                  <h4 className="text-white font-medium text-sm sm:text-base">Tier 2</h4>
+                  <h4 className="text-white font-medium text-sm sm:text-base">
+                    Tier 2
+                  </h4>
                   <p className="text-blue-400 text-xs sm:text-sm">
                     Earn 5% from their referrals
                   </p>
@@ -760,7 +789,9 @@ export const ReferralProgram = () => {
                   />
                 </div>
                 <div>
-                  <h4 className="text-white font-medium text-sm sm:text-base">Tier 3</h4>
+                  <h4 className="text-white font-medium text-sm sm:text-base">
+                    Tier 3
+                  </h4>
                   <p className="text-blue-400 text-xs sm:text-sm">
                     Earn 2.5% from the next level
                   </p>
@@ -779,7 +810,9 @@ export const ReferralProgram = () => {
               <h3 className="text-white font-medium text-sm sm:text-base">
                 Direct Referrals (Tier 1)
               </h3>
-              <span className="text-[#515194]/80 text-xs sm:text-sm">{directReferrals} total</span>
+              <span className="text-[#515194]/80 text-xs sm:text-sm">
+                {directReferrals} total
+              </span>
             </div>
 
             {isLoading ? (
@@ -802,7 +835,9 @@ export const ReferralProgram = () => {
 
           <div className="bg-[#161628] rounded-2xl p-3 sm:p-6">
             <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <h3 className="text-white font-medium text-sm sm:text-base">Recent Rewards</h3>
+              <h3 className="text-white font-medium text-sm sm:text-base">
+                Recent Rewards
+              </h3>
               <span className="text-[#515194]/80 text-xs sm:text-sm">
                 {referralRewards.length} total
               </span>
@@ -840,7 +875,9 @@ export const ReferralProgram = () => {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-4 sm:mb-6">
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
-            <h2 className="text-white text-base sm:text-lg font-medium">Daily Rewards</h2>
+            <h2 className="text-white text-base sm:text-lg font-medium">
+              Daily Rewards
+            </h2>
           </div>
           <button className="gradient-button bg-gradient-to-r from-blue-600 to-blue-400 text-white w-full sm:w-auto px-4 sm:px-6 py-2 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300">
             Check In

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { WalletButton } from "./WalletButton";
+import { WalletSelector } from "./WalletSelector";
 import {
   HelpCircle,
   Mail,
@@ -157,38 +158,13 @@ export const Header = ({
             )}
           </Button>
 
-          {/* Wallet Button */}
-          <Button
-            variant="outline"
-            onClick={() => handleModeSwitch("wallet")}
-            className={cn(
-              "flex items-center gap-1 md:gap-2 font-medium rounded-full h-auto transition-all duration-300 min-w-[36px] sm:min-w-[40px]",
-              isCollapsed || window.innerWidth < 640
-                ? "px-1.5 py-1.5 sm:px-2 sm:py-2 justify-center"
-                : "w-[100px] sm:w-[160px] px-3 sm:px-6 py-2 sm:py-3",
-              session.authMethod === "wallet"
-                ? "bg-gradient-to-r from-[#22c55e] to-[#15803d] text-white border-green-500"
-                : activeButton === "wallet"
-                ? "bg-gradient-to-r from-[#0361DA] to-[#20A5EF] text-white border-[#20A5EF]"
-                : "bg-[#112544] text-[#0066FF] border-transparent hover:bg-[#0066FF]/10"
-            )}
-          >
-            <Wallet
-              className={cn(
-                "transition-all duration-300",
-                isCollapsed || window.innerWidth < 640
-                  ? "w-3.5 h-3.5 sm:w-4 sm:h-4"
-                  : "w-3 h-3 sm:w-4 sm:h-4"
-              )}
-            />
-            {!isCollapsed && window.innerWidth >= 640 && (
-              <span className="transition-all duration-300 text-xs sm:text-sm whitespace-nowrap">
-                {session.authMethod === "wallet"
-                  ? "Connected"
-                  : "Connect Wallet"}
-              </span>
-            )}
-          </Button>
+          {/* Wallet Selector - Replace custom wallet button with WalletSelector */}
+          <WalletSelector
+            onClose={() => {
+              setShowMessage(false);
+              setPendingMode(null);
+            }}
+          />
         </div>
 
         {/* Switch Connection Message */}
