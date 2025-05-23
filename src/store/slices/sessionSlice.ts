@@ -48,11 +48,14 @@ export interface ReferralReward {
   referral?: Referral;
 }
 
+export type WalletType = 'phantom' | 'metamask';
+
 type SessionState = {
   sessionId: string | null;
   userId: string | null;
   authMethod: AuthMethod;
   walletAddress: string | null;
+  walletType: WalletType | null;
   userProfile: UserProfile | null;
   startTime: string | null;
   activities: Activity[];
@@ -67,6 +70,7 @@ const initialState: SessionState = {
   userId: null,
   authMethod: null,
   walletAddress: null,
+  walletType: null,
   userProfile: null,
   startTime: null,
   activities: [],
@@ -382,20 +386,21 @@ const sessionSlice = createSlice({
   name: 'session',
   initialState,
   reducers: {
-    startSession(state, action: PayloadAction<{ userId: string; authMethod: AuthMethod; walletAddress?: string }>) {
-      const { userId, authMethod, walletAddress } = action.payload;
-      state.sessionId = crypto.randomUUID();
-      state.userId = userId;
-      state.authMethod = authMethod;
-      state.walletAddress = walletAddress || null;
+    startSession(state, action: PayloadAction<{ userId: string; authMethod: AuthMethod; walletAddress?: string; walletType?: WalletType }>) {
+      const sessionId = `session_${Date.now()}`;
+      state.sessionId = sessionId;
+      state.userId = action.payload.userId;
+      state.authMethod = action.payload.authMethod;
+      state.walletAddress = action.payload.walletAddress || null;
+      state.walletType = action.payload.walletType || null;
       state.startTime = new Date().toISOString();
       state.activities = [];
       state.error = null;
 
-      console.log(`Started new session: ${state.sessionId}`);
-      console.log(`User type: ${authMethod || 'guest'}, User ID: ${userId}`);
+      console.log(`Session started: ${sessionId}`);
+      console.log(`User type: ${action.payload.authMethod || 'guest'}, User ID: ${action.payload.userId}`);
 
-      if (authMethod === null) {
+      if (action.payload.authMethod === null) {
         console.log('Guest session - no wallet connected');
       }
     },
