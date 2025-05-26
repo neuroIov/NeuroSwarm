@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -13,7 +13,19 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { updateUsername } from "@/store/slices/sessionSlice";
-import { UsernameDialog } from "./UsernameDialog";
+import { ProfileEditModal } from "./ProfileEditModal";
+
+// Define extended session type with additional properties
+interface ExtendedSession {
+  userId: string | null;
+  email?: string;
+  username?: string;
+  walletAddress?: string;
+  walletType?: string | null;
+  createdAt?: string;
+  referralCode?: string;
+  referralCount?: number;
+}
 
 interface SidebarProps {
   activeSection: string;
@@ -59,18 +71,55 @@ export function Sidebar({
 }: SidebarProps) {
   const dispatch = useAppDispatch();
   const { userProfile } = useAppSelector((state) => state.session);
-  const [isUsernameDialogOpen, setIsUsernameDialogOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  const handleSaveUsername = (username: string) => {
-    if (userProfile?.id) {
-      dispatch(updateUsername({ userId: userProfile?.id, username }));
+  // Helper function to extract wallet type from username
+  const extractWalletType = (username: string | null): string | null => {
+    if (!username) return null;
+    const match = username.match(/\[wallet_type:(phantom|metamask)\]/);
+    if (match && match[1]) {
+      return match[1];
     }
+    return null;
+  };
+
+  // Create an extended session object from userProfile
+  const extendedSession: ExtendedSession = {
+    userId: userProfile?.id || null,
+    // Use available properties from userProfile
+    username: userProfile?.user_name,
+    walletAddress: userProfile?.wallet_address,
+    // Extract wallet type from username
+    walletType: userProfile?.user_name
+      ? extractWalletType(userProfile.user_name)
+      : null,
+    // Set defaults for missing properties
+    email: "",
+    createdAt: new Date().toISOString(),
+    referralCode: userProfile?.referral_code,
+    referralCount: 0,
+  };
+
+  // Log session data for debugging
+  useEffect(() => {
+    if (userProfile) {
+      console.log("Sidebar userProfile:", userProfile);
+    }
+  }, [userProfile]);
+
+  // Helper function to clean username by removing wallet type metadata
+  const cleanUsername = (username: string | null): string | null => {
+    if (!username) return null;
+    return username
+      .replace(/\s*\[wallet_type:(phantom|metamask)\]\s*/, "")
+      .trim();
   };
 
   // Get display name - either username or truncated wallet address
   const getDisplayName = () => {
     if (userProfile?.user_name) {
-      return userProfile.user_name;
+      // Clean the username to remove any wallet type metadata
+      return cleanUsername(userProfile.user_name) || userProfile.user_name;
     }
 
     if (userProfile?.wallet_address) {
@@ -80,6 +129,9 @@ export function Sidebar({
 
     return "Guest User";
   };
+
+  // Only show edit button if user is logged in
+  const isLoggedIn = !!userProfile?.id;
 
   return (
     <>
@@ -143,19 +195,21 @@ export function Sidebar({
                   <h2 className="text-sm font-medium text-white truncate mr-2">
                     {getDisplayName()}
                   </h2>
-                  {userProfile?.wallet_address && (
+                  {isLoggedIn && (
                     <button
-                      onClick={() => setIsUsernameDialogOpen(true)}
-                      className="text-gray-400  hover:text-blue-400 transition-colors"
-                      title="Edit username"
+                      onClick={() => setIsProfileModalOpen(true)}
+                      className="text-gray-400 hover:text-blue-400 transition-colors"
+                      title="Edit profile"
                     >
                       <Edit2 className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
-                {/* <p className="text-xs text-gray-400">
-                  {userProfile ? "Level 2 Node" : "Not Connected"}
-                </p> */}
+                <p className="text-xs text-gray-400">
+                  {userProfile?.wallet_address
+                    ? "Wallet Connected"
+                    : "Not Connected"}
+                </p>
               </div>
             </div>
           </div>
@@ -204,13 +258,14 @@ export function Sidebar({
         </div>
       </aside>
 
-      {/* Username dialog */}
-      <UsernameDialog
-        isOpen={isUsernameDialogOpen}
-        onClose={() => setIsUsernameDialogOpen(false)}
-        onSave={handleSaveUsername}
-        initialUsername={userProfile?.user_name}
-      />
+      {/* Profile Edit Modal */}
+      {userProfile && (
+        <ProfileEditModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          session={extendedSession}
+        />
+      )}
     </>
   );
 }

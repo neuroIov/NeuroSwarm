@@ -5,13 +5,13 @@ import { TASK_PROCESSING_CONFIG } from './config';
 /**
  * Record earnings for a completed task
  * @param {string} taskId - The ID of the completed task
- * @param {string} userAddress - User's wallet address
+ * @param {string} userId - User's ID
  * @param {string} taskType - Type of task ('image' or 'text')
  * @returns {Promise<{success: boolean, earningId?: string}>}
  */
-export const recordTaskEarning = async (taskId, userAddress, taskType) => {
+export const recordTaskEarning = async (taskId, userId, taskType) => {
     try {
-        if (!taskId || !userAddress || !taskType) {
+        if (!taskId || !userId || !taskType) {
             logger.error('Cannot record earnings: Missing required parameters');
             return { success: false };
         }
@@ -48,11 +48,12 @@ export const recordTaskEarning = async (taskId, userAddress, taskType) => {
         const { data: earning, error: insertError } = await client
             .from('earnings')
             .insert({
-                user_address: userAddress,
+                user_id: userId,
                 amount: amount,
                 task_id: taskId,
                 created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                earning_type: 'task'
             })
             .select('*')
             .single();
@@ -63,91 +64,60 @@ export const recordTaskEarning = async (taskId, userAddress, taskType) => {
         }
 
         logger.log(`Successfully recorded ${amount} NLOVE earnings for task ${taskId}`);
+
+        // Update earnings_history to track task count and pending amount
+        try {
+            // Get the latest earnings history record for this user
+            const { data: latestHistory, error: fetchError } = await client
+                .from('earnings_history')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('payout_status', 'pending')
+                .order('timestamp', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (fetchError) {
+                logger.error('Error fetching earnings history:', fetchError);
+                // Don't fail the whole operation if just the history update fails
+            } else if (latestHistory) {
+                // Update existing record
+                const { error: updateError } = await client
+                    .from('earnings_history')
+                    .update({
+                        amount: latestHistory.amount + amount,
+                        task_count: latestHistory.task_count + 1,
+                        timestamp: new Date().toISOString()
+                    })
+                    .eq('id', latestHistory.id);
+
+                if (updateError) {
+                    logger.error('Error updating earnings history:', updateError);
+                }
+            } else {
+                // Create new history record
+                const { error: insertHistoryError } = await client
+                    .from('earnings_history')
+                    .insert({
+                        user_id: userId,
+                        amount: amount,
+                        task_count: 1,
+                        timestamp: new Date().toISOString(),
+                        payout_status: 'pending'
+                    });
+
+                if (insertHistoryError) {
+                    logger.error('Error creating earnings history record:', insertHistoryError);
+                }
+            }
+        } catch (historyError) {
+            logger.error('Error updating earnings history:', historyError);
+            // Don't fail the whole operation if just the history update fails
+        }
+
         return { success: true, earningId: earning.id };
     } catch (error) {
         logger.error('Error in recordTaskEarning:', error);
-        return { success: false };
-    }
-};
-
-/**
- * Update user's earnings history after task completion
- * @param {string} userId - User ID from profile
- * @param {string} taskType - Type of task ('image' or 'text')
- * @returns {Promise<{success: boolean}>}
- */
-export const updateEarningsHistory = async (userId, taskType) => {
-    try {
-        if (!userId || !taskType) {
-            logger.error('Cannot update earnings history: Missing required parameters');
-            return { success: false };
-        }
-
-        const client = getSwarmSupabase();
-        if (!client) {
-            logger.error('Supabase client is not initialized');
-            return { success: false };
-        }
-
-        // Determine amount based on task type
-        const amount = taskType === 'image'
-            ? TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.image
-            : TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.text;
-
-        // Get the latest earnings history record for this user
-        const { data: latestHistory, error: fetchError } = await client
-            .from('earnings_history')
-            .select('*')
-            .eq('user_id', userId)
-            .order('timestamp', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-        if (fetchError) {
-            logger.error('Error fetching earnings history:', fetchError);
-            return { success: false };
-        }
-
-        if (latestHistory && latestHistory.payout_status === 'pending') {
-            // Update existing record
-            const { error: updateError } = await client
-                .from('earnings_history')
-                .update({
-                    amount: latestHistory.amount + amount,
-                    task_count: latestHistory.task_count + 1,
-                    timestamp: new Date().toISOString()
-                })
-                .eq('id', latestHistory.id);
-
-            if (updateError) {
-                logger.error('Error updating earnings history:', updateError);
-                return { success: false };
-            }
-
-            logger.log(`Updated earnings history for user ${userId}: +${amount} NLOVE, total: ${latestHistory.amount + amount}`);
-        } else {
-            // Create new history record
-            const { error: insertError } = await client
-                .from('earnings_history')
-                .insert({
-                    user_id: userId,
-                    amount: amount,
-                    task_count: 1,
-                    timestamp: new Date().toISOString(),
-                    payout_status: 'pending'
-                });
-
-            if (insertError) {
-                logger.error('Error creating earnings history record:', insertError);
-                return { success: false };
-            }
-
-            logger.log(`Created new earnings history record for user ${userId}: ${amount} NLOVE`);
-        }
-
-        return { success: true };
-    } catch (error) {
-        logger.error('Error in updateEarningsHistory:', error);
         return { success: false };
     }
 };
@@ -170,28 +140,22 @@ export const getUserEarnings = async (userId) => {
             return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0 };
         }
 
-        // Get user's wallet address from user_profiles
-        const { data: userProfile, error: profileError } = await client
-            .from('user_profiles')
-            .select('wallet_address')
-            .eq('id', userId)
-            .single();
-
-        if (profileError || !userProfile?.wallet_address) {
-            logger.error('Error fetching user wallet address:', profileError);
-            return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0 };
-        }
-
-        // Get all earnings for this user's wallet address
-        const { data: earnings, error: earningsError } = await client
+        // Calculate total earnings directly from earnings table
+        const { data: earningsData, error: earningsError } = await client
             .from('earnings')
-            .select('amount')
-            .eq('user_address', userProfile.wallet_address);
+            .select('amount, earning_type')
+            .eq('user_id', userId);
 
         if (earningsError) {
-            logger.error('Error fetching user earnings:', earningsError);
+            logger.error('Error fetching earnings data:', earningsError);
             return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0 };
         }
+
+        // Calculate total earnings from all earnings records
+        const totalEarnings = earningsData?.reduce((sum, record) => sum + Number(record.amount), 0) || 0;
+
+        // Count completed tasks from earnings records
+        const completedTasks = earningsData?.filter(record => record.earning_type === 'task').length || 0;
 
         // Get latest earnings history for pending amount
         const { data: earningsHistory, error: historyError } = await client
@@ -205,15 +169,11 @@ export const getUserEarnings = async (userId) => {
 
         if (historyError) {
             logger.error('Error fetching earnings history:', historyError);
-            return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0 };
+            return { totalEarnings, pendingEarnings: 0, completedTasks };
         }
 
-        // Calculate total earnings from all earnings records
-        const totalEarnings = earnings.reduce((sum, record) => sum + Number(record.amount), 0);
-
-        // Get pending earnings and task count from history
+        // Get pending earnings from history or default to 0
         const pendingEarnings = earningsHistory?.amount || 0;
-        const completedTasks = earningsHistory?.task_count || 0;
 
         return {
             totalEarnings,
@@ -234,21 +194,27 @@ export const getUserTotalEarnings = async (userId) => {
         }
 
         const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return 0;
+        }
 
-        const { data: totalEarnings, error: earningsError } = await client
-            .from('earnings_history')
+        // Calculate total earnings directly from earnings table
+        const { data: earningsData, error: earningsError } = await client
+            .from('earnings')
             .select('amount')
             .eq('user_id', userId);
 
         if (earningsError) {
-            logger.error('Error fetching user earnings:', earningsError);
+            logger.error('Error fetching earnings data:', earningsError);
             return 0;
         }
 
-        return totalEarnings[0].amount;
-
+        // Sum all earnings
+        const totalEarnings = earningsData?.reduce((sum, record) => sum + Number(record.amount), 0) || 0;
+        return totalEarnings;
     } catch (error) {
-        logger.error('Error in getUsetTotalEarnings:', error);
+        logger.error('Error in getUserTotalEarnings:', error);
         return 0;
     }
 }
@@ -273,34 +239,24 @@ export const getUserEarningsTransactions = async (userId, limit = 20, offset = 0
             return [];
         }
 
-        // Get user's wallet address from user_profiles
-        const { data: userProfile, error: profileError } = await client
-            .from('user_profiles')
-            .select('wallet_address')
-            .eq('id', userId)
-            .single();
-
-        if (profileError || !userProfile?.wallet_address) {
-            logger.error('Error fetching user wallet address:', profileError);
-            return [];
-        }
-
-        // Get earnings records with task details
+        // Query earnings directly by user_id instead of wallet address
         const { data: transactions, error } = await client
             .from('earnings')
             .select(`
-        id,
-        amount,
-        created_at,
-        transaction_hash,
-        tasks (
-          id,
-          type,
-          status,
-          prompt
-        )
-      `)
-            .eq('user_address', userProfile.wallet_address)
+                id,
+                amount,
+                created_at,
+                transaction_hash,
+                earning_type,
+                updated_at,
+                tasks (
+                    id,
+                    type,
+                    status,
+                    prompt
+                )
+            `)
+            .eq('user_id', userId)
             .order('created_at', { ascending: false })
             .range(offset, offset + limit - 1);
 
@@ -374,18 +330,6 @@ export const claimReferralReward = async (userId, rewardId) => {
             return { success: false, message: 'Supabase client not initialized' };
         }
 
-        // Get user's wallet address and the reward details
-        const { data: userProfile, error: userError } = await client
-            .from('user_profiles')
-            .select('wallet_address')
-            .eq('id', userId)
-            .single();
-
-        if (userError || !userProfile?.wallet_address) {
-            logger.error('Error fetching user wallet address:', userError);
-            return { success: false, message: 'Unable to fetch user wallet address' };
-        }
-
         // Get the reward details
         const { data: reward, error: rewardError } = await client
             .from('referral_rewards')
@@ -421,7 +365,7 @@ export const claimReferralReward = async (userId, rewardId) => {
         const { data: earning, error: insertError } = await client
             .from('earnings')
             .insert({
-                user_address: userProfile.wallet_address,
+                user_id: userId, // Use user_id instead of user_address
                 amount: rewardAmount,
                 task_id: null,  // No task associated with referral earnings
                 created_at: new Date().toISOString(),
@@ -501,5 +445,138 @@ export const claimReferralReward = async (userId, rewardId) => {
     } catch (error) {
         logger.error('Error in claimReferralReward:', error);
         return { success: false, message: error.message };
+    }
+};
+
+// Add a debug function to check if data is properly fetched
+export const debugEarningsData = async (userId) => {
+    try {
+        if (!userId) {
+            return { error: 'No user ID provided' };
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            return { error: 'Supabase client is not initialized' };
+        }
+
+        // Check user profile
+        const { data: userProfile, error: profileError } = await client
+            .from('user_profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+        if (profileError) {
+            return { error: `Error fetching user profile: ${profileError.message}` };
+        }
+
+        // Check earnings
+        const { data: earnings, error: earningsError } = await client
+            .from('earnings')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+        if (earningsError) {
+            return { error: `Error fetching earnings: ${earningsError.message}` };
+        }
+
+        // Check earnings history
+        const { data: history, error: historyError } = await client
+            .from('earnings_history')
+            .select('*')
+            .eq('user_id', userId)
+            .order('timestamp', { ascending: false })
+            .limit(5);
+
+        if (historyError) {
+            return { error: `Error fetching earnings history: ${historyError.message}` };
+        }
+
+        return {
+            userProfile: userProfile || null,
+            earnings: earnings || [],
+            earnings_count: earnings?.length || 0,
+            history: history || [],
+            history_count: history?.length || 0
+        };
+    } catch (error) {
+        return { error: `Unexpected error: ${error.message}` };
+    }
+};
+
+// Add a test function to create a sample earning
+export const createTestEarning = async (userId) => {
+    try {
+        if (!userId) {
+            return { success: false, error: 'No user ID provided' };
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            return { success: false, error: 'Supabase client is not initialized' };
+        }
+
+        // Create a test earning record with a small amount
+        const testAmount = 0.1; // Small test amount
+
+        // Create a test earning record
+        const { data: earning, error: insertError } = await client
+            .from('earnings')
+            .insert({
+                user_id: userId,
+                amount: testAmount,
+                task_id: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                earning_type: 'test'
+            })
+            .select('*')
+            .single();
+
+        if (insertError) {
+            logger.error('Error creating test earning:', insertError);
+            return { success: false, error: insertError.message };
+        }
+
+        // Add to earnings history - this is the only place we should update history for this earning
+        const { data: latestHistory, error: fetchError } = await client
+            .from('earnings_history')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('payout_status', 'pending')
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (!fetchError && latestHistory && latestHistory.payout_status === 'pending') {
+            // Update existing record
+            await client
+                .from('earnings_history')
+                .update({
+                    amount: latestHistory.amount + testAmount,
+                    task_count: latestHistory.task_count + 1, // Increment task count for test earnings too
+                    timestamp: new Date().toISOString()
+                })
+                .eq('id', latestHistory.id);
+        } else {
+            // Create new history record
+            await client
+                .from('earnings_history')
+                .insert({
+                    user_id: userId,
+                    amount: testAmount,
+                    task_count: 1, // Start with 1 for first test earning
+                    timestamp: new Date().toISOString(),
+                    payout_status: 'pending'
+                });
+        }
+
+        return { success: true, earning };
+    } catch (error) {
+        logger.error('Error in createTestEarning:', error);
+        return { success: false, error: error.message };
     }
 };

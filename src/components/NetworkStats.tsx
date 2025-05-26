@@ -45,7 +45,9 @@ const StatCard = ({
           ) : (
             value
           )}
-          {unit && <span className="text-xs sm:text-sm text-slate-400">{unit}</span>}
+          {unit && (
+            <span className="text-xs sm:text-sm text-slate-400">{unit}</span>
+          )}
         </div>
         {changePercentage !== undefined && (
           <div className="flex items-center text-xs sm:text-sm text-green-400 mt-0.5 sm:mt-1">
@@ -61,14 +63,16 @@ const StatCard = ({
 export const NetworkStats = () => {
   const client = getSwarmSupabase();
   const dispatch = useAppDispatch();
-  const { userProfile } = useSession();
+  const { session } = useSession();
+  const userProfile = session?.userProfile;
   const [totalNodes, setTotalNodes] = useState(0);
   const [totalActiveNodes, setTotalActiveNodes] = useState(0);
   const [networkLoad, setNetworkLoad] = useState(0);
   const [storedUptime, setStoredUptime] = useState(0);
   const [localUptime, setLocalUptime] = useState(0);
+  const [lastUpdate, setLastUpdate] = useState(Date.now()); // Track last update time
 
-  // Get uptime from redux store for current session
+  // Get node status from redux store
   const { isActive, currentSessionUptime, totalUptime, nodeId } = useSelector(
     (state: RootState) => state.node
   );
@@ -80,7 +84,7 @@ export const NetworkStats = () => {
     try {
       const { data, error } = await client
         .from("devices")
-        .select("uptime")
+        .select("uptime, id")
         .eq("owner", userProfile.id);
 
       if (error) throw error;
@@ -91,6 +95,16 @@ export const NetworkStats = () => {
         0
       );
       setStoredUptime(totalUserUptime);
+
+      // If the current node is in the devices, update its local uptime
+      if (nodeId) {
+        const currentDevice = data.find((device) => device.id === nodeId);
+        if (currentDevice && currentDevice.uptime) {
+          console.log(
+            `Found device uptime for current node: ${currentDevice.uptime}`
+          );
+        }
+      }
     } catch (error) {
       console.error("Error fetching user devices uptime:", error);
     }
@@ -105,13 +119,24 @@ export const NetworkStats = () => {
       interval = setInterval(() => {
         dispatch(updateUptime());
         setLocalUptime((prev) => prev + 1); // Force component re-render
+
+        // Refresh active nodes more frequently when a node is active
+        // But not on every tick to avoid excessive API calls
+        if (Date.now() - lastUpdate > 5000) {
+          // Every 5 seconds
+          getTotalActiveNodes();
+          setLastUpdate(Date.now());
+        }
       }, 1000);
+    } else {
+      // If not active, still fetch the latest uptime from database
+      fetchUserDevicesUptime();
     }
 
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isActive, dispatch]);
+  }, [isActive, dispatch, lastUpdate]);
 
   // Calculate total uptime including current session if active
   const calculatedTotalUptime =
@@ -132,10 +157,12 @@ export const NetworkStats = () => {
     try {
       const { data, error } = await client
         .from("devices")
-        .select("id")
+        .select("id, status")
         .eq("status", "busy");
 
       if (error) throw error;
+
+      console.log("Active nodes data:", data);
       setTotalActiveNodes(data?.length || 0);
       console.log("Active nodes updated:", data?.length || 0);
 
@@ -151,11 +178,26 @@ export const NetworkStats = () => {
     }
   };
 
+  // Update active nodes count when a node's status changes in redux
+  useEffect(() => {
+    // When node becomes active or inactive, immediately update the active nodes count
+    if (nodeId) {
+      getTotalActiveNodes();
+    }
+  }, [isActive, nodeId]);
+
   // Fetch initial data
   useEffect(() => {
     getTotalNodes();
     getTotalActiveNodes();
     fetchUserDevicesUptime();
+
+    // Set up polling for active nodes
+    const activeNodesInterval = setInterval(() => {
+      getTotalActiveNodes();
+    }, 10000); // Poll every 10 seconds
+
+    return () => clearInterval(activeNodesInterval);
   }, [userProfile?.id]);
 
   // Refresh uptime from database periodically
@@ -167,36 +209,49 @@ export const NetworkStats = () => {
     return () => clearInterval(uptimeRefreshInterval);
   }, [userProfile?.id]);
 
-  // Listen for realtime updates
+  // Set up real-time subscription for both uptime and status updates
   useEffect(() => {
+    // Set up subscription for device changes
     const devicesSubscription = client
-      .channel("devices-status-changes")
+      .channel("device-updates")
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "*", // Listen for all events (INSERT, UPDATE, DELETE)
           schema: "public",
           table: "devices",
         },
         (payload) => {
-          console.log("Realtime update received:", payload);
+          console.log("Device update received:", payload);
 
-          if (payload.eventType === "UPDATE") {
-            console.log("Full update payload:", payload);
+          // For any device update, refresh both active nodes and uptime
+          getTotalActiveNodes();
+          getTotalNodes();
 
-            // If uptime was updated, refresh the uptime data
-            if (payload.new.uptime !== payload.old.uptime) {
-              fetchUserDevicesUptime();
-            }
-
-            getTotalActiveNodes();
-          } else if (
-            payload.eventType === "INSERT" ||
-            payload.eventType === "DELETE"
+          // If it's an uptime update, also refresh uptime data
+          if (
+            payload.eventType === "UPDATE" &&
+            payload.new &&
+            payload.old &&
+            payload.new.uptime !== payload.old.uptime
           ) {
-            getTotalNodes();
-            getTotalActiveNodes();
             fetchUserDevicesUptime();
+          }
+
+          // If it's a status update, refresh active nodes
+          if (
+            payload.eventType === "UPDATE" &&
+            payload.new &&
+            payload.old &&
+            payload.new.status !== payload.old.status
+          ) {
+            console.log(
+              "Status change detected:",
+              payload.old.status,
+              "->",
+              payload.new.status
+            );
+            getTotalActiveNodes();
           }
         }
       )
@@ -205,10 +260,9 @@ export const NetworkStats = () => {
       });
 
     return () => {
-      console.log("Cleaning up subscriptions");
       devicesSubscription.unsubscribe();
     };
-  }, [client, totalNodes]);
+  }, [client, userProfile?.id]);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 md:mb-10 w-full">
