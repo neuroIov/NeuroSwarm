@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { WalletButton } from "./WalletButton";
-import { WalletSelector } from "./WalletSelector";
 import {
   HelpCircle,
   Mail,
@@ -9,6 +8,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  LogIn,
+  LogOut,
+  User,
 } from "lucide-react";
 import { useSession } from "@/hooks/useSession";
 import {
@@ -20,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { AuthModal } from "./auth/AuthModal";
+import { WalletConnectionModal } from "./auth/WalletConnectionModal";
 
 interface HeaderProps {
   className?: string;
@@ -33,36 +36,72 @@ export const Header = ({
   sidebarOpen,
 }: HeaderProps) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [activeButton, setActiveButton] = useState<"email" | "wallet">(
-    "wallet"
-  );
-  const [showMessage, setShowMessage] = useState(false);
-  const [pendingMode, setPendingMode] = useState<"email" | "wallet" | null>(
-    null
-  );
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { connectWallet, session, logout } = useSession();
 
-  const handleModeSwitch = (mode: "email" | "wallet") => {
-    // If already connected with a different mode, show message
-    if (
-      session.authMethod &&
-      session.authMethod !== mode &&
-      session.userId !== "guest"
-    ) {
-      setShowMessage(true);
-      setPendingMode(mode);
+  // Get the username from userProfile if available
+  const displayName =
+    session.userProfile?.user_name ||
+    (session.email ? session.email.split("@")[0] : "Guest");
+
+  // Determine if the user is logged in
+  const isLoggedIn = session.userId !== "guest" && session.userId !== null;
+
+  // Determine if the user has a wallet connected
+  const hasWallet = !!session.walletAddress;
+  const walletType = session.walletType;
+
+  useEffect(() => {
+    // Debug log to check session state
+    console.log("Current session state:", {
+      userId: session.userId,
+      email: session.email,
+      userProfile: session.userProfile,
+      walletAddress: session.walletAddress,
+      walletType: session.walletType,
+      isLoggedIn,
+    });
+  }, [session, isLoggedIn]);
+
+  const handleEmailAuth = () => {
+    setIsAuthModalOpen(true);
+  };
+
+  const handleWalletConnect = () => {
+    if (!isLoggedIn) {
+      // Show auth modal if not logged in
+      setIsAuthModalOpen(true);
       return;
     }
 
-    // If not connected or same mode, proceed normally
-    setActiveButton(mode);
-    if (mode === "email") {
-      setIsAuthModalOpen(true);
-    } else {
-      connectWallet();
+    // Show wallet connection modal
+    setIsWalletModalOpen(true);
+  };
+
+  const handleLogout = () => {
+    logout();
+    // Close any open modals
+    setIsAuthModalOpen(false);
+    setIsWalletModalOpen(false);
+  };
+
+  // Handle successful auth modal close (login/signup completed)
+  const handleAuthSuccess = () => {
+    setIsAuthModalOpen(false);
+    // If user is logged in but doesn't have a wallet, show wallet modal
+    if (isLoggedIn && !hasWallet) {
+      setIsWalletModalOpen(true);
     }
   };
+
+  // Get wallet name for display
+  const getWalletName = (type: string | null) => {
+    if (type === "phantom") return "Phantom";
+    if (type === "metamask") return "MetaMask";
+    return "Wallet";
+  };
+
   return (
     <header
       className={cn(
@@ -127,102 +166,103 @@ export const Header = ({
               <ChevronLeft size={20} />
             )}
           </button>
-          {/* Email Button */}
+
+          {/* Login/User Profile Button */}
           <Button
             variant="outline"
-            onClick={() => handleModeSwitch("email")}
+            onClick={isLoggedIn ? handleLogout : handleEmailAuth}
             className={cn(
               "flex items-center gap-1 md:gap-2 font-medium rounded-full h-auto transition-all duration-300 min-w-[36px] sm:min-w-[40px]",
               isCollapsed || window.innerWidth < 640
                 ? "px-1.5 py-1.5 sm:px-2 sm:py-2 justify-center"
                 : "w-[100px] sm:w-[160px] px-3 sm:px-6 py-2 sm:py-3",
-              session.authMethod === "email"
+              isLoggedIn
                 ? "bg-gradient-to-r from-[#22c55e] to-[#15803d] text-white border-green-500"
-                : activeButton === "email"
-                ? "bg-gradient-to-r from-[#0361DA] to-[#20A5EF] text-white border-[#20A5EF]"
-                : "bg-[#112544] text-[#0066FF] border-transparent hover:bg-[#0066FF]/10"
+                : "bg-gradient-to-r from-[#0361DA] to-[#20A5EF] text-white border-[#20A5EF]"
             )}
+            title={
+              isLoggedIn
+                ? `Logged in as ${session.email || displayName}`
+                : "Login"
+            }
           >
-            <Mail
-              className={cn(
-                "transition-all duration-300",
-                isCollapsed || window.innerWidth < 640
-                  ? "w-3.5 h-3.5 sm:w-4 sm:h-4"
-                  : "w-3 h-3 sm:w-4 sm:h-4"
-              )}
-            />
+            {isLoggedIn ? (
+              <LogOut
+                className={cn(
+                  "transition-all duration-300",
+                  isCollapsed || window.innerWidth < 640
+                    ? "w-3.5 h-3.5 sm:w-4 sm:h-4"
+                    : "w-3 h-3 sm:w-4 sm:h-4"
+                )}
+              />
+            ) : (
+              <LogIn
+                className={cn(
+                  "transition-all duration-300",
+                  isCollapsed || window.innerWidth < 640
+                    ? "w-3.5 h-3.5 sm:w-4 sm:h-4"
+                    : "w-3 h-3 sm:w-4 sm:h-4"
+                )}
+              />
+            )}
             {!isCollapsed && window.innerWidth >= 640 && (
-              <span className="transition-all duration-300 text-xs sm:text-sm whitespace-nowrap">
-                {session.authMethod === "email" ? "Connected" : "Email Login"}
+              <span className="transition-all duration-300 text-xs sm:text-sm whitespace-nowrap truncate max-w-[120px]">
+                {isLoggedIn ? `Logout (${displayName})` : "Login"}
               </span>
             )}
           </Button>
 
-          {/* Wallet Selector - Replace custom wallet button with WalletSelector */}
-          <WalletSelector
-            onClose={() => {
-              setShowMessage(false);
-              setPendingMode(null);
-            }}
-          />
+          {/* Wallet Button - Only visible when logged in */}
+          {isLoggedIn && (
+            <Button
+              variant="outline"
+              onClick={handleWalletConnect}
+              className={cn(
+                "flex items-center gap-1 md:gap-2 font-medium rounded-full h-auto transition-all duration-300 min-w-[36px] sm:min-w-[40px]",
+                isCollapsed || window.innerWidth < 640
+                  ? "px-1.5 py-1.5 sm:px-2 sm:py-2 justify-center"
+                  : "w-[100px] sm:w-[160px] px-3 sm:px-6 py-2 sm:py-3",
+                hasWallet
+                  ? "bg-gradient-to-r from-[#22c55e] to-[#15803d] text-white border-green-500"
+                  : "bg-[#112544] text-[#0066FF] border-transparent hover:bg-[#0066FF]/10"
+              )}
+              title={
+                hasWallet
+                  ? `${getWalletName(
+                      walletType
+                    )} Wallet: ${session.walletAddress?.substring(
+                      0,
+                      6
+                    )}...${session.walletAddress?.substring(
+                      session.walletAddress.length - 4
+                    )}`
+                  : "Connect Wallet"
+              }
+            >
+              <Wallet
+                className={cn(
+                  "transition-all duration-300",
+                  isCollapsed || window.innerWidth < 640
+                    ? "w-3.5 h-3.5 sm:w-4 sm:h-4"
+                    : "w-3 h-3 sm:w-4 sm:h-4"
+                )}
+              />
+              {!isCollapsed && window.innerWidth >= 640 && (
+                <span className="transition-all duration-300 text-xs sm:text-sm whitespace-nowrap">
+                  {hasWallet
+                    ? `${getWalletName(walletType)}`
+                    : "Connect Wallet"}
+                </span>
+              )}
+            </Button>
+          )}
         </div>
 
-        {/* Switch Connection Message */}
-        {showMessage && (
-          <div className="absolute top-full mt-2 right-0 bg-[#0A1A2F] border border-[#20A5EF]/20 rounded-lg p-4 shadow-lg min-w-[250px] animate-in fade-in slide-in-from-top-2">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-white font-medium">Switch Connection?</h3>
-              <button
-                onClick={() => {
-                  setShowMessage(false);
-                  setPendingMode(null);
-                }}
-                className="text-gray-400 hover:text-white"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <p className="text-sm text-gray-400 mb-3">
-              This will disconnect your current session
-            </p>
-            <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setShowMessage(false);
-                  setPendingMode(null);
-                }}
-                className="bg-transparent hover:bg-[#112544] text-gray-400 hover:text-white border-gray-600"
-              >
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (pendingMode) {
-                    logout();
-                    setActiveButton(pendingMode);
-                    if (pendingMode === "email") {
-                      setIsAuthModalOpen(true);
-                    } else {
-                      connectWallet();
-                    }
-                    setShowMessage(false);
-                    setPendingMode(null);
-                  }
-                }}
-                className="bg-[#0066FF] hover:bg-[#0052CC] text-white"
-              >
-                Switch
-              </Button>
-            </div>
-          </div>
-        )}
+        <AuthModal isOpen={isAuthModalOpen} onClose={handleAuthSuccess} />
 
-        <AuthModal
-          isOpen={isAuthModalOpen}
-          onClose={() => setIsAuthModalOpen(false)}
+        <WalletConnectionModal
+          isOpen={isWalletModalOpen}
+          onClose={() => setIsWalletModalOpen(false)}
         />
       </div>
     </header>

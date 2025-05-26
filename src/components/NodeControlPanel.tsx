@@ -47,6 +47,7 @@ import {
   startNode,
   stopNode,
   updateNodeMetrics,
+  loadUptimeFromDatabase,
 } from "@/store/slices/nodeSlice";
 import {
   fetchAndAssignTasks,
@@ -102,7 +103,8 @@ interface NodeInfo {
 export const NodeControlPanel = () => {
   const dispatch = useAppDispatch();
   const client = getSwarmSupabase();
-  const { userProfile } = useSession();
+  const { session } = useSession();
+  const userProfile = session.userProfile;
 
   const {
     isActive,
@@ -272,6 +274,49 @@ export const NodeControlPanel = () => {
         if (!selectedNodeId && userNodes.length > 0) {
           setSelectedNodeId(userNodes[0].id);
         }
+
+        // Check if there's any inconsistency between Redux node state and database
+        if (isActive && nodeId) {
+          const activeDevice = devices.find((device) => device.id === nodeId);
+          if (activeDevice && activeDevice.status === "offline") {
+            console.log(
+              "Detected inconsistency: Node is active in Redux but offline in database"
+            );
+            // Fix the inconsistency by updating the database
+            try {
+              const { data, error } = await client
+                .from("devices")
+                .update({ status: "busy" })
+                .eq("id", nodeId)
+                .select("status");
+
+              if (error) throw error;
+              console.log("Fixed node status inconsistency:", data);
+            } catch (err) {
+              console.error("Error fixing node status inconsistency:", err);
+            }
+          }
+        } else if (!isActive && nodeId) {
+          const inactiveDevice = devices.find((device) => device.id === nodeId);
+          if (inactiveDevice && inactiveDevice.status === "busy") {
+            console.log(
+              "Detected inconsistency: Node is inactive in Redux but busy in database"
+            );
+            // Fix the inconsistency by updating the database
+            try {
+              const { data, error } = await client
+                .from("devices")
+                .update({ status: "offline" })
+                .eq("id", nodeId)
+                .select("status");
+
+              if (error) throw error;
+              console.log("Fixed node status inconsistency:", data);
+            } catch (err) {
+              console.error("Error fixing node status inconsistency:", err);
+            }
+          }
+        }
       } catch (error) {
         console.error("Error fetching user devices:", error);
         toast.error("Failed to load your devices");
@@ -279,7 +324,7 @@ export const NodeControlPanel = () => {
     };
 
     fetchUserDevices();
-  }, [userProfile?.id, client]);
+  }, [userProfile?.id, client, isActive, nodeId]);
 
   const handleNodeSelect = (value: string) => {
     setSelectedNodeId(value);
@@ -355,37 +400,41 @@ export const NodeControlPanel = () => {
       !detectedHardware ||
       !selectedDeviceType ||
       !selectedBrand ||
-      !selectedModel ||
-      !selectedVRAM
+      !selectedModel
     )
       return;
 
     setIsCreatingDevice(true);
 
     try {
-      // Create device specs object
-      const deviceSpecs = {
+      // Create device specs object with different handling based on device type
+      const deviceSpecs: any = {
         type: selectedDeviceType,
         brand: selectedBrand,
         model: selectedModel,
-        cpu: customSpecs.cpu,
-        gpu: customSpecs.gpu,
-        vram: selectedVRAM,
         cpuCores: detectedHardware.cpuCores,
         memory: detectedHardware.deviceMemory,
         gpuInfo: detectedHardware.gpuInfo,
       };
+
+      // Add CPU and GPU info for devices that require custom specs
+      if (requiresCustomSpecs(deviceGroup, selectedDeviceType)) {
+        deviceSpecs.cpu = customSpecs.cpu;
+        deviceSpecs.gpu = customSpecs.gpu;
+      }
 
       // Insert device into database
       const { data: device, error } = await client
         .from("devices")
         .insert({
           status: "offline",
-          gpu_model: customSpecs.gpu || detectedHardware.gpuInfo,
+          gpu_model: requiresCustomSpecs(deviceGroup, selectedDeviceType)
+            ? customSpecs.gpu
+            : `${selectedBrand} ${selectedModel} GPU`,
           vram: selectedVRAM,
-          hash_rate: 84,
+          hash_rate: Math.floor(Math.random() * 50) + 50, // Random value between 50-100
           device_specs: deviceSpecs,
-          owner: userProfile?.id,
+          owner: userProfile.id,
         })
         .select("id")
         .single();
@@ -406,7 +455,9 @@ export const NodeControlPanel = () => {
         status: "idle",
         cpuCores: detectedHardware.cpuCores,
         memory: detectedHardware.deviceMemory,
-        gpuInfo: detectedHardware.gpuInfo,
+        gpuInfo: requiresCustomSpecs(deviceGroup, selectedDeviceType)
+          ? customSpecs.gpu
+          : `${selectedBrand} ${selectedModel} GPU`,
       };
 
       setNodes([...nodes, newNode]);
@@ -432,13 +483,21 @@ export const NodeControlPanel = () => {
       // Stop the node
       setIsStopping(true);
       try {
+        console.log(
+          `Stopping node ${selectedNodeId} - updating status to offline`
+        );
+
         // Update device status in database
-        const { error: updateError } = await client
+        const { data, error: updateError } = await client
           .from("devices")
           .update({ status: "offline" })
-          .eq("id", selectedNodeId);
+          .eq("id", selectedNodeId)
+          .select("status")
+          .single();
 
         if (updateError) throw updateError;
+
+        console.log(`Node status updated in database: ${JSON.stringify(data)}`);
 
         dispatch(stopNode());
         dispatch(clearAssignedTasks());
@@ -462,17 +521,31 @@ export const NodeControlPanel = () => {
       setIsStarting(true);
 
       try {
+        console.log(
+          `Starting node ${selectedNodeId} - updating status to busy`
+        );
+
         // Update device status in database
-        const { error: updateError } = await client
+        const { data, error: updateError } = await client
           .from("devices")
           .update({ status: "busy" })
-          .eq("id", selectedNodeId);
+          .eq("id", selectedNodeId)
+          .select("status")
+          .single();
 
         if (updateError) throw updateError;
 
+        console.log(`Node status updated in database: ${JSON.stringify(data)}`);
+
+        // Load the current uptime from the database
+        const databaseUptime = await loadUptimeFromDatabase(selectedNodeId);
+        console.log(
+          `Loaded uptime from database for node ${selectedNodeId}: ${databaseUptime} seconds`
+        );
+
         // Simulate starting delay
         setTimeout(async () => {
-          // Update redux store with node info
+          // Update redux store with node info, including the uptime from database
           dispatch(
             startNode({
               nodeId: selectedNode.id,
@@ -480,6 +553,7 @@ export const NodeControlPanel = () => {
               nodeType: selectedNode.type,
               rewardTier: selectedNode.rewardTier,
               maxUptime: tierInfo.maxUptime,
+              storedUptime: databaseUptime, // Pass the uptime from database
             })
           );
 
@@ -742,24 +816,31 @@ export const NodeControlPanel = () => {
           )}
         </div>
 
-        <div className="p-2.5 sm:p-6 flex flex-row items-center justify-between rounded-xl sm:rounded-2xl bg-gradient-to-r from-[#090C18] to-[#14273F] border border-[#1D5AB3] relative overflow-hidden gap-2 sm:gap-0">
-          <div className="flex items-center gap-1.5 sm:gap-4 z-10">
-            <div className="flex items-center justify-center">
+        <div className="p-4 sm:p-6 flex flex-row items-center justify-between rounded-xl sm:rounded-2xl bg-gradient-to-r from-[#090C18] to-[#14273F] border border-[#1D5AB3] relative overflow-hidden gap-4">
+          <div className="flex items-center gap-4 z-10">
+            <div className="flex items-center justify-center flex-shrink-0">
               <img
                 src="/images/nlov-coin.png"
                 alt="coin"
-                className="w-6 h-6 sm:w-11 sm:h-11 object-contain z-10"
+                className="w-11 h-11 object-contain z-10"
               />
             </div>
-            <span className="text-white/90 text-sm sm:text-2xl">
+            <span className="text-white/90 text-2xl  whitespace-nowrap">
               Total Earnings
             </span>
           </div>
-          <div className="flex items-baseline gap-1 sm:gap-2 z-10">
-            <span className="text-xl sm:text-[42px] font-medium bg-clip-text text-transparent bg-gradient-to-b from-[#20A5EF] to-[#0361DA]">
+          <div className="flex items-baseline gap-2 z-10 flex-shrink-0">
+            <span
+              className="font-medium lg:text-4xl md:text-3xl sm:text-2xl text-transparent bg-clip-text bg-gradient-to-b from-[#20A5EF] to-[#0361DA] leading-none"
+              style={{
+                lineHeight: "1",
+                minWidth: "fit-content",
+                display: "inline-block",
+              }}
+            >
               {totalEarnings}
             </span>
-            <span className="text-white/90 text-[10px] sm:text-sm">NLOV</span>
+            <span className="text-white/90 text-sm">NLOV</span>
           </div>
         </div>
       </div>
@@ -1033,6 +1114,44 @@ export const NodeControlPanel = () => {
                     </div>
                   </div>
                 )}
+
+              {!requiresCustomSpecs(deviceGroup, selectedDeviceType) &&
+                selectedModel && (
+                  <div>
+                    <label
+                      htmlFor="vram"
+                      className="block text-sm font-medium mb-1 text-[#515194]"
+                    >
+                      VRAM (GB)
+                    </label>
+                    <Select
+                      value={selectedVRAM.toString()}
+                      onValueChange={(value) => setSelectedVRAM(Number(value))}
+                    >
+                      <SelectTrigger
+                        style={{
+                          backgroundColor: "#1D1D33",
+                          color: "#515194",
+                        }}
+                      >
+                        <SelectValue placeholder="Select VRAM" />
+                      </SelectTrigger>
+                      <SelectContent
+                        style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+                      >
+                        {[2, 4, 8, 12, 16].map((vram) => (
+                          <SelectItem
+                            key={vram}
+                            value={vram.toString()}
+                            style={{ color: "#515194" }}
+                          >
+                            {vram} GB
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
             </div>
           </div>
 
@@ -1043,9 +1162,10 @@ export const NodeControlPanel = () => {
                 !selectedDeviceType ||
                 !selectedBrand ||
                 !selectedModel ||
-                !selectedVRAM ||
                 (requiresCustomSpecs(deviceGroup, selectedDeviceType) &&
-                  (!customSpecs.cpu || !customSpecs.gpu)) ||
+                  (!customSpecs.cpu || !customSpecs.gpu || !selectedVRAM)) ||
+                (!requiresCustomSpecs(deviceGroup, selectedDeviceType) &&
+                  !selectedVRAM) ||
                 isCreatingDevice
               }
             >

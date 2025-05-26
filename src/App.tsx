@@ -14,14 +14,19 @@ import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "./store";
 import { syncUptime, updateUptime } from "./store/slices/nodeSlice";
 import { useToast } from "@/components/ui/use-toast"; // ✅ added
+import { getSwarmSupabase } from "./lib/supabase-client";
+import { store } from "./store";
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
-  const { session, logUserActivity, userProfile, walletConnected, subscriptionTier } = useSession();
+  const { session, logUserActivity, subscriptionTier } = useSession();
+  const userProfile = session?.userProfile;
   const dispatch = useAppDispatch();
   const { toast } = useToast(); // ✅ added
-  const { isActive, remainingFreeTierTime } = useSelector((state: RootState) => state.node); // ✅ merged selectors
+  const { isActive, remainingFreeTierTime } = useSelector(
+    (state: RootState) => state.node
+  ); // ✅ merged selectors
   const hasShownLimitToast = useRef(false); // ✅ to prevent duplicate toasts
 
   // ✅ Notify when time limit reached
@@ -71,17 +76,41 @@ const AppContent = () => {
 
   // Sync uptime on app close/refresh
   useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
       if (isActive) {
         console.log("App closing/refreshing - syncing uptime data...");
         dispatch(syncUptime());
-        
+
+        // Also update device status to offline in database
+        if (userProfile?.id) {
+          try {
+            const client = getSwarmSupabase();
+            // Get the active nodeId from Redux store
+            const nodeId = (store.getState() as RootState).node.nodeId;
+
+            if (nodeId) {
+              console.log(
+                `Setting node ${nodeId} to offline in database before unload`
+              );
+
+              // Attempt to update the database
+              await client
+                .from("devices")
+                .update({ status: "offline" })
+                .eq("id", nodeId);
+            }
+          } catch (err) {
+            console.error("Error updating device status on unload:", err);
+          }
+        }
+
         // Display confirmation dialog
         event.preventDefault();
         // Chrome requires returnValue to be set
-        event.returnValue = 'If you reload or close this tab, the current process will be terminated. Are you sure?';
+        event.returnValue =
+          "If you reload or close this tab, the current process will be terminated. Are you sure?";
         // For older browsers
-        return 'If you reload or close this tab, the current process will be terminated. Are you sure?';
+        return "If you reload or close this tab, the current process will be terminated. Are you sure?";
       }
     };
 
@@ -104,7 +133,7 @@ const AppContent = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (syncInterval) clearInterval(syncInterval);
     };
-  }, [isActive, dispatch]);
+  }, [isActive, dispatch, userProfile?.id]);
 
   useEffect(() => {
     let uptimeInterval: NodeJS.Timeout | null = null;

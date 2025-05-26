@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Wallet, TrendingUp, Calendar, ArrowUpRight } from "lucide-react";
+import { Wallet, TrendingUp, Calendar, ArrowUpRight, Bug } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "./ui/button";
 import {
@@ -29,6 +29,10 @@ import {
 } from "recharts";
 import { useSelector } from "react-redux";
 import { RootState } from "@/store";
+import {
+  debugEarningsData,
+  createTestEarning,
+} from "../services/earningsService";
 
 type TimeRange = "daily" | "weekly" | "monthly" | "all-time";
 
@@ -45,6 +49,11 @@ interface ChartDataPoint {
 export const EarningsDashboard = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>("daily");
   const [chartPeriod, setChartPeriod] = useState<TimeRange>("daily");
+  const [debugMode, setDebugMode] = useState<boolean>(false);
+  const [debugData, setDebugData] = useState<any>(null);
+
+  const { session } = useSession();
+  const userId = session?.userProfile?.id;
 
   const walletAddress = useSelector(
     (state: RootState) => state.session.walletAddress
@@ -62,6 +71,7 @@ export const EarningsDashboard = () => {
     hasMoreTransactions,
     loadMoreTransactions,
     refreshData,
+    debug,
   } = useEarnings({
     transactionsLimit: 100,
     autoRefresh: true,
@@ -73,10 +83,10 @@ export const EarningsDashboard = () => {
     let timer: NodeJS.Timeout;
 
     if (loading) {
-      // If still loading after 10 seconds, show timeout error
+      // If still loading after 20 seconds, show timeout error
       timer = setTimeout(() => {
         setLoadingTimeout(true);
-      }, 10000);
+      }, 20000);
     } else {
       setLoadingTimeout(false);
     }
@@ -254,6 +264,24 @@ export const EarningsDashboard = () => {
     return earnings.totalEarnings / 30; // Simplified: total earnings divided by a month
   };
 
+  // Get total balance directly from earnings.pendingEarnings (from earnings_history)
+  const getTotalBalance = () => {
+    return earnings.pendingEarnings || 0;
+  };
+
+  // Get task count from earnings_history or fall back to counted tasks from earnings
+  const getTaskCount = () => {
+    // If we have debug data available with earnings history, use that
+    if (debugData?.history?.length > 0) {
+      const latestHistory = debugData.history[0];
+      if (latestHistory && latestHistory.task_count) {
+        return latestHistory.task_count;
+      }
+    }
+    // Otherwise fall back to the count from earnings
+    return earnings.completedTasks || 0;
+  };
+
   const handleTimeRangeChange = (value: string) => {
     setTimeRange(value as TimeRange);
   };
@@ -265,6 +293,49 @@ export const EarningsDashboard = () => {
   const handleRefresh = () => {
     refreshData();
     toast.success("Earnings data refreshed");
+  };
+
+  // Function to toggle debug mode
+  const toggleDebugMode = async () => {
+    const newMode = !debugMode;
+    setDebugMode(newMode);
+
+    if (newMode && userId) {
+      try {
+        const data = await debugEarningsData(userId);
+        setDebugData(data);
+      } catch (err) {
+        console.error("Error fetching debug data:", err);
+        setDebugData({ error: "Failed to fetch debug data" });
+      }
+    }
+  };
+
+  // Function to trigger test earning
+  const handleCreateTestEarning = async () => {
+    if (!userId) {
+      toast.error("No user ID available");
+      return;
+    }
+
+    try {
+      const result = await createTestEarning(userId);
+      if (result.success) {
+        toast.success("Test earning created successfully");
+        // Refresh data to show the new earning
+        refreshData();
+        // Update debug data if debug mode is enabled
+        if (debugMode) {
+          const data = await debugEarningsData(userId);
+          setDebugData(data);
+        }
+      } else {
+        toast.error(`Failed to create test earning: ${result.error}`);
+      }
+    } catch (err) {
+      toast.error(`Error: ${err.message || "Unknown error"}`);
+      console.error("Error creating test earning:", err);
+    }
   };
 
   // Chart tooltip components
@@ -484,6 +555,14 @@ export const EarningsDashboard = () => {
           >
             Refresh
           </Button>
+          <Button
+            variant="outline"
+            className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
+            size="sm"
+            onClick={toggleDebugMode}
+          >
+            <Bug className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -507,7 +586,7 @@ export const EarningsDashboard = () => {
           </div>
         </div>
 
-        {/* Projected Monthly Card */}
+        {/* Total Balance Card */}
         <div className="flex flex-col p-4 earning-cards bg-[#161628] rounded-lg">
           <div className="flex gap-3 items-center">
             <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
@@ -520,7 +599,7 @@ export const EarningsDashboard = () => {
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Total Balance</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : calculateProjectedEarnings().toFixed(2)} NLOV
+                {loading ? "..." : getTotalBalance().toFixed(2)} NLOV
               </span>
             </div>
           </div>
@@ -539,7 +618,7 @@ export const EarningsDashboard = () => {
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Total Tasks</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : earnings.completedTasks}
+                {loading ? "..." : getTaskCount()}
               </span>
             </div>
           </div>
@@ -837,6 +916,71 @@ export const EarningsDashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Debug section */}
+      {debugMode && (
+        <div className="w-full p-4 mt-6 bg-[#161628] rounded-lg overflow-auto">
+          <h3 className="text-lg font-medium mb-4 text-red-400">
+            Debug Information
+          </h3>
+
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-sm text-gray-400">Test Tools</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
+              onClick={handleCreateTestEarning}
+            >
+              Create Test Earning
+            </Button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-md font-medium mb-2 text-blue-400">
+                Hook Debug Info
+              </h4>
+              <pre className="text-xs bg-[#0D0D1A] p-2 rounded overflow-auto max-h-40">
+                {JSON.stringify(debug, null, 2)}
+              </pre>
+            </div>
+
+            {debugData?.error ? (
+              <div className="text-red-500">{debugData.error}</div>
+            ) : debugData ? (
+              <>
+                <div>
+                  <h4 className="text-md font-medium mb-2 text-blue-400">
+                    User Profile
+                  </h4>
+                  <pre className="text-xs bg-[#0D0D1A] p-2 rounded overflow-auto max-h-40">
+                    {JSON.stringify(debugData.userProfile, null, 2)}
+                  </pre>
+                </div>
+
+                <div>
+                  <h4 className="text-md font-medium mb-2 text-blue-400">
+                    Earnings Records ({debugData.earnings_count})
+                  </h4>
+                  <pre className="text-xs bg-[#0D0D1A] p-2 rounded overflow-auto max-h-40">
+                    {JSON.stringify(debugData.earnings, null, 2)}
+                  </pre>
+                </div>
+
+                <div>
+                  <h4 className="text-md font-medium mb-2 text-blue-400">
+                    Earnings History ({debugData.history_count})
+                  </h4>
+                  <pre className="text-xs bg-[#0D0D1A] p-2 rounded overflow-auto max-h-40">
+                    {JSON.stringify(debugData.history, null, 2)}
+                  </pre>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

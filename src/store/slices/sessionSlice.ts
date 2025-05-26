@@ -6,9 +6,9 @@ import { SubscriptionTier, subscriptionTiers, getTierByName } from '@/types/subs
 
 
 // Helper function to create a unique referral code
-const createUniqueReferralCode = async (userId: string, walletAddress: string): Promise<string> => {
+const createUniqueReferralCode = async (userId: string, email: string): Promise<string> => {
   // Create a unique string to hash
-  const combined = `${userId}-${walletAddress}-${Date.now()}`;
+  const combined = `${userId}-${email}-${Date.now()}`;
 
   // Use Web Crypto API (available in browsers) instead of Node.js crypto
   const encoder = new TextEncoder();
@@ -56,6 +56,7 @@ type SessionState = {
   authMethod: AuthMethod;
   walletAddress: string | null;
   walletType: WalletType | null;
+  email: string | null;
   userProfile: UserProfile | null;
   startTime: string | null;
   activities: Activity[];
@@ -71,6 +72,7 @@ const initialState: SessionState = {
   authMethod: null,
   walletAddress: null,
   walletType: null,
+  email: null,
   userProfile: null,
   startTime: null,
   activities: [],
@@ -80,43 +82,260 @@ const initialState: SessionState = {
   error: null,
 };
 
-// Async thunk to fetch or create user profile
-export const fetchOrCreateUserProfile = createAsyncThunk(
-  'session/fetchOrCreateUserProfile',
-  async (walletAddress: string, { rejectWithValue }) => {
+// Helper function to extract wallet type from username
+const extractWalletTypeFromUsername = (username: string | null): WalletType | null => {
+  if (!username) return null;
+
+  const match = username.match(/\[wallet_type:(phantom|metamask)\]/);
+  if (match && match[1]) {
+    return match[1] as WalletType;
+  }
+  return null;
+};
+
+// Helper function to clean username by removing wallet type metadata
+const cleanUsername = (username: string | null): string | null => {
+  if (!username) return null;
+  return username.replace(/\s*\[wallet_type:(phantom|metamask)\]\s*/, '').trim();
+};
+
+// Async thunk to fetch user profile by email
+export const fetchUserProfileByEmail = createAsyncThunk(
+  'session/fetchUserProfileByEmail',
+  async (email: string, { rejectWithValue }) => {
     try {
       const supabase = getSwarmSupabase();
 
-      console.log(`Attempting to fetch user profile for wallet: ${walletAddress}`);
+      console.log(`Attempting to fetch user profile for email: ${email}`);
 
-      // First try to get the existing user
+      // Try to get the existing user
       const { data: userProfile, error } = await supabase
         .from('user_profiles')
         .select('*')
+        .eq('email', email)
+        .single();
+
+      if (error) {
+        console.error(`Error fetching user profile: ${error.message}`);
+        throw new Error(error.message);
+      }
+
+      console.log('User profile found:', userProfile);
+      return userProfile;
+    } catch (error) {
+      console.error('Error in fetchUserProfileByEmail:', error);
+      return rejectWithValue((error as Error).message);
+    }
+  }
+);
+
+// Async thunk to connect wallet to existing user account
+export const connectWalletToAccount = createAsyncThunk(
+  'session/connectWalletToAccount',
+  async ({ userId, email, walletAddress, walletType, force = false }: {
+    userId: string;
+    email: string;
+    walletAddress: string;
+    walletType: WalletType;
+    force?: boolean;
+  }, { rejectWithValue }) => {
+    try {
+      const supabase = getSwarmSupabase();
+
+      console.log(`Connecting wallet ${walletAddress} to user ${userId} with email ${email}`);
+
+      // First, get the user profile ID from the email
+      const { data: userProfile, error: userProfileError } = await supabase
+        .from('user_profiles')
+        .select('id, email, user_name')
+        .eq('email', email)
+        .single();
+
+      if (userProfileError || !userProfile) {
+        console.error(`Error finding user profile: ${userProfileError?.message || 'User profile not found'}`);
+        throw new Error(userProfileError?.message || 'User profile not found for this email');
+      }
+
+      const userProfileId = userProfile.id;
+      console.log(`Found user profile ID: ${userProfileId} for email: ${email}`);
+
+      // Check if wallet is already connected to another account
+      const { data: existingWallet, error: walletCheckError } = await supabase
+        .from('user_profiles')
+        .select('id, email, user_name')
         .eq('wallet_address', walletAddress)
         .single();
 
-      // If user doesn't exist, create a new profile
-      if (error || !userProfile) {
-        console.log(`No existing profile found. Creating new profile for wallet: ${walletAddress}`);
+      if (existingWallet && existingWallet.id !== userProfileId) {
+        const existingUserName = existingWallet.user_name || existingWallet.email || 'Unknown user';
 
-        const { data: newUser, error: insertError } = await supabase
-          .from('user_profiles')
-          .insert({ wallet_address: walletAddress })
-          .select()
-          .single();
+        if (!force) {
+          // If not forcing the update, throw an error with the existing account details
+          const errorMessage = `This wallet is already connected to another account (${existingUserName})`;
+          console.error(errorMessage);
+          throw new Error(errorMessage);
+        } else {
+          console.log(`Force flag set: Transferring wallet from account ${existingUserName} to ${email}`);
 
-        if (insertError) {
-          console.error(`Error creating user profile: ${insertError.message}`);
-          throw new Error(insertError.message);
+          // If force flag is set, remove the wallet from the existing account first
+          await supabase
+            .from('user_profiles')
+            .update({ wallet_address: null })
+            .eq('id', existingWallet.id);
+
+          console.log(`Wallet removed from previous account: ${existingUserName}`);
         }
-
-        console.log('New user profile created:', newUser);
-        return newUser;
       }
 
-      console.log('Existing user profile found:', userProfile);
-      return userProfile;
+      // Update the user profile with the wallet address and wallet type
+      // Store wallet_type in the user_name field temporarily if user_name is not set
+      // This is a workaround until a proper wallet_type column is added
+      let updateData: any = { wallet_address: walletAddress };
+
+      // Store wallet type in a metadata field
+      // Since there's no wallet_type column, we'll use a special format in user_name
+      // but keep it hidden from display
+      if (userProfile.user_name) {
+        // If user already has a username, keep it but update the wallet type info
+        const existingUsername = userProfile.user_name;
+        const walletTypeRegex = /\s*\[wallet_type:(phantom|metamask)\]\s*/;
+
+        // Remove any existing wallet type info
+        const cleanedUsername = existingUsername.replace(walletTypeRegex, '').trim();
+
+        // Add wallet type info at the end (invisible to user but stored in DB)
+        updateData.user_name = `${cleanedUsername} [wallet_type:${walletType}]`;
+      } else {
+        // If no username, just store the wallet type info
+        updateData.user_name = `[wallet_type:${walletType}]`;
+      }
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update(updateData)
+        .eq('id', userProfileId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error(`Error connecting wallet: ${error.message}`);
+        throw new Error(error.message);
+      }
+
+      console.log('Wallet connected successfully:', data);
+      return { userProfile: data, walletType };
+    } catch (error) {
+      console.error('Error in connectWalletToAccount:', error);
+      return rejectWithValue((error as Error).message);
+    }
+  }
+);
+
+// Async thunk to fetch or create user profile
+export const fetchOrCreateUserProfile = createAsyncThunk(
+  'session/fetchOrCreateUserProfile',
+  async ({ email, walletAddress, username }: { email: string; walletAddress?: string; username?: string }, { rejectWithValue }) => {
+    try {
+      const supabase = getSwarmSupabase();
+
+      if (email) {
+        console.log(`Attempting to fetch user profile for email: ${email}`);
+
+        // First try to get the existing user by email
+        const { data: userProfile, error } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('email', email)
+          .single();
+
+        // If user doesn't exist, create a new profile with email
+        if (error || !userProfile) {
+          console.log(`No existing profile found. Creating new profile for email: ${email}`);
+
+          const newUserData = {
+            email: email,
+            wallet_address: walletAddress || null,
+            user_name: username || null
+          };
+
+          const { data: newUser, error: insertError } = await supabase
+            .from('user_profiles')
+            .insert(newUserData)
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error(`Error creating user profile: ${insertError.message}`);
+            throw new Error(insertError.message);
+          }
+
+          console.log('New user profile created:', newUser);
+          return newUser;
+        }
+
+        // If wallet address is provided, update the profile
+        if (walletAddress && !userProfile.wallet_address) {
+          const { data: updatedUser, error: updateError } = await supabase
+            .from('user_profiles')
+            .update({ wallet_address: walletAddress })
+            .eq('email', email)
+            .select()
+            .single();
+
+          if (updateError) {
+            console.error(`Error updating user profile: ${updateError.message}`);
+            throw new Error(updateError.message);
+          }
+
+          console.log('User profile updated with wallet:', updatedUser);
+          return updatedUser;
+        }
+
+        // Extract wallet type from username
+        if (userProfile.user_name) {
+          const walletType = extractWalletTypeFromUsername(userProfile.user_name);
+          if (walletType) {
+            // Add wallet type to the returned profile
+            userProfile._wallet_type = walletType;
+
+            // Clean the username for display purposes
+            userProfile._clean_user_name = cleanUsername(userProfile.user_name);
+          }
+        }
+
+        console.log('Existing user profile found:', userProfile);
+        return userProfile;
+      } else if (walletAddress) {
+        // Legacy support for wallet-only authentication
+        console.log(`Attempting to fetch user profile for wallet: ${walletAddress}`);
+
+        const { data: walletProfile, error: walletError } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('wallet_address', walletAddress)
+          .single();
+
+        if (walletError || !walletProfile) {
+          console.log(`No existing profile found for wallet. This wallet needs to be connected to an email account.`);
+          throw new Error('This wallet is not connected to any account. Please sign up with email first.');
+        }
+
+        // Extract wallet type from username
+        if (walletProfile.user_name) {
+          const walletType = extractWalletTypeFromUsername(walletProfile.user_name);
+          if (walletType) {
+            // Add wallet type to the returned profile
+            walletProfile._wallet_type = walletType;
+
+            // Clean the username for display purposes
+            walletProfile._clean_user_name = cleanUsername(walletProfile.user_name);
+          }
+        }
+
+        return walletProfile;
+      }
+
+      throw new Error('Either email or wallet address must be provided');
     } catch (error) {
       console.error('Error in fetchOrCreateUserProfile:', error);
       return rejectWithValue((error as Error).message);
@@ -386,11 +605,18 @@ const sessionSlice = createSlice({
   name: 'session',
   initialState,
   reducers: {
-    startSession(state, action: PayloadAction<{ userId: string; authMethod: AuthMethod; walletAddress?: string; walletType?: WalletType }>) {
+    startSession(state, action: PayloadAction<{
+      userId: string;
+      authMethod: AuthMethod;
+      email?: string;
+      walletAddress?: string;
+      walletType?: WalletType
+    }>) {
       const sessionId = `session_${Date.now()}`;
       state.sessionId = sessionId;
       state.userId = action.payload.userId;
       state.authMethod = action.payload.authMethod;
+      state.email = action.payload.email || null;
       state.walletAddress = action.payload.walletAddress || null;
       state.walletType = action.payload.walletType || null;
       state.startTime = new Date().toISOString();
@@ -399,9 +625,10 @@ const sessionSlice = createSlice({
 
       console.log(`Session started: ${sessionId}`);
       console.log(`User type: ${action.payload.authMethod || 'guest'}, User ID: ${action.payload.userId}`);
+      console.log(`Wallet type: ${action.payload.walletType || 'none'}, Wallet address: ${action.payload.walletAddress || 'none'}`);
 
       if (action.payload.authMethod === null) {
-        console.log('Guest session - no wallet connected');
+        console.log('Guest session - no authentication');
       }
     },
     logActivity(state, action: PayloadAction<{ type: string; details: Record<string, unknown> }>) {
@@ -425,6 +652,42 @@ const sessionSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // Handle fetchUserProfileByEmail
+      .addCase(fetchUserProfileByEmail.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        console.log('Fetching user profile by email...');
+      })
+      .addCase(fetchUserProfileByEmail.fulfilled, (state, action) => {
+        state.loading = false;
+        state.userProfile = action.payload;
+        console.log('User profile loaded successfully');
+      })
+      .addCase(fetchUserProfileByEmail.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+        console.error(`Failed to load user profile: ${action.payload}`);
+      })
+
+      // Handle connectWalletToAccount
+      .addCase(connectWalletToAccount.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        console.log('Connecting wallet to account...');
+      })
+      .addCase(connectWalletToAccount.fulfilled, (state, action) => {
+        state.loading = false;
+        state.userProfile = action.payload.userProfile;
+        state.walletAddress = action.payload.userProfile.wallet_address;
+        state.walletType = action.payload.walletType;
+        console.log(`Wallet connected successfully: ${action.payload.userProfile.wallet_address} (${action.payload.walletType})`);
+      })
+      .addCase(connectWalletToAccount.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+        console.error(`Failed to connect wallet: ${action.payload}`);
+      })
+
       // Handle fetchOrCreateUserProfile
       .addCase(fetchOrCreateUserProfile.pending, (state) => {
         state.loading = true;
@@ -434,6 +697,23 @@ const sessionSlice = createSlice({
       .addCase(fetchOrCreateUserProfile.fulfilled, (state, action) => {
         state.loading = false;
         state.userProfile = action.payload;
+
+        // If the profile has a wallet address, update the session state
+        if (action.payload.wallet_address) {
+          state.walletAddress = action.payload.wallet_address;
+        }
+
+        // If the profile has an extracted wallet type, use it
+        if (action.payload._wallet_type) {
+          state.walletType = action.payload._wallet_type;
+          console.log(`Detected wallet type: ${action.payload._wallet_type}`);
+        }
+
+        // If the profile has an email, update the session state
+        if (action.payload.email) {
+          state.email = action.payload.email;
+        }
+
         console.log('User profile loaded successfully');
       })
       .addCase(fetchOrCreateUserProfile.rejected, (state, action) => {
