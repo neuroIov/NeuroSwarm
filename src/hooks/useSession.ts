@@ -26,6 +26,27 @@ export const useSession = () => {
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [walletType, setWalletType] = useState<WalletType>("phantom");
 
+  // Update local state when session changes
+  useEffect(() => {
+    // Update wallet connected state based on session
+    if (session.walletAddress) {
+      setWalletConnected(true);
+      try {
+        setUserPublicKey(new PublicKey(session.walletAddress));
+      } catch (e) {
+        console.error("Invalid wallet address in session:", e);
+      }
+    } else {
+      setWalletConnected(false);
+      setUserPublicKey(null);
+    }
+
+    // Update wallet type if available
+    if (session.walletType) {
+      setWalletType(session.walletType);
+    }
+  }, [session.walletAddress, session.walletType]);
+
   const loginWithEmail = async (email: string, password: string) => {
     setIsAuthLoading(true);
     try {
@@ -186,6 +207,26 @@ export const useSession = () => {
     }
   }, [dispatch, session.sessionId]);
 
+  // Update session state when userProfile changes
+  useEffect(() => {
+    if (session.userId && session.userId !== 'guest' && session.userProfile) {
+      // If we have a user profile but no email in the session, update the session with the email from the profile
+      if (!session.email && session.userProfile && 'email' in session.userProfile) {
+        const profileEmail = String(session.userProfile.email);
+        console.log('Updating session with email from user profile:', profileEmail);
+        dispatch(
+          startSession({
+            userId: session.userId,
+            authMethod: session.authMethod || 'email',
+            email: profileEmail,
+            walletAddress: session.walletAddress,
+            walletType: session.walletType,
+          })
+        );
+      }
+    }
+  }, [dispatch, session.userId, session.email, session.userProfile]);
+
   useEffect(() => {
     if (session.sessionId) {
       localStorage.setItem(
@@ -211,34 +252,10 @@ export const useSession = () => {
   ]);
 
   const connectWallet = async (type: WalletType = "phantom", force: boolean = false) => {
-    // If wallet is already connected, disconnect it
-    if (walletConnected) {
-      // Just disconnect the wallet but keep the email session
-      setWalletConnected(false);
-      setUserPublicKey(null);
-
-      // Update the session state
-      if (session.userId && session.userId !== "guest" && session.email) {
-        dispatch(
-          startSession({
-            userId: session.userId,
-            authMethod: "email", // Keep as email auth
-            email: session.email,
-            walletAddress: null, // Clear wallet
-            walletType: null,
-          })
-        );
-      } else {
-        // If no email, fallback to complete logout
-        logout();
-      }
-      return;
-    }
-
     // If no active session or guest session, do nothing
     if (!session.userId || session.userId === "guest") {
       console.error("You must be logged in with email before connecting a wallet");
-      return;
+      throw new Error("You must be logged in with email first");
     }
 
     // Update wallet type in local state
@@ -253,6 +270,63 @@ export const useSession = () => {
       await connectPhantomWallet(isMobile, force);
     } else if (type === "metamask") {
       await connectMetaMaskWallet(force);
+    }
+  };
+
+  const disconnectWallet = async () => {
+    try {
+      console.log("Disconnecting wallet...");
+
+      // Update the session state
+      if (session.userId && session.userId !== "guest" && session.email) {
+        // Update the user profile in the database to remove the wallet address
+        const supabase = getSwarmSupabase();
+
+        if (session.userProfile?.id) {
+          const { error } = await supabase
+            .from('user_profiles')
+            .update({ wallet_address: null })
+            .eq('id', session.userProfile.id);
+
+          if (error) {
+            console.error("Failed to update user profile:", error);
+            throw new Error("Failed to disconnect wallet from your account");
+          }
+        }
+
+        // Update the session state to reflect the disconnected wallet
+        dispatch(
+          startSession({
+            userId: session.userId,
+            authMethod: "email", // Keep as email auth
+            email: session.email,
+            walletAddress: null, // Clear wallet
+            walletType: null,
+          })
+        );
+
+        // Reset wallet state in the UI
+        setWalletConnected(false);
+        setUserPublicKey(null);
+
+        // Refresh user profile
+        await dispatch(fetchOrCreateUserProfile({ email: session.email }));
+
+        dispatch(
+          logActivity({
+            type: "wallet_disconnected",
+            details: { previousWallet: session.walletAddress },
+          })
+        );
+
+        console.log("Wallet disconnected successfully");
+      } else {
+        // If no email, fallback to complete logout
+        logout();
+      }
+    } catch (error) {
+      console.error("Failed to disconnect wallet:", error);
+      throw new Error(error instanceof Error ? error.message : "Failed to disconnect wallet");
     }
   };
 
@@ -295,10 +369,6 @@ export const useSession = () => {
         const publicKey = new PublicKey(resp.publicKey.toString());
         const walletAddress = publicKey.toString();
 
-        setUserPublicKey(publicKey);
-        setWalletConnected(true);
-        console.log(`Connected to Phantom wallet: ${walletAddress}`);
-
         // Connect wallet to existing account
         if (session.userId && session.userId !== "guest" && session.email) {
           console.log("Dispatching connectWalletToAccount with:", {
@@ -316,6 +386,10 @@ export const useSession = () => {
             walletType: "phantom",
             force
           }));
+
+          // Update local state after successful connection
+          setUserPublicKey(publicKey);
+          setWalletConnected(true);
         }
 
         dispatch(
@@ -355,9 +429,6 @@ export const useSession = () => {
         const walletAddress = accounts[0];
         console.log(`MetaMask account found: ${walletAddress}`);
 
-        setWalletConnected(true);
-        console.log(`Connected to MetaMask wallet: ${walletAddress}`);
-
         // Connect wallet to existing account
         if (session.userId && session.userId !== "guest" && session.email) {
           console.log("Dispatching connectWalletToAccount with:", {
@@ -375,6 +446,9 @@ export const useSession = () => {
             walletType: "metamask",
             force
           }));
+
+          // Update local state after successful connection
+          setWalletConnected(true);
         }
 
         dispatch(
@@ -421,6 +495,7 @@ export const useSession = () => {
     loginWithEmail,
     signupWithEmail,
     connectWallet,
+    disconnectWallet,
     logUserActivity,
     logout,
     subscriptionTier,
