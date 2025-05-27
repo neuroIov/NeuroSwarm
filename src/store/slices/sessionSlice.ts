@@ -223,7 +223,8 @@ export const connectWalletToAccount = createAsyncThunk(
       }
 
       console.log('Wallet connected successfully:', data);
-      return { userProfile: data, walletType };
+      // Ensure the email is included in the response
+      return { userProfile: { ...data, email }, walletType };
     } catch (error) {
       console.error('Error in connectWalletToAccount:', error);
       return rejectWithValue((error as Error).message);
@@ -270,7 +271,8 @@ export const fetchOrCreateUserProfile = createAsyncThunk(
           }
 
           console.log('New user profile created:', newUser);
-          return newUser;
+          // Ensure email is included in the response
+          return { ...newUser, email };
         }
 
         // If wallet address is provided, update the profile
@@ -288,7 +290,8 @@ export const fetchOrCreateUserProfile = createAsyncThunk(
           }
 
           console.log('User profile updated with wallet:', updatedUser);
-          return updatedUser;
+          // Ensure email is included in the response
+          return { ...updatedUser, email };
         }
 
         // Extract wallet type from username
@@ -304,7 +307,8 @@ export const fetchOrCreateUserProfile = createAsyncThunk(
         }
 
         console.log('Existing user profile found:', userProfile);
-        return userProfile;
+        // Ensure email is included in the response
+        return { ...userProfile, email };
       } else if (walletAddress) {
         // Legacy support for wallet-only authentication
         console.log(`Attempting to fetch user profile for wallet: ${walletAddress}`);
@@ -332,6 +336,7 @@ export const fetchOrCreateUserProfile = createAsyncThunk(
           }
         }
 
+        // Ensure the email from the profile is returned
         return walletProfile;
       }
 
@@ -680,6 +685,17 @@ const sessionSlice = createSlice({
         state.userProfile = action.payload.userProfile;
         state.walletAddress = action.payload.userProfile.wallet_address;
         state.walletType = action.payload.walletType;
+        // Save to local storage to ensure persistence
+        localStorage.setItem(
+          "swarm-session",
+          JSON.stringify({
+            userId: state.userId,
+            authMethod: state.authMethod,
+            email: state.email,
+            walletAddress: action.payload.userProfile.wallet_address,
+            walletType: action.payload.walletType,
+          })
+        );
         console.log(`Wallet connected successfully: ${action.payload.userProfile.wallet_address} (${action.payload.walletType})`);
       })
       .addCase(connectWalletToAccount.rejected, (state, action) => {

@@ -605,6 +605,27 @@ export const GlobalStatistics = () => {
           className="node-indicator absolute z-20"
           style={{ top: "20%", left: "65%" }}
         />
+        {/* -------------- */}
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "20%", left: "60%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "30%", left: "35%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "10%", left: "42%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "61%", left: "40%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "50%", left: "48%" }}
+        />
       </div>
 
       {/* Stats Cards Row */}

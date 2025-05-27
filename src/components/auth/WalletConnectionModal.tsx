@@ -36,7 +36,7 @@ export function WalletConnectionModal({
   isOpen,
   onClose,
 }: WalletConnectionModalProps) {
-  const { connectWallet, session } = useSession();
+  const { connectWallet, disconnectWallet, session } = useSession();
   const dispatch = useDispatch<AppDispatch>();
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -56,8 +56,22 @@ export function WalletConnectionModal({
       setPendingWalletType(null);
       setExistingWallet(null);
       setErrorMessage(null);
+      setIsConnecting(false);
+      setIsDisconnecting(false);
     }
   }, [isOpen]);
+
+  // Debug log to check session state in modal
+  useEffect(() => {
+    if (isOpen) {
+      console.log("WalletConnectionModal - Current session state:", {
+        userId: session.userId,
+        email: session.email,
+        walletAddress: session.walletAddress,
+        walletType: session.walletType,
+      });
+    }
+  }, [isOpen, session]);
 
   const handleWalletConnect = async (type: WalletType) => {
     // Check if user is logged in with email
@@ -105,7 +119,7 @@ export function WalletConnectionModal({
   const handleDisconnectWallet = async () => {
     setIsDisconnecting(true);
     try {
-      await connectWallet(); // Calling connectWallet with no parameters will disconnect
+      await disconnectWallet();
       toast.success("Wallet disconnected successfully");
       onClose();
     } catch (error) {
@@ -308,6 +322,13 @@ export function WalletConnectionModal({
                 <span className="text-white font-medium">MetaMask</span>
                 <span className="text-xs text-gray-400">Ethereum Wallet</span>
               </Button>
+
+              {isConnecting && (
+                <div className="col-span-2 text-center text-amber-400 mt-2">
+                  Connecting wallet... Please check your wallet extension for
+                  any popups.
+                </div>
+              )}
             </div>
           )}
 

@@ -65,6 +65,14 @@ export function ProfileEditModal({
   const dispatch = useAppDispatch();
   const { userProfile, loading } = useAppSelector((state) => state.session);
 
+  // Get the email from either the session prop or the userProfile
+  const userEmail =
+    session.email ||
+    (userProfile && "email" in userProfile
+      ? String(userProfile.email)
+      : null) ||
+    "Not set";
+
   // Helper function to clean username by removing wallet type metadata
   const cleanUsername = (username: string | null): string | null => {
     if (!username) return null;
@@ -95,7 +103,8 @@ export function ProfileEditModal({
   // Debug log
   useEffect(() => {
     console.log("ProfileEditModal session:", session);
-  }, [session]);
+    console.log("ProfileEditModal userProfile:", userProfile);
+  }, [session, userProfile]);
 
   const handleSaveUsername = async () => {
     if (!username.trim() || username.length < 3) {
@@ -320,7 +329,7 @@ export function ProfileEditModal({
                   </Label>
                   <div className="flex items-center gap-2 bg-[#1A1A1A] p-2 rounded border border-[#333] text-gray-300">
                     <Mail className="h-4 w-4 text-blue-400" />
-                    <span>{session.email || "Not set"}</span>
+                    <span>{userEmail}</span>
                   </div>
                 </div>
 
@@ -418,7 +427,12 @@ export function ProfileEditModal({
                 ) : (
                   <div className="text-center py-4">
                     <p className="text-gray-400 mb-3">No wallet connected</p>
-                    <Button className="bg-[#0066FF] hover:bg-[#0052CC] text-white">
+                    <Button
+                      onClick={() =>
+                        (window.location.href = "/dashboard?connect=wallet")
+                      }
+                      className="bg-[#0066FF] hover:bg-[#0052CC] text-white"
+                    >
                       Connect Wallet
                     </Button>
                   </div>

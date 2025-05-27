@@ -838,7 +838,7 @@ export const NodeControlPanel = () => {
                 display: "inline-block",
               }}
             >
-              {totalEarnings}
+              {parseFloat(totalEarnings.toFixed(2))}
             </span>
             <span className="text-white/90 text-sm">NLOV</span>
           </div>

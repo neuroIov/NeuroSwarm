@@ -52,17 +52,29 @@ export const Header = ({
   const hasWallet = !!session.walletAddress;
   const walletType = session.walletType;
 
+  // Check URL parameters for wallet connection request
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("connect") === "wallet" && isLoggedIn && !hasWallet) {
+      setIsWalletModalOpen(true);
+      // Remove the parameter from URL to avoid reopening the modal on refresh
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, [isLoggedIn, hasWallet]);
+
   useEffect(() => {
     // Debug log to check session state
-    console.log("Current session state:", {
+    console.log("Header - Current session state:", {
       userId: session.userId,
       email: session.email,
       userProfile: session.userProfile,
       walletAddress: session.walletAddress,
       walletType: session.walletType,
       isLoggedIn,
+      hasWallet,
     });
-  }, [session, isLoggedIn]);
+  }, [session, isLoggedIn, hasWallet]);
 
   const handleEmailAuth = () => {
     setIsAuthModalOpen(true);
@@ -93,6 +105,11 @@ export const Header = ({
     if (isLoggedIn && !hasWallet) {
       setIsWalletModalOpen(true);
     }
+  };
+
+  // Handle wallet modal close to refresh state
+  const handleWalletModalClose = () => {
+    setIsWalletModalOpen(false);
   };
 
   // Get wallet name for display
@@ -262,7 +279,7 @@ export const Header = ({
 
         <WalletConnectionModal
           isOpen={isWalletModalOpen}
-          onClose={() => setIsWalletModalOpen(false)}
+          onClose={handleWalletModalClose}
         />
       </div>
     </header>

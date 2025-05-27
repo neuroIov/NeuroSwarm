@@ -21,8 +21,9 @@ interface WalletSelectorProps {
 }
 
 export const WalletSelector = ({ onClose }: WalletSelectorProps) => {
-  const { connectWallet, session, walletType } = useSession();
+  const { connectWallet, disconnectWallet, session } = useSession();
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [currentWalletType, setCurrentWalletType] = useState<WalletType | null>(
     null
   );
@@ -37,6 +38,18 @@ export const WalletSelector = ({ onClose }: WalletSelectorProps) => {
       setCurrentWalletType(session.walletType);
     }
   }, [session.walletType]);
+
+  // Debug log to check session state
+  useEffect(() => {
+    console.log("WalletSelector - Current session state:", {
+      userId: session.userId,
+      email: session.email,
+      walletAddress: session.walletAddress,
+      walletType: session.walletType,
+      isLoggedIn,
+      hasWallet,
+    });
+  }, [session, isLoggedIn, hasWallet]);
 
   const handleWalletConnect = async (type: WalletType) => {
     if (!isLoggedIn) {
@@ -64,6 +77,24 @@ export const WalletSelector = ({ onClose }: WalletSelectorProps) => {
       );
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const handleWalletDisconnect = async () => {
+    if (!hasWallet) return;
+
+    setIsDisconnecting(true);
+    try {
+      await disconnectWallet();
+      toast.success("Wallet disconnected successfully");
+      if (onClose) onClose();
+    } catch (error) {
+      console.error("Failed to disconnect wallet:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to disconnect wallet"
+      );
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -101,8 +132,8 @@ export const WalletSelector = ({ onClose }: WalletSelectorProps) => {
       {hasWallet ? (
         <Button
           variant="outline"
-          onClick={() => connectWallet(session.walletType as WalletType)}
-          disabled={isConnecting}
+          onClick={handleWalletDisconnect}
+          disabled={isDisconnecting}
           className={`
             flex items-center gap-2 font-medium rounded-full 
             bg-gradient-to-r from-green-600 to-green-700 text-white
@@ -111,7 +142,7 @@ export const WalletSelector = ({ onClose }: WalletSelectorProps) => {
           `}
           title="Click to disconnect wallet"
         >
-          {isConnecting ? (
+          {isDisconnecting ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
               <span>Disconnecting...</span>
