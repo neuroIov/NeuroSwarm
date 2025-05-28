@@ -827,8 +827,67 @@ export const EarningsDashboard = () => {
         </div>
       </div>
 
+      {/* Daily Rewards */}
+      <div className="w-full p-4 bg-[#161628] rounded-lg data-panel mt-6">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex gap-2 items-center">
+            <div className="icon-container">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            </div>
+            <h3 className="text-lg font-medium">Daily Rewards</h3>
+          </div>
+          <Button className="gradient-button rounded-full">Check In</Button>
+        </div>
+
+        {/* Daily reward cards */}
+        <div className="grid grid-cols-3 sm:grid-cols-7 gap-2 sm:gap-4">
+          <DailyRewardCard
+            day={1}
+            points={10}
+            isActive={true}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={2}
+            points={20}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={3}
+            points={30}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={4}
+            points={40}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={5}
+            points={50}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={6}
+            points={60}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={7}
+            points={70}
+            isActive={false}
+            isCompleted={false}
+          />
+        </div>
+      </div>
+
       {/* Recent Transactions */}
-      <div className="w-full p-4 bg-[#161628] rounded-lg data-panel">
+      <div className="w-full p-4 bg-[#161628] rounded-lg data-panel mt-6">
         <div className="flex gap-2 items-center mb-4">
           <div className="icon-container">
             <img
@@ -895,65 +954,6 @@ export const EarningsDashboard = () => {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Daily Rewards */}
-      <div className="w-full p-4 bg-[#161628] rounded-lg data-panel mt-6">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex gap-2 items-center">
-            <div className="icon-container">
-              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-            </div>
-            <h3 className="text-lg font-medium">Daily Rewards</h3>
-          </div>
-          <Button className="gradient-button rounded-full">Check In</Button>
-        </div>
-
-        {/* Daily reward cards */}
-        <div className="grid grid-cols-3 sm:grid-cols-7 gap-2 sm:gap-4">
-          <DailyRewardCard
-            day={1}
-            points={10}
-            isActive={true}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={2}
-            points={20}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={3}
-            points={30}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={4}
-            points={40}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={5}
-            points={50}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={6}
-            points={60}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={7}
-            points={70}
-            isActive={false}
-            isCompleted={false}
-          />
-        </div>
       </div>
 
       {/* Debug section */}

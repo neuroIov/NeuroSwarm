@@ -156,11 +156,6 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
 
   const socialPlatforms = [
     {
-      name: "Instagram",
-      icon: <FaInstagram className="w-6 h-6" />,
-      color: "from-[#833AB4] via-[#C13584] to-[#E1306C]",
-    },
-    {
       name: "Telegram",
       icon: <FaTelegram className="w-6 h-6" />,
       color: "from-[#0088CC] to-[#0088CC]",
@@ -170,6 +165,11 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
       icon: <FaWhatsapp className="w-6 h-6" />,
       color: "from-[#25D366] to-[#25D366]",
     },
+    // {
+    //   name: "Instagram",
+    //   icon: <FaInstagram className="w-6 h-6" />,
+    //   color: "from-[#833AB4] via-[#C13584] to-[#E1306C]",
+    // },
   ];
 
   const copyToClipboard = async () => {
@@ -188,8 +188,20 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
   };
 
   const getShareMessage = (platform) => {
-    const message = `Check out this new earning resource Neuro Swarm: ${inviteLink}`;
-    const encodedMessage = encodeURIComponent(message);
+    // Twitter message with emojis
+    const twitterMessage = `🚀 NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution 🌐\n💰 100M $NLOV tokens available\n📲 Connect your phone, laptop, or GPU — start earning in one click!\n🎯 Join before TGE\n🔗 ${inviteLink}`;
+
+    // WhatsApp uses single asterisks for bold
+    const whatsappMessage = `*NeuroSwarm Airdrop Confirmed!*\nSecure your spot in the $NLOV Connect-to-Earn revolution\n*100M $NLOV tokens available*\nConnect your phone, laptop, or GPU — start earning in one click!\nJoin before TGE\n${inviteLink}`;
+
+    // Telegram - plain text works best through URL params
+    const telegramMessage = `NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution\n100M $NLOV tokens available\nConnect your phone, laptop, or GPU — start earning in one click!\nJoin before TGE\n${inviteLink}`;
+
+    // Encode messages for sharing
+    const encodedTwitterMessage = encodeURIComponent(twitterMessage);
+    const encodedWhatsappMessage = encodeURIComponent(whatsappMessage);
+    const encodedTelegramMessage = encodeURIComponent(telegramMessage);
+
     switch (platform) {
       case "Instagram":
         return `https://www.instagram.com/?url=${encodeURIComponent(
@@ -198,9 +210,11 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
       case "Telegram":
         return `https://t.me/share/url?url=${encodeURIComponent(
           inviteLink
-        )}&text=${encodedMessage}`;
+        )}&text=${encodedTelegramMessage}`;
       case "WhatsApp":
-        return `https://wa.me/?text=${encodedMessage}`;
+        return `https://wa.me/?text=${encodedWhatsappMessage}`;
+      case "Twitter":
+        return `https://twitter.com/intent/tweet?text=${encodedTwitterMessage}`;
       default:
         return inviteLink;
     }
@@ -222,14 +236,12 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
             exit={{ scale: 0.8, opacity: 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
           >
-            <motion.button
+            <button
               className="absolute top-4 right-4 text-gray-300 hover:text-white"
               onClick={onClose}
-              whileHover={{ rotate: 90 }}
-              whileTap={{ scale: 0.9 }}
             >
               <CloseIcon className="w-5 h-5" />
-            </motion.button>
+            </button>
 
             <div className="text-center mb-6">
               <Share2 className="mx-auto w-12 h-12 text-blue-400 mb-4" />
@@ -263,22 +275,14 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
                   )}
                 </motion.button>
               </div>
-              {referralCode && (
-                <div className="mt-2 text-center">
-                  <span className="text-sm text-gray-400">Code: </span>
-                  <span className="font-mono text-blue-300 bg-blue-900/20 px-2 py-1 rounded text-sm">
-                    {referralCode}
-                  </span>
-                </div>
-              )}
             </div>
 
             <p className="text-gray-300 text-sm mb-3 text-center">Share via:</p>
-            <div className="grid grid-cols-3 gap-3 mb-2">
+            <div className="flex flex-row justify-center items-center gap-4 mb-2">
               {socialPlatforms.map((platform) => (
                 <motion.button
                   key={platform.name}
-                  className={`p-3 rounded-xl bg-gradient-to-br ${platform.color} text-white`}
+                  className={`p-3 rounded-lg bg-gradient-to-br ${platform.color} text-white flex items-center justify-start w-20 h-12`}
                   onClick={() => {
                     const shareUrl = getShareMessage(platform.name);
                     openSocialShare(shareUrl);
@@ -633,21 +637,33 @@ export const ReferralProgram = () => {
 
   // Get sharing message for different platforms
   const getShareMessage = (platform: string) => {
-    const message = `Check out this new earning resource Neuro Swarm: ${referralLink}`;
-    const encodedMessage = encodeURIComponent(message);
+    // Twitter message with emojis
+    const twitterMessage = `🚀 NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution 🌐\n💰 100M $NLOV tokens available\n📲 Connect your phone, laptop, or GPU — start earning in one click!\n🎯 Join before TGE\n🔗 ${referralLink}`;
+
+    // WhatsApp uses single asterisks for bold
+    const whatsappMessage = `*NeuroSwarm Airdrop Confirmed!*\nSecure your spot in the $NLOV Connect-to-Earn revolution\n*100M $NLOV tokens available*\nConnect your phone, laptop, or GPU — start earning in one click!\nJoin before TGE\n${referralLink}`;
+
+    // Telegram - plain text works best through URL params
+    const telegramMessage = `NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution\n100M $NLOV tokens available\nConnect your phone, laptop, or GPU — start earning in one click!\nJoin before TGE\n${referralLink}`;
+
+    // Encode messages for sharing
+    const encodedTwitterMessage = encodeURIComponent(twitterMessage);
+    const encodedWhatsappMessage = encodeURIComponent(whatsappMessage);
+    const encodedTelegramMessage = encodeURIComponent(telegramMessage);
+
     switch (platform) {
-      case "Twitter":
-        return `https://twitter.com/intent/tweet?text=${encodedMessage}`;
-      case "WhatsApp":
-        return `https://wa.me/?text=${encodedMessage}`;
-      case "Telegram":
-        return `https://t.me/share/url?url=${encodeURIComponent(
-          referralLink
-        )}&text=${encodedMessage}`;
       case "Instagram":
         return `https://www.instagram.com/?url=${encodeURIComponent(
           referralLink
         )}`;
+      case "Telegram":
+        return `https://t.me/share/url?url=${encodeURIComponent(
+          referralLink
+        )}&text=${encodedTelegramMessage}`;
+      case "WhatsApp":
+        return `https://wa.me/?text=${encodedWhatsappMessage}`;
+      case "Twitter":
+        return `https://twitter.com/intent/tweet?text=${encodedTwitterMessage}`;
       default:
         return referralLink;
     }
