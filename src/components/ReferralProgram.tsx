@@ -11,15 +11,14 @@ import {
   RefreshCw,
   AlertCircle,
   Share2,
-  Twitter,
   Check,
   X as CloseIcon,
-  Facebook,
-  Linkedin,
   Link as LinkIcon,
 } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useDispatch, useSelector } from "react-redux";
 import { AppDispatch, RootState } from "@/store/store";
@@ -29,6 +28,8 @@ import {
   fetchReferralRewards,
   Referral,
   ReferralReward,
+  verifyReferralCode,
+  createReferralRelationship,
 } from "@/store/slices/sessionSlice";
 import { formatDistanceToNow } from "date-fns";
 import { claimReferralReward } from "@/services/earningsService";
@@ -38,6 +39,7 @@ import { User as LucideUser } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FaWhatsapp } from "react-icons/fa6";
 import { FaSquareXTwitter } from "react-icons/fa6";
+import { FaInstagram, FaTelegram } from "react-icons/fa6";
 
 // Separate component for reward item to use state
 const RewardItem = ({
@@ -148,74 +150,20 @@ const RewardItem = ({
   );
 };
 
-// Add these new components before the main return statement
-const DailyRewardCard = ({
-  day,
-  points,
-  isActive,
-  isCompleted,
-}: {
-  day: number;
-  points: number;
-  isActive: boolean;
-  isCompleted: boolean;
-}) => {
-  return (
-    <div
-      className={`relative group transition-all duration-300 ${
-        isActive ? "scale-105" : ""
-      }`}
-    >
-      <div
-        className={`
-          relative overflow-hidden rounded-2xl p-2 sm:p-4 
-          ${
-            isActive
-              ? "bg-gradient-to-br from-blue-500/20 to-purple-600/20 border-2 border-blue-500/50"
-              : isCompleted
-              ? "bg-[#161628] border-2 border-green-500/50"
-              : "bg-gradient-to-br from-[#1a1a36] to-[#090C18] border-2 border-[#1a1a36]"
-          }
-          hover:scale-105 transition-all duration-300 hover:border-blue-500/50
-          hover:shadow-[0_0_20px_rgba(59,130,246,0.2)]
-        `}
-      >
-        <div className="text-center">
-          <div
-            className={`text-sm sm:text-lg font-medium ${
-              isActive ? "text-blue-400" : "text-white"
-            }`}
-          >
-            Day {day}
-          </div>
-          <div className="text-xs sm:text-sm text-blue-400/80 mt-1">
-            {points} Points
-          </div>
-        </div>
-        {isCompleted && (
-          <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-1">
-            <Check className="w-2 h-2 sm:w-3 sm:h-3 text-white" />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
 // Social Share Modal Component
 const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
   const [isCopied, setIsCopied] = useState(false);
 
   const socialPlatforms = [
     {
-      name: "Facebook",
-      icon: <Facebook className="w-6 h-6" />,
-      color: "from-[#1877F2] to-[#1877F2]",
+      name: "Instagram",
+      icon: <FaInstagram className="w-6 h-6" />,
+      color: "from-[#833AB4] via-[#C13584] to-[#E1306C]",
     },
     {
-      name: "LinkedIn",
-      icon: <Linkedin className="w-6 h-6" />,
-      color: "from-[#0077B5] to-[#0077B5]",
+      name: "Telegram",
+      icon: <FaTelegram className="w-6 h-6" />,
+      color: "from-[#0088CC] to-[#0088CC]",
     },
     {
       name: "WhatsApp",
@@ -243,18 +191,16 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
     const message = `Check out this new earning resource Neuro Swarm: ${inviteLink}`;
     const encodedMessage = encodeURIComponent(message);
     switch (platform) {
-      case "Facebook":
-        return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+      case "Instagram":
+        return `https://www.instagram.com/?url=${encodeURIComponent(
           inviteLink
-        )}&quote=${encodedMessage}`;
-      case "LinkedIn":
-        return `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
+        )}`;
+      case "Telegram":
+        return `https://t.me/share/url?url=${encodeURIComponent(
           inviteLink
-        )}&summary=${encodedMessage}`;
+        )}&text=${encodedMessage}`;
       case "WhatsApp":
         return `https://wa.me/?text=${encodedMessage}`;
-      case "Twitter":
-        return `https://twitter.com/intent/tweet?text=${encodedMessage}`;
       default:
         return inviteLink;
     }
@@ -292,7 +238,43 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
               </h2>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            {/* Larger, more prominent referral link */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl">
+              <p className="text-gray-300 text-sm mb-2">Your Referral Link:</p>
+              <div className="flex items-center justify-between bg-black/20 p-3 rounded-lg border border-blue-500/20">
+                <input
+                  type="text"
+                  value={inviteLink}
+                  readOnly
+                  className="flex-1 bg-transparent text-white focus:outline-none text-sm overflow-x-auto whitespace-nowrap"
+                />
+                <motion.button
+                  className={`ml-2 p-2 rounded-full ${
+                    isCopied ? "bg-green-600/20" : "bg-blue-600/20"
+                  }`}
+                  onClick={copyToClipboard}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  {isCopied ? (
+                    <Check className="w-5 h-5 text-green-400" />
+                  ) : (
+                    <Copy className="w-5 h-5 text-blue-400" />
+                  )}
+                </motion.button>
+              </div>
+              {referralCode && (
+                <div className="mt-2 text-center">
+                  <span className="text-sm text-gray-400">Code: </span>
+                  <span className="font-mono text-blue-300 bg-blue-900/20 px-2 py-1 rounded text-sm">
+                    {referralCode}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <p className="text-gray-300 text-sm mb-3 text-center">Share via:</p>
+            <div className="grid grid-cols-3 gap-3 mb-2">
               {socialPlatforms.map((platform) => (
                 <motion.button
                   key={platform.name}
@@ -307,25 +289,6 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
                   {platform.icon}
                 </motion.button>
               ))}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <input
-                type="text"
-                value={inviteLink}
-                readOnly
-                className="flex-1 bg-transparent text-sm text-white focus:outline-none"
-              />
-              <motion.button
-                className={`ml-2 ${
-                  isCopied ? "text-green-400" : "text-gray-300"
-                }`}
-                onClick={copyToClipboard}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-              >
-                {isCopied ? "✓" : <Copy className="w-4 h-4" />}
-              </motion.button>
             </div>
           </motion.div>
         </motion.div>
@@ -343,14 +306,19 @@ export const ReferralProgram = () => {
   const [claimedRewards, setClaimedRewards] = useState(0);
   const [pendingRewards, setPendingRewards] = useState(0);
 
+  const [referralCode, setReferralCode] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
+  const [referralError, setReferralError] = useState("");
+
   const dispatch = useDispatch<AppDispatch>();
   const { userProfile, loading, referrals, referralRewards } = useSelector(
     (state: RootState) => state.session
   );
 
-  const referralCode = userProfile?.referral_code || null;
-  const referralLink = referralCode
-    ? `http://localhost:8080/dashboard?ref=${referralCode}`
+  const userReferralCode = userProfile?.referral_code || null;
+  const referralLink = userReferralCode
+    ? `${window.location.origin}/dashboard?ref=${userReferralCode}`
     : null;
 
   // Filter referrals by tier
@@ -375,6 +343,40 @@ export const ReferralProgram = () => {
           : 0),
       0
     ) || 0;
+
+  // Function to extract referral code from a full URL
+  const extractReferralCode = (input) => {
+    // Check if input is a URL with ref parameter
+    if (input.includes("?ref=")) {
+      try {
+        const url = new URL(input);
+        const refCode = url.searchParams.get("ref");
+        if (refCode) {
+          return refCode;
+        }
+      } catch (e) {
+        // If not a valid URL, try regex approach
+        const match = input.match(/[?&]ref=([^&]+)/);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+    }
+    // If no URL pattern found, return the original input
+    return input;
+  };
+
+  // Auto-generate a referral code if user doesn't have one
+  useEffect(() => {
+    if (
+      userProfile?.id &&
+      !userProfile?.referral_code &&
+      !isGenerating &&
+      userProfile?.wallet_address
+    ) {
+      handleGenerateReferralCode();
+    }
+  }, [userProfile]);
 
   // Function to fetch claimed referral earnings from the earnings table
   const fetchReferralEarnings = async (userWalletAddress: string) => {
@@ -460,6 +462,13 @@ export const ReferralProgram = () => {
       return;
     }
 
+    if (!userProfile?.wallet_address) {
+      toast.error(
+        "You need to connect a wallet first to generate a referral code"
+      );
+      return;
+    }
+
     try {
       setIsGenerating(true);
       await dispatch(generateReferralCode(userProfile?.id)).unwrap();
@@ -496,18 +505,88 @@ export const ReferralProgram = () => {
       });
   };
 
-  // Format reward type for display
-  const formatRewardType = (type: string) => {
-    switch (type) {
-      case "signup":
-        return "Sign-up Bonus";
-      case "task_completion":
-        return "Task Completion";
-      case "others":
-        return "Other Reward";
-      default:
-        return type;
+  // Added functions for referral code verification
+  const handleVerifyReferralCode = async () => {
+    if (!referralCode.trim()) {
+      setReferralError("Please enter a referral code");
+      return;
     }
+
+    // Extract code if user pasted a full link
+    const extractedCode = extractReferralCode(referralCode);
+
+    setIsVerifying(true);
+
+    try {
+      const resultAction = await dispatch(verifyReferralCode(extractedCode));
+
+      if (verifyReferralCode.fulfilled.match(resultAction)) {
+        const { isValid, referrerId } = resultAction.payload as {
+          isValid: boolean;
+          referrerId: string;
+        };
+
+        if (isValid) {
+          // Check if the referrer is the current user (can't refer yourself)
+          if (referrerId === userProfile?.id) {
+            setReferralError("You cannot use your own referral code");
+            setIsVerified(false);
+          } else {
+            setIsVerified(true);
+            toast.success("Referral code verified successfully");
+          }
+        } else {
+          setReferralError("Invalid referral code");
+        }
+      } else {
+        setReferralError("Failed to verify referral code");
+      }
+    } catch (error) {
+      setReferralError("Error verifying referral code");
+      console.error("Error verifying referral code:", error);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleSubmitReferral = async () => {
+    if (!isVerified || !referralCode || !userProfile?.id) {
+      setReferralError("Please verify a valid referral code first");
+      return;
+    }
+
+    // Extract code if user pasted a full link
+    const extractedCode = extractReferralCode(referralCode);
+
+    try {
+      const resultAction = await dispatch(
+        createReferralRelationship({
+          referrerCode: extractedCode,
+          referredId: userProfile.id,
+        })
+      );
+
+      if (createReferralRelationship.fulfilled.match(resultAction)) {
+        toast.success("Successfully joined referral program!");
+        setReferralCode("");
+        setIsVerified(false);
+        // Refresh referral data after successful submission
+        loadReferralData();
+      } else {
+        setReferralError("Failed to join referral program");
+      }
+    } catch (error) {
+      setReferralError("Error joining referral program");
+      console.error("Error submitting referral:", error);
+    }
+  };
+
+  // Handle input change with automatic code extraction
+  const handleReferralInputChange = (e) => {
+    const inputValue = e.target.value;
+    setReferralCode(inputValue);
+    setReferralError("");
+    setIsVerified(false);
   };
 
   // Render a single referral item
@@ -547,30 +626,28 @@ export const ReferralProgram = () => {
     );
   };
 
-  // Paths to images in public/images
-  const flower1 = "/images/flower_1.png";
-  const flower2 = "/images/flower_2.png";
-
+  // Open social share in a popup window
   const openSocialShare = (shareUrl: string) => {
     window.open(shareUrl, "_blank", "width=600,height=400");
   };
 
+  // Get sharing message for different platforms
   const getShareMessage = (platform: string) => {
     const message = `Check out this new earning resource Neuro Swarm: ${referralLink}`;
     const encodedMessage = encodeURIComponent(message);
     switch (platform) {
-      case "Facebook":
-        return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-          referralLink
-        )}&quote=${encodedMessage}`;
-      case "LinkedIn":
-        return `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
-          referralLink
-        )}&summary=${encodedMessage}`;
-      case "WhatsApp":
-        return `https://wa.me/?text=${encodedMessage}`;
       case "Twitter":
         return `https://twitter.com/intent/tweet?text=${encodedMessage}`;
+      case "WhatsApp":
+        return `https://wa.me/?text=${encodedMessage}`;
+      case "Telegram":
+        return `https://t.me/share/url?url=${encodeURIComponent(
+          referralLink
+        )}&text=${encodedMessage}`;
+      case "Instagram":
+        return `https://www.instagram.com/?url=${encodeURIComponent(
+          referralLink
+        )}`;
       default:
         return referralLink;
     }
@@ -584,24 +661,24 @@ export const ReferralProgram = () => {
           label="First Tier"
           value={directReferrals}
           icon={<LucideUser className="w-5 h-5 text-white" />}
-          backgroundImage={flower1}
+          backgroundImage={"/images/flower_1.png"}
         />
         <ReferralStatCard
           label="Second Tier"
           value={tier2Referrals.length}
           icon={<LucideUser className="w-5 h-5 text-white" />}
-          backgroundImage={flower1}
+          backgroundImage={"/images/flower_1.png"}
         />
         <ReferralStatCard
           label="Third Tier"
           value={tier3Referrals.length}
           icon={<LucideUser className="w-5 h-5 text-white" />}
-          backgroundImage={flower1}
+          backgroundImage={"/images/flower_1.png"}
         />
         <ReferralStatCard
           label="Total Referral Rewards"
           value={`${totalReferralEarnings.toFixed(2)} NLOV`}
-          backgroundImage={flower2}
+          backgroundImage={"/images/flower_2.png"}
           highlight
         />
       </div>
@@ -629,52 +706,85 @@ export const ReferralProgram = () => {
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         inviteLink={referralLink}
-        referralCode={referralCode}
+        referralCode={userReferralCode}
       />
 
       {/* Claims and Pending Rewards Container */}
       <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
-        {/* Referral Link Section */}
-        <div className="mb-4 sm:mb-6">
-          <h3 className="text-white font-medium text-sm sm:text-base mb-2">
-            Your Referral Link
-          </h3>
-          <div className="flex flex-col sm:flex-row items-center gap-3">
-            <div className="flex-1 w-full bg-gradient-to-r from-blue-600/20 to-blue-400/5 rounded-full px-3 sm:px-4 py-2 sm:py-3 border border-blue-500/20">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                <input
-                  type="text"
-                  value={referralLink || "https://swarm.network/r/xxxxx"}
-                  readOnly
-                  className="bg-transparent text-white w-full outline-none text-xs sm:text-sm truncate"
-                />
-              </div>
+        {/* Use Referral Code Section - Styled to match the theme */}
+        <div className="mb-6">
+          <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 p-5 rounded-xl border border-blue-500/20">
+            <div className="flex items-center gap-2 mb-4">
+              <LinkIcon className="h-5 w-5 text-blue-400" />
+              <h3 className="text-white font-medium">Use Referral Code</h3>
             </div>
-            <button
-              onClick={
-                referralCode
-                  ? handleCopyReferralLink
-                  : handleGenerateReferralCode
-              }
-              className="gradient-button bg-gradient-to-r from-blue-600 to-blue-500 text-white h-10 sm:h-11 w-full sm:w-28 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300 flex items-center justify-center gap-2"
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
-              ) : referralCode ? (
-                <Copy className="w-3 h-3 sm:w-4 sm:h-4" />
-              ) : (
-                <Key className="w-3 h-3 sm:w-4 sm:h-4" />
+
+            <p className="text-sm text-blue-300/80 mb-4">
+              Enter a referral code to join the program and earn rewards. You
+              can paste a referral link or code.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                      <LinkIcon className="h-4 w-4 text-blue-400/60" />
+                    </div>
+                    <Input
+                      value={referralCode}
+                      onChange={handleReferralInputChange}
+                      className="pl-10 py-6 bg-[#111827]/50 border-blue-500/20 focus:border-blue-400 text-white rounded-xl focus-visible:ring-blue-500/30 focus-visible:ring-offset-0"
+                      placeholder="Enter referral code or link"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleVerifyReferralCode}
+                    className="bg-blue-600 hover:bg-blue-700 rounded-xl px-5"
+                    disabled={isVerifying || !referralCode.trim()}
+                  >
+                    {isVerifying ? (
+                      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                    )}
+                    <span>{isVerifying ? "Verifying..." : "Verify"}</span>
+                  </Button>
+                </div>
+                {referralError && (
+                  <p className="text-red-400 text-sm mt-2 flex items-center">
+                    <AlertCircle className="w-3 h-3 mr-1" />
+                    {referralError}
+                  </p>
+                )}
+              </div>
+
+              {isVerified && (
+                <div className="mt-3 bg-blue-900/20 p-4 rounded-xl border border-blue-500/20">
+                  <div className="flex items-center text-green-400 text-sm mb-3">
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    <span>
+                      Referral code verified! Click below to join the referral
+                      program.
+                    </span>
+                  </div>
+                  <Button
+                    onClick={handleSubmitReferral}
+                    className="bg-blue-600 hover:bg-blue-700 w-full rounded-xl py-5"
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <ArrowRight className="w-4 h-4 mr-2" />
+                    )}
+                    <span>
+                      {loading ? "Joining..." : "Join Referral Program"}
+                    </span>
+                  </Button>
+                </div>
               )}
-              <span className="text-xs sm:text-sm font-medium">
-                {isGenerating
-                  ? "Generating..."
-                  : referralCode
-                  ? "Copy"
-                  : "Generate"}
-              </span>
-            </button>
+            </div>
           </div>
         </div>
 
@@ -867,66 +977,6 @@ export const ReferralProgram = () => {
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Daily Rewards Section */}
-      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-4 sm:mb-6">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
-            <h2 className="text-white text-base sm:text-lg font-medium">
-              Daily Rewards
-            </h2>
-          </div>
-          <button className="gradient-button bg-gradient-to-r from-blue-600 to-blue-400 text-white w-full sm:w-auto px-4 sm:px-6 py-2 rounded-full hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300">
-            Check In
-          </button>
-        </div>
-
-        <div className="grid grid-cols-3 sm:grid-cols-7 gap-2 sm:gap-4">
-          <DailyRewardCard
-            day={1}
-            points={10}
-            isActive={true}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={2}
-            points={20}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={3}
-            points={30}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={4}
-            points={40}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={5}
-            points={50}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={6}
-            points={60}
-            isActive={false}
-            isCompleted={false}
-          />
-          <DailyRewardCard
-            day={7}
-            points={70}
-            isActive={false}
-            isCompleted={false}
-          />
         </div>
       </div>
     </div>

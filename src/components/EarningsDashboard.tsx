@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Wallet, TrendingUp, Calendar, ArrowUpRight, Bug } from "lucide-react";
+import {
+  Wallet,
+  TrendingUp,
+  Calendar,
+  ArrowUpRight,
+  Bug,
+  Check,
+} from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "./ui/button";
 import {
@@ -62,21 +69,12 @@ export const EarningsDashboard = () => {
   const [walletError, setWalletError] = useState<boolean>(false);
   const [loadingTimeout, setLoadingTimeout] = useState<boolean>(false);
 
-  // Use the real earnings hook with auto-refresh and higher transaction limit for chart data
-  const {
-    earnings,
-    transactions,
-    loading,
-    error,
-    hasMoreTransactions,
-    loadMoreTransactions,
-    refreshData,
-    debug,
-  } = useEarnings({
-    transactionsLimit: 100,
-    autoRefresh: true,
-    refreshInterval: 35000, // 35 seconds
-  });
+  // Use the real earnings hook with auto-refresh to fetch 20 recent transactions
+  const { earnings, transactions, loading, error, refreshData, debug } =
+    useEarnings({
+      autoRefresh: true,
+      refreshInterval: 35000, // 35 seconds
+    });
 
   // Set a timeout for loading state
   useEffect(() => {
@@ -895,26 +893,67 @@ export const EarningsDashboard = () => {
                 </div>
               ))}
             </div>
-
-            {hasMoreTransactions && (
-              <Button
-                variant="outline"
-                className="gradient-button mt-4 w-full py-2 rounded-full"
-                onClick={loadMoreTransactions}
-                disabled={loading}
-              >
-                {loading ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin mr-2 h-4 w-4 border-2 border-b-0 border-white rounded-full"></div>
-                    Loading...
-                  </div>
-                ) : (
-                  "Load More"
-                )}
-              </Button>
-            )}
           </div>
         )}
+      </div>
+
+      {/* Daily Rewards */}
+      <div className="w-full p-4 bg-[#161628] rounded-lg data-panel mt-6">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex gap-2 items-center">
+            <div className="icon-container">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+            </div>
+            <h3 className="text-lg font-medium">Daily Rewards</h3>
+          </div>
+          <Button className="gradient-button rounded-full">Check In</Button>
+        </div>
+
+        {/* Daily reward cards */}
+        <div className="grid grid-cols-3 sm:grid-cols-7 gap-2 sm:gap-4">
+          <DailyRewardCard
+            day={1}
+            points={10}
+            isActive={true}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={2}
+            points={20}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={3}
+            points={30}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={4}
+            points={40}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={5}
+            points={50}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={6}
+            points={60}
+            isActive={false}
+            isCompleted={false}
+          />
+          <DailyRewardCard
+            day={7}
+            points={70}
+            isActive={false}
+            isCompleted={false}
+          />
+        </div>
       </div>
 
       {/* Debug section */}
@@ -1016,3 +1055,57 @@ const Clock = ({ className }: { className?: string }) => (
     <polyline points="12 6 12 12 16 14"></polyline>
   </svg>
 );
+
+// Daily reward card component
+const DailyRewardCard = ({
+  day,
+  points,
+  isActive,
+  isCompleted,
+}: {
+  day: number;
+  points: number;
+  isActive: boolean;
+  isCompleted: boolean;
+}) => {
+  return (
+    <div
+      className={`relative group transition-all duration-300 ${
+        isActive ? "scale-105" : ""
+      }`}
+    >
+      <div
+        className={`
+          relative overflow-hidden rounded-2xl p-2 sm:p-4 
+          ${
+            isActive
+              ? "bg-gradient-to-br from-blue-500/20 to-purple-600/20 border-2 border-blue-500/50"
+              : isCompleted
+              ? "bg-[#161628] border-2 border-green-500/50"
+              : "bg-gradient-to-br from-[#1a1a36] to-[#090C18] border-2 border-[#1a1a36]"
+          }
+          hover:scale-105 transition-all duration-300 hover:border-blue-500/50
+          hover:shadow-[0_0_20px_rgba(59,130,246,0.2)]
+        `}
+      >
+        <div className="text-center">
+          <div
+            className={`text-sm sm:text-lg font-medium ${
+              isActive ? "text-blue-400" : "text-white"
+            }`}
+          >
+            Day {day}
+          </div>
+          <div className="text-xs sm:text-sm text-blue-400/80 mt-1">
+            {points} Points
+          </div>
+        </div>
+        {isCompleted && (
+          <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-1">
+            <Check className="w-2 h-2 sm:w-3 sm:h-3 text-white" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

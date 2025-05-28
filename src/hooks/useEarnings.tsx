@@ -9,16 +9,16 @@ import {
 /**
  * React hook to access and manage user earnings data
  * @param {Object} options - Hook options
- * @param {number} options.transactionsLimit - Number of transactions to fetch
  * @param {boolean} options.autoRefresh - Whether to periodically refresh data
  * @param {number} options.refreshInterval - Refresh interval in milliseconds
  * @returns {Object} User earnings data and methods
  */
 export function useEarnings({
-  transactionsLimit = 10,
   autoRefresh = true,
   refreshInterval = 60000, // Default: 1 minute
 } = {}) {
+  // Always fetch 20 recent transactions
+  const transactionsLimit = 20;
   const { session } = useSession();
   const userId = session?.userProfile?.id;
 
@@ -32,8 +32,6 @@ export function useEarnings({
     completedTasks: 0,
   });
   const [transactions, setTransactions] = useState([]);
-  const [transactionsPage, setTransactionsPage] = useState(0);
-  const [hasMoreTransactions, setHasMoreTransactions] = useState(true);
   const [lastError, setLastError] = useState(null);
 
   // Update overall loading state when either earnings or transactions are loading
@@ -73,8 +71,8 @@ export function useEarnings({
     }
   };
 
-  // Function to fetch transactions
-  const fetchTransactions = async (page = 0, limit = transactionsLimit) => {
+  // Function to fetch transactions - always fetches the 20 most recent transactions
+  const fetchTransactions = async () => {
     if (!userId) {
       console.log("No user ID available, skipping transactions fetch");
       setTransactionsLoading(false);
@@ -85,26 +83,16 @@ export function useEarnings({
     setError(null);
 
     try {
-      const offset = page * limit;
       console.log(
-        `Fetching transactions for user: ${userId}, limit: ${limit}, offset: ${offset}`
+        `Fetching transactions for user: ${userId}, limit: ${transactionsLimit}`
       );
       const transactionsData = await getUserEarningsTransactions(
         userId,
-        limit,
-        offset
+        transactionsLimit,
+        0 // Always start from the first page
       );
       console.log(`Received ${transactionsData.length} transactions`);
-
-      if (page === 0) {
-        setTransactions(transactionsData);
-      } else {
-        setTransactions((prev) => [...prev, ...transactionsData]);
-      }
-
-      // Check if there are more transactions
-      setHasMoreTransactions(transactionsData.length === limit);
-      setTransactionsPage(page);
+      setTransactions(transactionsData);
     } catch (err) {
       const errorMsg = `Failed to load transactions: ${
         err.message || JSON.stringify(err)
@@ -121,15 +109,12 @@ export function useEarnings({
     }
   };
 
-  // Function to load more transactions
-  const loadMoreTransactions = () => {
-    fetchTransactions(transactionsPage + 1);
-  };
+
 
   // Function to refresh all data
   const refreshData = () => {
     fetchEarningsData();
-    fetchTransactions(0);
+    fetchTransactions();
   };
 
   // Initial data load
@@ -137,7 +122,7 @@ export function useEarnings({
     if (userId) {
       console.log(`Initial data load for user: ${userId}`);
       fetchEarningsData();
-      fetchTransactions(0);
+      fetchTransactions();
     } else {
       console.log("No user ID available, skipping initial data load");
       setEarningsLoading(false);
@@ -205,7 +190,6 @@ export function useEarnings({
     earningsLoading,
     transactionsLoading,
     transactionsCount: transactions.length,
-    hasMoreTransactions,
     autoRefresh,
     refreshInterval,
   };
@@ -215,8 +199,6 @@ export function useEarnings({
     transactions,
     loading,
     error,
-    hasMoreTransactions,
-    loadMoreTransactions,
     refreshData,
     debug: debugInfo,
   };

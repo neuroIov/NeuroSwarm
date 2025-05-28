@@ -451,8 +451,8 @@ export function UsernameDialog({
                 )}
 
                 <p className="text-gray-400 text-xs mt-2">
-                  Paste a referral code or full URL (e.g.,
-                  http://localhost:8080/dashboard?ref=abcd1234)
+                  {`Paste a referral code or full URL (e.g.,
+                  ${window.location.origin}/dashboard?ref=abcd1234)`}
                 </p>
               </div>
             )}
