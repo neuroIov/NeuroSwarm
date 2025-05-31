@@ -246,14 +246,20 @@ export function Sidebar({
 
           {/* Footer buttons */}
           <div className="mt-auto space-y-2">
-            <button className="flex w-full items-center rounded-full px-4 py-3 text-sm font-medium text-gray-400 hover:bg-[#1A1A1A]/70 hover:text-gray-200 transition-colors">
+            <Link
+              to="/settings"
+              className="flex w-full items-center rounded-full px-4 py-3 text-sm font-medium text-gray-400 hover:bg-[#1A1A1A]/70 hover:text-gray-200 transition-colors"
+            >
               <Settings className="mr-3 h-5 w-5 text-gray-500" />
               Settings
-            </button>
-            <button className="flex w-full items-center rounded-full px-4 py-3 text-sm font-medium text-gray-400 hover:bg-[#1A1A1A]/70 hover:text-gray-200 transition-colors">
+            </Link>
+            <Link
+              to="/help-center"
+              className="flex w-full items-center rounded-full px-4 py-3 text-sm font-medium text-gray-400 hover:bg-[#1A1A1A]/70 hover:text-gray-200 transition-colors"
+            >
               <HelpCircle className="mr-3 h-5 w-5 text-gray-500" />
               Help Center
-            </button>
+            </Link>
           </div>
         </div>
       </aside>

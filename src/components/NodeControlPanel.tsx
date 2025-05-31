@@ -788,13 +788,13 @@ export const NodeControlPanel = () => {
           </div>
           <p className="text-[10px] sm:text-sm text-[#515194] break-words">
             {rewardTier === "webgpu" &&
-              "This device supports WebGPU acceleration, earning maximum NLOV token rewards."}
+              "This device supports WebGPU acceleration, earning maximum Swarm Point rewards."}
             {rewardTier === "wasm" &&
-              "This device uses WASM processing, earning high NLOV token rewards."}
+              "This device uses WASM processing, earning high Swarm Point rewards."}
             {rewardTier === "webgl" &&
-              "This device uses WebGL processing, earning medium NLOV token rewards."}
+              "This device uses WebGL processing, earning medium Swarm Point rewards."}
             {rewardTier === "cpu" &&
-              "This device uses CPU processing, earning basic NLOV token rewards."}
+              "This device uses CPU processing, earning basic Swarm Point rewards."}
           </p>
           {selectedNode && selectedNode.cpuCores && (
             <div className="grid grid-cols-2 gap-1 sm:gap-4 mt-2 sm:mt-4 text-[10px] sm:text-sm overflow-hidden">
@@ -840,7 +840,7 @@ export const NodeControlPanel = () => {
             >
               {parseFloat(totalEarnings.toFixed(2))}
             </span>
-            <span className="text-white/90 text-sm">NLOV</span>
+            <span className="text-white/90 text-sm">SP</span>
           </div>
         </div>
       </div>

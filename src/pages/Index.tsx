@@ -23,6 +23,8 @@ import {
 import { UsernameDialog } from "@/components/UsernameDialog";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import HelpCenter from "@/components/HelpCenter";
+import Settings from "@/components/Settings";
 
 // Function to extract referral code from URL or direct code
 const extractReferralCode = (code: string): string | null => {
@@ -143,6 +145,8 @@ const Index = () => {
               <Route path="/earnings" element={<EarningsDashboard />} />
               <Route path="/referral" element={<ReferralProgram />} />
               <Route path="/global-stats" element={<GlobalStatistics />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/help-center" element={<HelpCenter />} />
             </Routes>
           </div>
         </main>

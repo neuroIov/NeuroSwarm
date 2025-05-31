@@ -479,7 +479,7 @@ export const useSession = () => {
     dispatch(endSession());
     setWalletConnected(false);
     setUserPublicKey(null);
-    localStorage.removeItem("swarm-session");
+    localStorage.clear();
     supabase.auth.signOut();
   };
 

@@ -605,11 +605,7 @@ export const GlobalStatistics = () => {
           className="node-indicator absolute z-20"
           style={{ top: "20%", left: "65%" }}
         />
-        {/* -------------- */}
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "20%", left: "60%" }}
-        />
+
         <div
           className="node-indicator absolute z-20"
           style={{ top: "30%", left: "35%" }}
@@ -625,6 +621,48 @@ export const GlobalStatistics = () => {
         <div
           className="node-indicator absolute z-20"
           style={{ top: "50%", left: "48%" }}
+        />
+
+        {/* -------------- l--25 to 74% and t --5 to 90  */}
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "12%", left: "35%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "15%", left: "45%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "40%", left: "59%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "44%", left: "66%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "57%", left: "52%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "39%", left: "33%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "79%", left: "39%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "80%", left: "69%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "28%", left: "52%" }}
+        />
+        <div
+          className="node-indicator absolute z-20"
+          style={{ top: "17%", left: "60%" }}
         />
       </div>
 
