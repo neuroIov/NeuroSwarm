@@ -345,11 +345,14 @@ export const EarningsDashboard = () => {
     if (active && payload && payload.length) {
       return (
         <div
-          className="bg-[#161628] p-2 rounded-md border border-blue-900/50 shadow-lg text-white z-50"
-          style={{ zIndex: 9999 }}
+          className="bg-[#161628] p-3 rounded-md border border-blue-500/30 shadow-lg text-white z-50"
+          style={{
+            zIndex: 9999,
+            boxShadow: "0 4px 12px rgba(3, 97, 218, 0.2)",
+          }}
         >
-          <p className="text-sm">{`${label}`}</p>
-          <p className="text-sm font-semibold">{`${payload[0].value} NLOV`}</p>
+          <p className="text-sm font-medium text-blue-400">{`${label}`}</p>
+          <p className="text-md font-semibold">{`${payload[0].value} SP`}</p>
         </div>
       );
     }
@@ -369,8 +372,11 @@ export const EarningsDashboard = () => {
       if (data.highlight) {
         return (
           <div
-            className="bg-green-600 px-2 py-1 rounded text-white text-xs font-medium"
-            style={{ zIndex: 9999 }}
+            className="bg-[#161628] px-3 py-2 rounded-md border border-green-500/30 text-green-400 text-xs font-medium"
+            style={{
+              zIndex: 9999,
+              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)",
+            }}
           >
             {data.percentage}
           </div>
@@ -578,7 +584,7 @@ export const EarningsDashboard = () => {
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Total Earning</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : earnings.totalEarnings.toFixed(2)} NLOV
+                {loading ? "..." : earnings.totalEarnings.toFixed(2)} SP
               </span>
             </div>
           </div>
@@ -597,7 +603,7 @@ export const EarningsDashboard = () => {
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Total Balance</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : getTotalBalance().toFixed(2)} NLOV
+                {loading ? "..." : getTotalBalance().toFixed(2)} SP
               </span>
             </div>
           </div>
@@ -635,7 +641,7 @@ export const EarningsDashboard = () => {
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Daily Average</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : calculateDailyAverage().toFixed(2)} NLOV
+                {loading ? "..." : calculateDailyAverage().toFixed(2)} SP
               </span>
             </div>
           </div>
@@ -720,6 +726,7 @@ export const EarningsDashboard = () => {
                   <Tooltip
                     content={<CustomTooltip />}
                     wrapperStyle={{ zIndex: 9999 }}
+                    cursor={{ fill: "rgba(59, 130, 246, 0.1)" }}
                   />
                   <ReferenceLine
                     y={0}
@@ -796,7 +803,7 @@ export const EarningsDashboard = () => {
 
             <div>
               <div className="text-sm text-[#515194] mb-1">Minimum Payout</div>
-              <div className="font-medium text-white">100 NLOV</div>
+              <div className="font-medium text-white">100 Swarm Point</div>
             </div>
 
             <div>
@@ -932,7 +939,7 @@ export const EarningsDashboard = () => {
                   <div className="flex flex-col items-end">
                     <div className="transaction-amount">
                       <span className="text-sm font-medium text-green-500">
-                        +{Number(tx.amount).toFixed(2)} NLOV
+                        +{Number(tx.amount).toFixed(2)} SP
                       </span>
                       {tx.transaction_hash && (
                         <a
@@ -1097,7 +1104,7 @@ const DailyRewardCard = ({
             Day {day}
           </div>
           <div className="text-xs sm:text-sm text-blue-400/80 mt-1">
-            {points} Points
+            {points} SP
           </div>
         </div>
         {isCompleted && (
