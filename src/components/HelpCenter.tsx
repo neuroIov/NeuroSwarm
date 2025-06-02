@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
 
 const FAQItem = ({
   question,
@@ -78,71 +79,61 @@ const HelpCategoryCard = ({
 );
 
 export default function HelpCenter() {
+  const { t } = useTranslation();
+  
   const faqs = [
     {
-      question: "How do I get started with NeuroSwarm?",
+      question: t('helpCenter.faqs.getStarted.question'),
       answer: (
         <>
           <p>
-            Getting started with NeuroSwarm is easy! Just follow these steps:
+            {t('helpCenter.faqs.getStarted.answer')}
           </p>
           <ol className="list-decimal ml-5 mt-2 space-y-1">
-            <li>Create an account or sign in if you already have one</li>
-            <li>Complete your profile setup</li>
-            <li>Explore available tasks and opportunities</li>
-            <li>Join your first swarm and start contributing</li>
+            <li>{t('helpCenter.faqs.getStarted.steps.0')}</li>
+            <li>{t('helpCenter.faqs.getStarted.steps.1')}</li>
+            <li>{t('helpCenter.faqs.getStarted.steps.2')}</li>
+            <li>{t('helpCenter.faqs.getStarted.steps.3')}</li>
           </ol>
         </>
       ),
     },
     {
-      question: "How do earnings and payments work?",
+      question: t('helpCenter.faqs.earnings.question'),
       answer: (
         <>
           <p>
-            Earnings are calculated based on your contributions to swarms and
-            tasks. Payments are processed at the end of each cycle, typically
-            monthly. You can track your earnings in the dashboard and withdraw
-            funds once they reach the minimum threshold.
+            {t('helpCenter.faqs.earnings.answer')}
           </p>
         </>
       ),
     },
     {
-      question: "What skills do I need to participate?",
+      question: t('helpCenter.faqs.skills.question'),
       answer: (
         <>
           <p>
-            NeuroSwarm welcomes participants with various skill levels.
-            Different swarms may require different expertise, from data labeling
-            to complex AI training. You can browse opportunities that match your
-            skills and experience level.
+            {t('helpCenter.faqs.skills.answer')}
           </p>
         </>
       ),
     },
     {
-      question: "How secure is my data on NeuroSwarm?",
+      question: t('helpCenter.faqs.security.question'),
       answer: (
         <>
           <p>
-            We take data security very seriously. All personal information is
-            encrypted and stored securely. We comply with global data protection
-            regulations and never share your personal information with third
-            parties without your consent.
+            {t('helpCenter.faqs.security.answer')}
           </p>
         </>
       ),
     },
     {
-      question: "Can I participate from anywhere in the world?",
+      question: t('helpCenter.faqs.global.question'),
       answer: (
         <>
           <p>
-            Yes! NeuroSwarm is a global platform. You can participate from
-            anywhere with an internet connection. However, certain tasks or
-            payment methods may have regional restrictions due to regulatory
-            requirements.
+            {t('helpCenter.faqs.global.answer')}
           </p>
         </>
       ),
@@ -153,14 +144,14 @@ export default function HelpCenter() {
     <div className="space-y-6 p-6 rounded-3xl max-w-7xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <HelpCircle className="w-6 h-6 text-blue-400" />
-        <h2 className="text-2xl font-bold">Help Center</h2>
+        <h2 className="text-2xl font-bold">{t('helpCenter.title')}</h2>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <HelpCategoryCard
           icon={<MessageSquare className="w-5 h-5 text-blue-400" />}
-          title="Contact Support"
-          description="Get in touch with our support team for personalized assistance"
+          title={t('helpCenter.contactSupport')}
+          description={t('helpCenter.contactSupportDesc')}
           onClick={() =>
             document
               .getElementById("contact-section")
@@ -169,8 +160,8 @@ export default function HelpCenter() {
         />
         <HelpCategoryCard
           icon={<Book className="w-5 h-5 text-green-400" />}
-          title="User Guides"
-          description="Step-by-step guides to help you navigate the platform"
+          title={t('helpCenter.userGuides')}
+          description={t('helpCenter.userGuidesDesc')}
           onClick={() =>
             document
               .getElementById("faq-section")
@@ -179,8 +170,8 @@ export default function HelpCenter() {
         />
         <HelpCategoryCard
           icon={<FileText className="w-5 h-5 text-yellow-400" />}
-          title="Documentation"
-          description="Detailed documentation about features and processes"
+          title={t('helpCenter.documentation')}
+          description={t('helpCenter.documentationDesc')}
           onClick={() =>
             document
               .getElementById("resources-section")
@@ -191,7 +182,7 @@ export default function HelpCenter() {
 
       <div id="faq-section" className="mt-10">
         <h3 className="text-xl font-semibold mb-4">
-          Frequently Asked Questions
+          {t('helpCenter.faq')}
         </h3>
         <div className="bg-[#161628] rounded-xl p-5 border border-[#112544]/50 shadow-lg">
           {faqs.map((faq, index) => (
@@ -201,14 +192,13 @@ export default function HelpCenter() {
       </div>
 
       <div id="contact-section" className="mt-10">
-        <h3 className="text-xl font-semibold mb-4">Contact Support</h3>
+        <h3 className="text-xl font-semibold mb-4">{t('helpCenter.contactForm.title')}</h3>
         <div className="bg-[#161628] rounded-xl p-6 border border-[#112544]/50 shadow-lg">
           <div className="flex flex-col md:flex-row gap-6">
             <div className="flex-1">
-              <h4 className="font-medium text-white mb-2">Send us a message</h4>
+              <h4 className="font-medium text-white mb-2">{t('helpCenter.contactForm.sendMessage')}</h4>
               <p className="text-gray-400 text-sm mb-4">
-                Our support team typically responds within 24 hours during
-                business days.
+                {t('helpCenter.contactForm.responseTime')}
               </p>
 
               <div className="space-y-4">
@@ -217,12 +207,12 @@ export default function HelpCenter() {
                     htmlFor="name"
                     className="block text-sm text-gray-300 mb-1"
                   >
-                    Your Name
+                    {t('helpCenter.contactForm.name')}
                   </label>
                   <Input
                     id="name"
                     type="text"
-                    placeholder="Enter your name"
+                    placeholder={t('helpCenter.contactForm.namePlaceholder')}
                     className="bg-[#0A1A2F] border-[#112544] text-white w-full"
                   />
                 </div>
@@ -232,12 +222,12 @@ export default function HelpCenter() {
                     htmlFor="email"
                     className="block text-sm text-gray-300 mb-1"
                   >
-                    Email Address
+                    {t('helpCenter.contactForm.email')}
                   </label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="Enter your email"
+                    placeholder={t('helpCenter.contactForm.emailPlaceholder')}
                     className="bg-[#0A1A2F] border-[#112544] text-white w-full"
                   />
                 </div>
@@ -247,18 +237,18 @@ export default function HelpCenter() {
                     htmlFor="message"
                     className="block text-sm text-gray-300 mb-1"
                   >
-                    Message
+                    {t('helpCenter.contactForm.message')}
                   </label>
                   <textarea
                     id="message"
-                    placeholder="Describe your issue or question"
+                    placeholder={t('helpCenter.contactForm.messagePlaceholder')}
                     rows={4}
                     className="bg-[#0A1A2F] border border-[#112544] text-white rounded-md p-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-                  Submit Request
+                  {t('helpCenter.contactForm.submit')}
                 </Button>
               </div>
             </div>
@@ -268,22 +258,22 @@ export default function HelpCenter() {
                 <div className="flex items-start gap-3">
                   <Mail className="w-5 h-5 text-blue-400 mt-0.5" />
                   <div>
-                    <h5 className="font-medium text-white">Email Support</h5>
+                    <h5 className="font-medium text-white">{t('helpCenter.emailSupport.title')}</h5>
                     <p className="text-blue-400 text-sm break-all">
-                      SUPPORT@NEUROLOV.AI
+                      {t('helpCenter.emailSupport.email')}
                     </p>
                     <p className="text-gray-400 text-xs mt-1">
-                      For general inquiries and support
+                      {t('helpCenter.emailSupport.description')}
                     </p>
                   </div>
                 </div>
               </div>
 
               <div className="bg-[#0A1A2F] p-4 rounded-lg border border-[#112544]/50">
-                <h5 className="font-medium text-white mb-2">Support Hours</h5>
+                <h5 className="font-medium text-white mb-2">{t('helpCenter.supportHours.title')}</h5>
                 <div className="text-sm text-gray-300 space-y-1">
-                  <p>Monday - Friday</p>
-                  <p>9:00 AM - 6:00 PM UTC</p>
+                  <p>{t('helpCenter.supportHours.days')}</p>
+                  <p>{t('helpCenter.supportHours.hours')}</p>
                 </div>
               </div>
             </div>
@@ -292,33 +282,33 @@ export default function HelpCenter() {
       </div>
 
       <div id="resources-section" className="mt-10">
-        <h3 className="text-xl font-semibold mb-4">Additional Resources</h3>
+        <h3 className="text-xl font-semibold mb-4">{t('helpCenter.resources.title')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-[#161628] rounded-xl p-5 border border-[#112544]/50 shadow-lg">
-            <h4 className="font-medium text-white mb-2">User Guides</h4>
+            <h4 className="font-medium text-white mb-2">{t('helpCenter.resources.guides.title')}</h4>
             <p className="text-gray-400 text-sm mb-3">
-              Step-by-step guides to help you navigate the platform effectively
+              {t('helpCenter.resources.guides.description')}
             </p>
             <Button
               variant="outline"
               className="text-blue-400 border-blue-400/30 hover:bg-blue-400/10"
             >
               <Book className="w-4 h-4 mr-2" />
-              Browse Guides
+              {t('helpCenter.resources.guides.button')}
             </Button>
           </div>
 
           <div className="bg-[#161628] rounded-xl p-5 border border-[#112544]/50 shadow-lg">
-            <h4 className="font-medium text-white mb-2">Community Forum</h4>
+            <h4 className="font-medium text-white mb-2">{t('helpCenter.resources.community.title')}</h4>
             <p className="text-gray-400 text-sm mb-3">
-              Connect with other users, share tips, and get community support
+              {t('helpCenter.resources.community.description')}
             </p>
             <Button
               variant="outline"
               className="text-green-400 border-green-400/30 hover:bg-green-400/10"
             >
               <ExternalLink className="w-4 h-4 mr-2" />
-              Visit Forum
+              {t('helpCenter.resources.community.button')}
             </Button>
           </div>
         </div>

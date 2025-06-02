@@ -23,5 +23,112 @@
   "delete_confirmation": "To confirm deletion, please type \"Delete Account\" in the field below:",
   "permanently_delete": "Permanently Delete Account",
   "deleting_account": "Deleting Account...",
-  "cancel": "Cancel"
+  "cancel": "Cancel",
+  "helpCenter": {
+    "title": "Help Center",
+    "contactSupport": "Contact Support",
+    "contactSupportDesc": "Get in touch with our support team for personalized assistance",
+    "userGuides": "User Guides",
+    "userGuidesDesc": "Step-by-step guides to help you navigate the platform",
+    "documentation": "Documentation",
+    "documentationDesc": "Detailed documentation about features and processes",
+    "faq": "Frequently Asked Questions",
+    "faqs": {
+      "getStarted": {
+        "question": "How do I get started with NeuroSwarm?",
+        "answer": "Getting started with NeuroSwarm is easy! Just follow these steps:",
+        "steps": [
+          "Create an account or sign in if you already have one",
+          "Complete your profile setup",
+          "Explore available tasks and opportunities",
+          "Join your first swarm and start contributing"
+        ]
+      },
+      "earnings": {
+        "question": "How do earnings and payments work?",
+        "answer": "Earnings are calculated based on your contributions to swarms and tasks. Payments are processed at the end of each cycle, typically monthly. You can track your earnings in the dashboard and withdraw funds once they reach the minimum threshold."
+      },
+      "skills": {
+        "question": "What skills do I need to participate?",
+        "answer": "NeuroSwarm welcomes participants with various skill levels. Different swarms may require different expertise, from data labeling to complex AI training. You can browse opportunities that match your skills and experience level."
+      },
+      "security": {
+        "question": "How secure is my data on NeuroSwarm?",
+        "answer": "We take data security very seriously. All personal information is encrypted and stored securely. We comply with global data protection regulations and never share your personal information with third parties without your consent."
+      },
+      "global": {
+        "question": "Can I participate from anywhere in the world?",
+        "answer": "Yes! NeuroSwarm is a global platform. You can participate from anywhere with an internet connection. However, certain tasks or payment methods may have regional restrictions due to regulatory requirements."
+      }
+    },
+    "contactForm": {
+      "title": "Contact Support",
+      "sendMessage": "Send us a message",
+      "responseTime": "Our support team typically responds within 24 hours during business days.",
+      "name": "Your Name",
+      "namePlaceholder": "Enter your name",
+      "email": "Email Address",
+      "emailPlaceholder": "Enter your email",
+      "message": "Message",
+      "messagePlaceholder": "Describe your issue or question",
+      "submit": "Submit Request"
+    },
+    "emailSupport": {
+      "title": "Email Support",
+      "email": "SUPPORT@NEUROLOV.AI",
+      "description": "For general inquiries and support"
+    },
+    "supportHours": {
+      "title": "Support Hours",
+      "days": "Monday - Friday",
+      "hours": "9:00 AM - 6:00 PM UTC"
+    },
+    "resources": {
+      "title": "Additional Resources",
+      "guides": {
+        "title": "User Guides",
+        "description": "Step-by-step guides to help you navigate the platform effectively",
+        "button": "Browse Guides"
+      },
+      "community": {
+        "title": "Community Forum",
+        "description": "Connect with other users, share tips, and get community support",
+        "button": "Visit Forum"
+      }
+    }
+  },
+  "globalStatistics": {
+    "title": "Global Statistics",
+    "tooltip": "Overview of the entire Swarm Network activity",
+    "autoRefresh": "Auto-Refresh",
+    "refresh": "Refresh",
+    "map": {
+      "alt": "Global Network Map"
+    },
+    "cards": {
+      "totalTasks": "Total Tasks",
+      "processingTime": "Processing Time",
+      "avgUptime": "Avg. Uptime",
+      "totalUsers": "Total Users",
+      "activeNodes": "Active Nodes"
+    },
+    "tasks": {
+      "title": "Recent Global Tasks",
+      "prompt": "Prompt",
+      "assigning": "Assigning...",
+      "noTasks": "No tasks available. Refresh to load tasks.",
+      "status": {
+        "completed": "Completed",
+        "processing": "Processing",
+        "pending": "Pending",
+        "failed": "Failed"
+      }
+    },
+    "toasts": {
+      "refreshSuccess": "Global statistics refreshed",
+      "refreshFailed": "Failed to refresh statistics",
+      "autoRefreshEnabled": "Auto-refresh enabled",
+      "autoRefreshDisabled": "Auto-refresh disabled"
+    }
+  }
 }
