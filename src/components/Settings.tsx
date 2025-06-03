@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useTranslation } from "react-i18next";
 
 // Component for the settings card
 const SettingsCard = ({
@@ -60,6 +61,7 @@ const DeleteConfirmModal = ({
   isLoading: boolean;
 }) => {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const { t } = useTranslation();
 
   // Reset text when modal closes
   useEffect(() => {
@@ -72,25 +74,17 @@ const DeleteConfirmModal = ({
         <DialogHeader>
           <DialogTitle className="text-red-400 flex items-center gap-2">
             <AlertCircle className="w-5 h-5" />
-            Confirm Account Deletion
+            {t("confirm_deletion")}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="bg-red-900/20 p-3 rounded-lg border border-red-500/20">
-            <p className="text-sm text-red-300">
-              This action is permanent and cannot be undone. All your data,
-              including profile, earnings, and referrals will be permanently
-              deleted.
-            </p>
+            <p className="text-sm text-red-300">{t("delete_warning")}</p>
           </div>
 
           <div className="bg-red-950/30 p-3 rounded-lg border border-red-500/30">
-            <p className="text-sm text-red-200">
-              To confirm deletion, please type{" "}
-              <span className="font-bold">"Delete Account"</span> in the field
-              below:
-            </p>
+            <p className="text-sm text-red-200">{t("delete_confirmation")}</p>
           </div>
 
           <Input
@@ -110,10 +104,10 @@ const DeleteConfirmModal = ({
               {isLoading ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Deleting Account...
+                  {t("deleting_account")}
                 </>
               ) : (
-                "Permanently Delete Account"
+                t("permanently_delete")
               )}
             </Button>
 
@@ -123,7 +117,7 @@ const DeleteConfirmModal = ({
               className="text-gray-400 hover:text-gray-300 border-gray-600 w-full"
               disabled={isLoading}
             >
-              Cancel
+              {t("cancel")}
             </Button>
           </div>
         </div>
@@ -141,6 +135,9 @@ const Settings: React.FC = () => {
   const [isDeleteAccountLoading, setIsDeleteAccountLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // i18n translation hook
+  const { t, i18n } = useTranslation();
+
   // Get user profile from Redux store
   const { userProfile } = useSelector((state: RootState) => state.session);
   const { email: userEmail } = useSelector((state: RootState) => state.session);
@@ -154,9 +151,15 @@ const Settings: React.FC = () => {
     }
   }, [userEmail]);
 
+  // Set initial language from i18n
+  useEffect(() => {
+    setLanguage(i18n.language);
+  }, []);
+
   // Language options
   const languages = [
     { code: "en", name: "English" },
+    { code: "hi", name: "Hindi" },
     { code: "es", name: "Spanish" },
     { code: "fr", name: "French" },
     { code: "de", name: "German" },
@@ -173,11 +176,14 @@ const Settings: React.FC = () => {
 
   // Handle language change
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setLanguage(e.target.value);
+    const newLanguage = e.target.value;
+    setLanguage(newLanguage);
+    i18n.changeLanguage(newLanguage);
+    // Save language preference to localStorage
+    localStorage.setItem("i18nextLng", newLanguage);
     toast.success(
       `Language changed to ${e.target.options[e.target.selectedIndex].text}`
     );
-    // In a real app, you would dispatch an action to update the language in the store
   };
 
   // Handle currency change
@@ -280,22 +286,20 @@ const Settings: React.FC = () => {
     <div className="space-y-6 p-6 rounded-3xl max-w-7xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <SettingsIcon className="w-6 h-6 text-blue-400" />
-        <h2 className="text-2xl font-bold">Settings</h2>
+        <h2 className="text-2xl font-bold">{t("settings")}</h2>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Language Settings */}
         <SettingsCard
-          title="Language"
+          title={t("language")}
           icon={<Globe className="w-5 h-5 text-blue-400" />}
         >
           <div className="space-y-4">
-            <p className="text-sm text-gray-400">
-              Select your preferred language for the application interface.
-            </p>
+            <p className="text-sm text-gray-400">{t("language_description")}</p>
             <div className="flex flex-col space-y-2">
               <label htmlFor="language" className="text-sm text-white">
-                Interface Language
+                {t("interface_language")}
               </label>
               <div className="relative">
                 <select
@@ -320,21 +324,21 @@ const Settings: React.FC = () => {
 
         {/* Currency Settings */}
         <SettingsCard
-          title="Currency (Coming Soon)"
+          title={`${t("currency")} (${t("currency_coming_soon")})`}
           icon={<DollarSign className="w-5 h-5 text-green-400" />}
         >
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <p className="text-sm text-gray-400">
-                Select your preferred currency for displaying values.
+                {t("currency_description")}
               </p>
               <div className="bg-blue-500/20 text-blue-400 text-xs px-2 py-1 rounded-full">
-                Coming Soon
+                {t("currency_coming_soon")}
               </div>
             </div>
             <div className="flex flex-col space-y-2">
               <label htmlFor="currency" className="text-sm text-white">
-                Display Currency
+                {t("display_currency")}
               </label>
               <div className="relative">
                 <select
@@ -360,16 +364,16 @@ const Settings: React.FC = () => {
 
         {/* Reset Password */}
         <SettingsCard
-          title="Reset Password"
+          title={t("reset_password")}
           icon={<Key className="w-5 h-5 text-yellow-400" />}
         >
           <div className="space-y-4">
             <p className="text-sm text-gray-400">
-              Request a password reset link to be sent to your email.
+              {t("reset_password_description")}
             </p>
             <div className="flex flex-col space-y-2">
               <label htmlFor="reset-email" className="text-sm text-white">
-                Your Email Address
+                {t("your_email_address")}
               </label>
               <div className="flex gap-2">
                 <Input
@@ -377,7 +381,7 @@ const Settings: React.FC = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email address"
+                  placeholder={t("enter_email")}
                   className="bg-[#0A1A2F] border-[#112544] text-white flex-1"
                 />
                 <Button
@@ -388,10 +392,10 @@ const Settings: React.FC = () => {
                   {isResetPasswordLoading ? (
                     <>
                       <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                      Sending...
+                      {t("sending")}
                     </>
                   ) : (
-                    "Send Link"
+                    t("send_link")
                   )}
                 </Button>
               </div>
@@ -401,7 +405,7 @@ const Settings: React.FC = () => {
 
         {/* Delete Account */}
         <SettingsCard
-          title="Delete Account"
+          title={t("delete_account")}
           icon={<Trash2 className="w-5 h-5 text-red-400" />}
           className="border border-red-500/20"
         >
@@ -409,11 +413,7 @@ const Settings: React.FC = () => {
             <div className="bg-red-900/20 p-3 rounded-lg border border-red-500/20">
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-red-300">
-                  This action is permanent and cannot be undone. All your data,
-                  including profile, earnings, and referrals will be permanently
-                  deleted.
-                </p>
+                <p className="text-sm text-red-300">{t("delete_warning")}</p>
               </div>
             </div>
 
@@ -423,7 +423,7 @@ const Settings: React.FC = () => {
               variant="destructive"
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Delete My Account
+              {t("delete_my_account")}
             </Button>
 
             {/* Delete Confirmation Modal */}

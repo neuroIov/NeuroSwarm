@@ -1,0 +1,134 @@
+{
+  "welcome": "Bienvenido",
+  "login": "Iniciar sesión",
+  "settings": "Configuración",
+  "language": "Idioma",
+  "interface_language": "Idioma de la interfaz",
+  "language_description": "Seleccione su idioma preferido para la interfaz de la aplicación.",
+  "language_example": "Ejemplo de idioma",
+  "currency": "Moneda",
+  "currency_coming_soon": "Próximamente",
+  "currency_description": "Seleccione su moneda preferida para mostrar valores.",
+  "display_currency": "Moneda de visualización",
+  "reset_password": "Restablecer contraseña",
+  "reset_password_description": "Solicite un enlace para restablecer su contraseña que se enviará a su correo electrónico.",
+  "your_email_address": "Su dirección de correo electrónico",
+  "enter_email": "Ingrese su dirección de correo electrónico",
+  "send_link": "Enviar enlace",
+  "sending": "Enviando...",
+  "delete_account": "Eliminar cuenta",
+  "delete_warning": "Esta acción es permanente y no se puede deshacer. Todos sus datos, incluido el perfil, ganancias y referencias, se eliminarán permanentemente.",
+  "delete_my_account": "Eliminar mi cuenta",
+  "confirm_deletion": "Confirmar eliminación de cuenta",
+  "delete_confirmation": "Para confirmar la eliminación, escriba \"Delete Account\" en el campo a continuación:",
+  "permanently_delete": "Eliminar cuenta permanentemente",
+  "deleting_account": "Eliminando cuenta...",
+  "cancel": "Cancelar",
+  "helpCenter": {
+    "title": "Centro de Ayuda",
+    "contactSupport": "Contactar Soporte",
+    "contactSupportDesc": "Póngase en contacto con nuestro equipo de soporte para obtener asistencia personalizada",
+    "userGuides": "Guías de Usuario",
+    "userGuidesDesc": "Guías paso a paso para ayudarle a navegar por la plataforma",
+    "documentation": "Documentación",
+    "documentationDesc": "Documentación detallada sobre características y procesos",
+    "faq": "Preguntas Frecuentes",
+    "faqs": {
+      "getStarted": {
+        "question": "¿Cómo empiezo con NeuroSwarm?",
+        "answer": "¡Comenzar con NeuroSwarm es fácil! Solo siga estos pasos:",
+        "steps": [
+          "Cree una cuenta o inicie sesión si ya tiene una",
+          "Complete la configuración de su perfil",
+          "Explore las tareas y oportunidades disponibles",
+          "Únase a su primer enjambre y comience a contribuir"
+        ]
+      },
+      "earnings": {
+        "question": "¿Cómo funcionan las ganancias y los pagos?",
+        "answer": "Las ganancias se calculan en función de sus contribuciones a los enjambres y tareas. Los pagos se procesan al final de cada ciclo, generalmente mensualmente. Puede realizar un seguimiento de sus ganancias en el panel de control y retirar fondos una vez que alcancen el umbral mínimo."
+      },
+      "skills": {
+        "question": "¿Qué habilidades necesito para participar?",
+        "answer": "NeuroSwarm da la bienvenida a participantes con diversos niveles de habilidad. Diferentes enjambres pueden requerir diferentes experiencias, desde el etiquetado de datos hasta el entrenamiento complejo de IA. Puede explorar oportunidades que coincidan con sus habilidades y nivel de experiencia."
+      },
+      "security": {
+        "question": "¿Qué tan segura está mi información en NeuroSwarm?",
+        "answer": "Nos tomamos la seguridad de los datos muy en serio. Toda la información personal está encriptada y almacenada de forma segura. Cumplimos con las regulaciones globales de protección de datos y nunca compartimos su información personal con terceros sin su consentimiento."
+      },
+      "global": {
+        "question": "¿Puedo participar desde cualquier parte del mundo?",
+        "answer": "¡Sí! NeuroSwarm es una plataforma global. Puede participar desde cualquier lugar con conexión a Internet. Sin embargo, ciertas tareas o métodos de pago pueden tener restricciones regionales debido a requisitos regulatorios."
+      }
+    },
+    "contactForm": {
+      "title": "Contactar Soporte",
+      "sendMessage": "Envíenos un mensaje",
+      "responseTime": "Nuestro equipo de soporte generalmente responde dentro de las 24 horas durante días hábiles.",
+      "name": "Su Nombre",
+      "namePlaceholder": "Ingrese su nombre",
+      "email": "Dirección de Correo Electrónico",
+      "emailPlaceholder": "Ingrese su correo electrónico",
+      "message": "Mensaje",
+      "messagePlaceholder": "Describa su problema o pregunta",
+      "submit": "Enviar Solicitud"
+    },
+    "emailSupport": {
+      "title": "Soporte por Correo Electrónico",
+      "email": "SUPPORT@NEUROLOV.AI",
+      "description": "Para consultas generales y soporte"
+    },
+    "supportHours": {
+      "title": "Horario de Soporte",
+      "days": "Lunes - Viernes",
+      "hours": "9:00 AM - 6:00 PM UTC"
+    },
+    "resources": {
+      "title": "Recursos Adicionales",
+      "guides": {
+        "title": "Guías de Usuario",
+        "description": "Guías paso a paso para ayudarle a navegar por la plataforma de manera efectiva",
+        "button": "Explorar Guías"
+      },
+      "community": {
+        "title": "Foro de la Comunidad",
+        "description": "Conéctese con otros usuarios, comparta consejos y obtenga soporte de la comunidad",
+        "button": "Visitar Foro"
+      }
+    }
+  },
+  "globalStatistics": {
+    "title": "Estadísticas Globales",
+    "tooltip": "Visión general de toda la actividad de la Red Swarm",
+    "autoRefresh": "Auto-Actualizar",
+    "refresh": "Actualizar",
+    "map": {
+      "alt": "Mapa de Red Global"
+    },
+    "cards": {
+      "totalTasks": "Tareas Totales",
+      "processingTime": "Tiempo de Procesamiento",
+      "avgUptime": "Tiempo Activo Promedio",
+      "totalUsers": "Usuarios Totales",
+      "activeNodes": "Nodos Activos"
+    },
+    "tasks": {
+      "title": "Tareas Globales Recientes",
+      "prompt": "Prompt",
+      "assigning": "Asignando...",
+      "noTasks": "No hay tareas disponibles. Actualice para cargar tareas.",
+      "status": {
+        "completed": "Completada",
+        "processing": "Procesando",
+        "pending": "Pendiente",
+        "failed": "Fallida"
+      }
+    },
+    "toasts": {
+      "refreshSuccess": "Estadísticas globales actualizadas",
+      "refreshFailed": "Error al actualizar estadísticas",
+      "autoRefreshEnabled": "Auto-actualización activada",
+      "autoRefreshDisabled": "Auto-actualización desactivada"
+    }
+  }
+}

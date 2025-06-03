@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Activity, Clock, Users, Server, RefreshCw } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ const LAST_REFRESH_KEY = "global_statistics_last_refresh";
 const MIN_REFRESH_INTERVAL = 30000; // Minimum time between refreshes (30 seconds)
 
 export const GlobalStatistics = () => {
+  const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const client = getSwarmSupabase();
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -287,13 +289,13 @@ export const GlobalStatistics = () => {
 
         setIsRefreshing(false);
         if (showToast) {
-          toast.success("Global statistics refreshed");
+          toast.success(t("globalStatistics.toasts.refreshSuccess"));
         }
       } catch (error) {
         console.error("Error loading tasks:", error);
         setIsRefreshing(false);
         if (showToast) {
-          toast.error("Failed to refresh statistics");
+          toast.error(t("globalStatistics.toasts.refreshFailed"));
         }
       }
     },
@@ -424,7 +426,7 @@ export const GlobalStatistics = () => {
 
   const toggleAutoRefresh = useCallback((checked: boolean) => {
     setAutoRefresh(checked);
-    toast(checked ? "Auto-refresh enabled" : "Auto-refresh disabled");
+    toast(checked ? t("globalStatistics.toasts.autoRefreshEnabled") : t("globalStatistics.toasts.autoRefreshDisabled"));
   }, []);
 
   // Format timestamp to display time only
@@ -462,14 +464,14 @@ export const GlobalStatistics = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center text-slate-400 mb-1">
-            <Activity className="w-4 h-4 mr-2" /> Total Tasks
+            <Activity className="w-4 h-4 mr-2" /> {t("globalStatistics.cards.totalTasks")}
           </div>
           <div className="text-2xl font-bold">{stats.totalTasks}</div>
         </div>
 
         <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center text-slate-400 mb-1">
-            <Clock className="w-4 h-4 mr-2" /> Avg. Uptime
+            <Clock className="w-4 h-4 mr-2" /> {t("globalStatistics.cards.avgUptime")}
           </div>
           <div className="text-2xl font-bold">
             {formatUptime(stats.avgComputeTime)}
@@ -478,14 +480,14 @@ export const GlobalStatistics = () => {
 
         <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center text-slate-400 mb-1">
-            <Users className="w-4 h-4 mr-2" /> Total Users
+            <Users className="w-4 h-4 mr-2" /> {t("globalStatistics.cards.totalUsers")}
           </div>
           <div className="text-2xl font-bold">{stats.totalUsers}</div>
         </div>
 
         <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center text-slate-400 mb-1">
-            <Server className="w-4 h-4 mr-2" /> Active Nodes
+            <Server className="w-4 h-4 mr-2" /> {t("globalStatistics.cards.activeNodes")}
           </div>
           <div className="text-2xl font-bold">{stats.activeNodes}</div>
         </div>
@@ -533,14 +535,14 @@ export const GlobalStatistics = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-4">
         <div className="flex items-center gap-2">
           <h2 className="text-base sm:text-xl font-semibold">
-            Global Statistics
+            {t("globalStatistics.title")}
           </h2>
-          <InfoTooltip content="Overview of the entire Swarm Network activity" />
+          <InfoTooltip content={t("globalStatistics.tooltip")} />
         </div>
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
           <div className="flex items-center gap-2">
             <span className="text-xs sm:text-sm text-slate-400">
-              Auto-Refresh
+              {t("globalStatistics.autoRefresh")}
             </span>
             <Switch
               checked={autoRefresh}
@@ -558,7 +560,7 @@ export const GlobalStatistics = () => {
             <RefreshCw
               className={`w-4 h-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`}
             />
-            Refresh
+            {t("globalStatistics.refresh")}
           </Button>
         </div>
       </div>
@@ -568,7 +570,7 @@ export const GlobalStatistics = () => {
         <div className="absolute inset-0 bg-grid opacity-[0.15] z-0"></div>
         <img
           src="/images/map.png"
-          alt="Global Network Map"
+          alt={t("globalStatistics.map.alt")}
           className="absolute inset-0 w-full h-full object-contain z-10"
           onError={(e) => {
             e.currentTarget.src =
@@ -682,7 +684,7 @@ export const GlobalStatistics = () => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">Total Tasks</span>
+              <span className="text-sm text-[#515194]">{t("globalStatistics.cards.totalTasks")}</span>
               <span className="text-xl font-bold text-white">
                 {stats.totalTasks}
               </span>
@@ -704,7 +706,7 @@ export const GlobalStatistics = () => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">Processing Time</span>
+              <span className="text-sm text-[#515194]">{t("globalStatistics.cards.processingTime")}</span>
               <span className="text-xl font-bold text-white">
                 {(() => {
                   const seconds = stats.avgComputeTime || 0;
@@ -740,7 +742,7 @@ export const GlobalStatistics = () => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">Total Users</span>
+              <span className="text-sm text-[#515194]">{t("globalStatistics.cards.totalUsers")}</span>
               <span className="text-xl font-bold text-white">
                 {stats.totalUsers}
               </span>
@@ -762,7 +764,7 @@ export const GlobalStatistics = () => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">Active Nodes</span>
+              <span className="text-sm text-[#515194]">{t("globalStatistics.cards.activeNodes")}</span>
               <span className="text-xl font-bold text-white">
                 {stats.activeNodes}
               </span>
@@ -773,7 +775,7 @@ export const GlobalStatistics = () => {
 
       <div className="mb-6 w-full">
         <h3 className="text-base sm:text-lg font-medium mb-4">
-          Recent Global Tasks
+          {t("globalStatistics.tasks.title")}
         </h3>
 
         {displayTasks.length > 0 ? (
@@ -827,16 +829,18 @@ export const GlobalStatistics = () => {
                         }
                       `}
                       >
-                        {task.status.charAt(0).toUpperCase() +
-                          task.status.slice(1)}
+                        {task.status === "completed" && t("globalStatistics.tasks.status.completed")}
+                        {task.status === "processing" && t("globalStatistics.tasks.status.processing")}
+                        {task.status === "pending" && t("globalStatistics.tasks.status.pending")}
+                        {task.status === "failed" && t("globalStatistics.tasks.status.failed")}
                       </span>
                     </div>
                     <p className="text-xs mb-1 break-words truncate">
-                      Prompt: {task.prompt.substring(0, 60)}
+                      {t("globalStatistics.tasks.prompt")}: {task.prompt.substring(0, 60)}
                       {task.prompt.length > 60 ? "..." : ""}
                     </p>
                     <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
-                      <span>Assigning...</span>
+                      <span>{t("globalStatistics.tasks.assigning")}</span>
                       <span>{formatTime(task.created_at)}</span>
                     </div>
                   </div>
@@ -847,7 +851,7 @@ export const GlobalStatistics = () => {
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-slate-400">
             <FileCode className="w-10 h-10 mb-2 text-slate-600" />
-            <p>No tasks available. Refresh to load tasks.</p>
+            <p>{t("globalStatistics.tasks.noTasks")}</p>
           </div>
         )}
       </div>

@@ -5,6 +5,7 @@ import "./index.css";
 import { Provider } from "react-redux";
 import { store } from "./store";
 import { startupService } from "./services/startupService";
+import "./i18n";
 
 // Store must be initialized before services
 // Wait for store to be fully initialized
