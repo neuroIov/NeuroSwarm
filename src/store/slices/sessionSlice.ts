@@ -64,6 +64,7 @@ type SessionState = {
   referralRewards: ReferralReward[];
   loading: boolean;
   error: string | null;
+  plan: string | null;
 };
 
 const initialState: SessionState = {
@@ -80,6 +81,7 @@ const initialState: SessionState = {
   referralRewards: [],
   loading: false,
   error: null,
+  plan: null,
 };
 
 // Helper function to extract wallet type from username
@@ -606,7 +608,7 @@ export const fetchReferralRewards = createAsyncThunk(
   }
 );
 
-const sessionSlice = createSlice({
+export const sessionSlice = createSlice({
   name: 'session',
   initialState,
   reducers: {
@@ -615,20 +617,21 @@ const sessionSlice = createSlice({
       authMethod: AuthMethod;
       email?: string;
       walletAddress?: string;
-      walletType?: WalletType
+      walletType?: WalletType;
+      plan?: string;
     }>) {
-      const sessionId = `session_${Date.now()}`;
-      state.sessionId = sessionId;
+      state.sessionId = `session_${Date.now()}`;
       state.userId = action.payload.userId;
       state.authMethod = action.payload.authMethod;
       state.email = action.payload.email || null;
       state.walletAddress = action.payload.walletAddress || null;
       state.walletType = action.payload.walletType || null;
       state.startTime = new Date().toISOString();
+      state.plan = action.payload.plan || null;
       state.activities = [];
       state.error = null;
 
-      console.log(`Session started: ${sessionId}`);
+      console.log(`Session started: ${state.sessionId}`);
       console.log(`User type: ${action.payload.authMethod || 'guest'}, User ID: ${action.payload.userId}`);
       console.log(`Wallet type: ${action.payload.walletType || 'none'}, Wallet address: ${action.payload.walletAddress || 'none'}`);
 
@@ -653,6 +656,9 @@ const sessionSlice = createSlice({
     setError(state, action: PayloadAction<string>) {
       state.error = action.payload;
       console.error(`Session error: ${action.payload}`);
+    },
+    updatePlan(state, action: PayloadAction<string>) {
+      state.plan = action.payload;
     },
   },
   extraReducers: (builder) => {
@@ -840,5 +846,5 @@ const sessionSlice = createSlice({
   },
 });
 
-export const { startSession, logActivity, endSession, setError } = sessionSlice.actions;
+export const { startSession, logActivity, endSession, setError, updatePlan } = sessionSlice.actions;
 export default sessionSlice.reducer;

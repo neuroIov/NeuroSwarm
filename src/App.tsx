@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SubscriptionNotice } from "@/components/SubscriptionNotice";
+import { Button } from "@/components/ui/button";
 
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -14,20 +15,85 @@ import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "./store";
 import { syncUptime, updateUptime } from "./store/slices/nodeSlice";
 import { useToast } from "@/components/ui/use-toast"; // ✅ added
-import { getSwarmSupabase } from "./lib/supabase-client";
+import { getSwarmSupabase, getTaskSupabase } from "./lib/supabase-client";
 import { store } from "./store";
+import { updatePlan } from "./store/slices/sessionSlice";
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
   const { session, logUserActivity, subscriptionTier } = useSession();
   const userProfile = session?.userProfile;
+  const taskSupabase = getTaskSupabase();
   const dispatch = useAppDispatch();
   const { toast } = useToast(); // ✅ added
   const { isActive, remainingFreeTierTime } = useSelector(
     (state: RootState) => state.node
-  ); // ✅ merged selectors
-  const hasShownLimitToast = useRef(false); // ✅ to prevent duplicate toasts
+  );
+  const hasShownLimitToast = useRef(false);
+
+  useEffect(() => {
+    const fetchUserPlan = async () => {
+      if (!userProfile?.id) return;
+
+      try {
+        const { data, error } = await taskSupabase
+          .from("unified_users")
+          .select("plan")
+          .eq("swarm_user_id", userProfile.id)
+          .single();
+
+        if (error) {
+          console.error("Error fetching user plan:", error);
+
+          // Check if it's the JSON object error or no rows returned error
+          if (
+            error.message.includes("JSON object") ||
+            error.message.includes("rows returned")
+          ) {
+            console.log(
+              "No plan found or connection issue - setting default plan to free"
+            );
+            dispatch(updatePlan("free"));
+
+            // Show modal to connect swarm with app for exclusive access
+            toast({
+              title: "Connection Required",
+              description:
+                "Connect your Swarm account to our Neurolov App to get exclusive access and subscription plans",
+              action: (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    window.open("https://app.neurolov.ai/", "_blank")
+                  }
+                >
+                  Connect
+                </Button>
+              ),
+              duration: 10000,
+            });
+          }
+          return;
+        }
+
+        if (data && data.plan) {
+          console.log("User plan fetched:", data.plan);
+          dispatch(updatePlan(data.plan));
+        } else {
+          // If no plan data is found, set default to free
+          dispatch(updatePlan("free"));
+        }
+      } catch (error) {
+        console.error("Error fetching user plan:", error);
+        // Set default plan to free on any error
+        dispatch(updatePlan("free"));
+      }
+    };
+
+    fetchUserPlan();
+  }, [userProfile?.id, dispatch]);
 
   // ✅ Notify when time limit reached
   useEffect(() => {
@@ -76,41 +142,39 @@ const AppContent = () => {
 
   // Sync uptime on app close/refresh
   useEffect(() => {
-    const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (isActive) {
         console.log("App closing/refreshing - syncing uptime data...");
         dispatch(syncUptime());
 
-        // Also update device status to offline in database
-        if (userProfile?.id) {
-          try {
-            const client = getSwarmSupabase();
-            // Get the active nodeId from Redux store
-            const nodeId = (store.getState() as RootState).node.nodeId;
-
-            if (nodeId) {
-              console.log(
-                `Setting node ${nodeId} to offline in database before unload`
-              );
-
-              // Attempt to update the database
-              await client
-                .from("devices")
-                .update({ status: "offline" })
-                .eq("id", nodeId);
-            }
-          } catch (err) {
-            console.error("Error updating device status on unload:", err);
-          }
-        }
-
         // Display confirmation dialog
-        event.preventDefault();
-        // Chrome requires returnValue to be set
-        event.returnValue =
+        const message =
           "If you reload or close this tab, the current process will be terminated. Are you sure?";
-        // For older browsers
-        return "If you reload or close this tab, the current process will be terminated. Are you sure?";
+        event.preventDefault();
+        event.returnValue = message; // Required for Chrome
+
+        // Update device status in a separate effect to avoid async issues
+        return message; // For older browsers
+      }
+    };
+
+    // Separate effect to handle database updates when page is unloading
+    const updateDeviceStatus = async () => {
+      if (isActive && userProfile?.id) {
+        try {
+          const client = getSwarmSupabase();
+          const nodeId = (store.getState() as RootState).node.nodeId;
+
+          if (nodeId) {
+            console.log(`Setting node ${nodeId} to offline in database`);
+            await client
+              .from("devices")
+              .update({ status: "offline" })
+              .eq("id", nodeId);
+          }
+        } catch (err) {
+          console.error("Error updating device status:", err);
+        }
       }
     };
 
@@ -118,6 +182,7 @@ const AppContent = () => {
       if (document.visibilityState === "hidden" && isActive) {
         console.log("Page hidden - syncing uptime data");
         dispatch(syncUptime());
+        updateDeviceStatus();
       }
     };
 

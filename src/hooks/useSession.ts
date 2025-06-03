@@ -163,6 +163,7 @@ export const useSession = () => {
               email: parsed.email,
               walletAddress: parsed.walletAddress,
               walletType: parsed.walletType || "phantom",
+              plan: parsed.plan,
             })
           );
 
@@ -221,11 +222,12 @@ export const useSession = () => {
             email: profileEmail,
             walletAddress: session.walletAddress,
             walletType: session.walletType,
+            plan: session.plan,
           })
         );
       }
     }
-  }, [dispatch, session.userId, session.email, session.userProfile]);
+  }, [dispatch, session.userId, session.email, session.userProfile, session.plan]);
 
   useEffect(() => {
     if (session.sessionId) {
@@ -237,6 +239,7 @@ export const useSession = () => {
           email: session.email,
           walletAddress: session.walletAddress,
           walletType: session.walletType || walletType,
+          plan: session.plan,
         })
       );
       console.log("Session saved to localStorage");
@@ -248,6 +251,7 @@ export const useSession = () => {
     session.email,
     session.walletAddress,
     session.walletType,
+    session.plan,
     walletType,
   ]);
 
@@ -484,7 +488,7 @@ export const useSession = () => {
   };
 
   // ✅ Tier logic
-  const subscriptionTier = session.userProfile?.subscription_tier || "Basic";
+  const subscriptionTier = session.plan || "free";
   const maxUptime = getMaxUptimeByTier(subscriptionTier);
 
   return {

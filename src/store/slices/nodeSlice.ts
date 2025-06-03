@@ -233,6 +233,18 @@ export const nodeSlice = createSlice({
                     remainingFreeTierTime: state.maxUptime
                 }));
             }
+        },
+        setUptimeFromDatabase: (state, action: PayloadAction<number>) => {
+            state.totalUptime = action.payload;
+            state.remainingFreeTierTime = Math.max(0, state.maxUptime - action.payload);
+
+            // Update localStorage if we have a nodeId
+            if (state.nodeId) {
+                localStorage.setItem(`node-uptime-${state.nodeId}`, JSON.stringify({
+                    totalUptime: state.totalUptime,
+                    remainingFreeTierTime: state.remainingFreeTierTime
+                }));
+            }
         }
     },
 });
@@ -245,7 +257,8 @@ export const {
     updateSuccessRate,
     updateUptime,
     syncUptime,
-    resetFreeTime
+    resetFreeTime,
+    setUptimeFromDatabase
 } = nodeSlice.actions;
 
 export default nodeSlice.reducer;

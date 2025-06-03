@@ -25,6 +25,22 @@ const StatCard = ({
   info,
   isUptime = false,
 }: StatCardProps) => {
+  let isPlan = title === "Your Plan";
+
+  const getColor = () => {
+    if (isPlan) {
+      if (value === "basic") {
+        return "text-white";
+      } else if (value === "ultimate") {
+        return "text-yellow-400";
+      } else if (value === "enterprise") {
+        return "text-green-400";
+      } else {
+        return "text-white";
+      }
+    }
+  };
+
   return (
     <div className="network-stat-card h-[100px] sm:h-[120px] rounded-2xl sm:rounded-3xl bg-[linear-gradient(135deg,#0361DA_0%,#0240B3_50%,#02072D_100%)] text-white p-2.5 sm:p-4 relative overflow-hidden transition-all duration-300 hover:border hover:border-[#20A5EF] hover:transform hover:scale-[1.02] hover:shadow-lg hover:shadow-[#0361DA]/20">
       <div className="network-stat-glow absolute -inset-1 bg-[radial-gradient(circle_at_50%_-20%,#64C8FF_0%,transparent_70%)] opacity-0 transition-opacity duration-500 z-0"></div>
@@ -36,7 +52,9 @@ const StatCard = ({
         </div>
       </div>
       <div className="flex flex-col relative z-10">
-        <div className="text-lg sm:text-2xl font-bold flex items-baseline gap-1">
+        <div
+          className={`text-lg sm:text-2xl font-bold flex items-baseline gap-1 ${getColor()}`}
+        >
           {isUptime ? (
             <div className="flex items-center">
               <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
@@ -281,10 +299,13 @@ export const NetworkStats = () => {
         info="Currently active nodes processing tasks on the network"
       />
       <StatCard
-        title="Network Load"
-        value={networkLoad}
-        unit="%"
-        changePercentage={2.4}
+        title="Your Plan"
+        value={
+          userProfile?.plan?.charAt(0).toUpperCase() +
+          userProfile?.plan?.slice(1)
+        }
+        unit=""
+        // changePercentage={2.4}
         info="Current utilization of the network's total processing capacity"
       />
       <StatCard
