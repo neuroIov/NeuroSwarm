@@ -12,10 +12,13 @@ import {
   XCircle,
   Edit,
   Calendar,
+  CreditCard,
 } from "lucide-react";
 import { WalletConnectionModal } from "./auth/WalletConnectionModal";
 import { WalletSelector } from "./WalletSelector";
 import { ProfileEditModal } from "./ProfileEditModal";
+import { useSelector } from "react-redux";
+import { RootState } from "@/store";
 
 // Define extended session type with additional properties
 interface ExtendedSession {
@@ -26,16 +29,23 @@ interface ExtendedSession {
   createdAt?: string;
   referralCode?: string;
   referralCount?: number;
+  plan?: string;
 }
 
 export function ProfileInfo() {
-  const { session, logout } = useSession();
+  const { session, logout, subscriptionTier } = useSession();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  // Get plan from Redux state
+  const plan = useSelector((state: RootState) => state.session.plan) || "free";
+
   // Cast session to extended type
-  const extendedSession = session as unknown as ExtendedSession;
+  const extendedSession = {
+    ...session,
+    plan: plan,
+  } as unknown as ExtendedSession;
 
   const isLoggedIn =
     extendedSession.userId !== "guest" && extendedSession.userId !== null;
@@ -52,6 +62,12 @@ export function ProfileInfo() {
     navigator.clipboard.writeText(text);
     setCopySuccess(true);
     setTimeout(() => setCopySuccess(false), 2000);
+  };
+
+  // Format plan name with first letter capitalized
+  const formatPlanName = (plan: string): string => {
+    if (!plan) return "Free";
+    return plan.charAt(0).toUpperCase() + plan.slice(1);
   };
 
   return (
@@ -101,6 +117,35 @@ export function ProfileInfo() {
                     : "N/A"}
                 </span>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-blue-400" />
+                <span className="text-sm font-medium">Plan:</span>
+                <span className="text-sm text-gray-300">
+                  {formatPlanName(extendedSession.plan || "free")}
+                </span>
+              </div>
+              {extendedSession.plan === "free" || !extendedSession.plan ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    (window.location.href = "https://app.neurolov.ai")
+                  }
+                  className="h-6 text-xs bg-blue-900/20 text-blue-400 border-blue-800 hover:bg-blue-900/40"
+                >
+                  Upgrade
+                </Button>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="bg-green-900/30 text-green-400 border-green-800"
+                >
+                  Premium
+                </Badge>
+              )}
             </div>
 
             <div className="flex items-center justify-between">

@@ -14,6 +14,8 @@ import {
   Monitor,
   Tablet,
   Smartphone,
+  AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { Button } from "@/components/ui/button";
@@ -48,6 +50,7 @@ import {
   stopNode,
   updateNodeMetrics,
   loadUptimeFromDatabase,
+  setUptimeFromDatabase,
 } from "@/store/slices/nodeSlice";
 import {
   fetchAndAssignTasks,
@@ -105,6 +108,7 @@ export const NodeControlPanel = () => {
   const client = getSwarmSupabase();
   const { session } = useSession();
   const userProfile = session.userProfile;
+  const walletConnected = !!session.walletAddress;
 
   const {
     isActive,
@@ -151,6 +155,10 @@ export const NodeControlPanel = () => {
   const [selectedVRAM, setSelectedVRAM] = useState<number>(0);
   const [isCreatingDevice, setIsCreatingDevice] = useState(false);
 
+  // Delete node state
+  const [isDeletingNode, setIsDeletingNode] = useState(false);
+  const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
+
   // Add useEffect for refreshing total earnings every 30 seconds
   useEffect(() => {
     // Skip if user is not logged in
@@ -193,6 +201,39 @@ export const NodeControlPanel = () => {
       setSelectedNodeId(nodeId);
     }
   }, [nodeId]);
+
+  // Fetch node uptime when selected node changes
+  useEffect(() => {
+    const fetchNodeUptime = async () => {
+      if (!selectedNodeId || !userProfile?.id) return;
+
+      try {
+        const { data, error } = await client
+          .from("devices")
+          .select("uptime")
+          .eq("id", selectedNodeId)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          console.log(
+            `Fetched uptime for node ${selectedNodeId}: ${data.uptime} seconds`
+          );
+          // If the node is currently active, we don't want to override the current uptime
+          // as it's being tracked in real-time
+          if (!isActive || nodeId !== selectedNodeId) {
+            // Use the new action creator to set the uptime in Redux
+            dispatch(setUptimeFromDatabase(data.uptime || 0));
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching node uptime:", error);
+      }
+    };
+
+    fetchNodeUptime();
+  }, [selectedNodeId, userProfile?.id, isActive, nodeId, dispatch]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -538,65 +579,124 @@ export const NodeControlPanel = () => {
         console.log(`Node status updated in database: ${JSON.stringify(data)}`);
 
         // Load the current uptime from the database
-        const databaseUptime = await loadUptimeFromDatabase(selectedNodeId);
-        console.log(
-          `Loaded uptime from database for node ${selectedNodeId}: ${databaseUptime} seconds`
-        );
+        try {
+          // Directly fetch uptime from the database
+          const { data: uptimeData, error: uptimeError } = await client
+            .from("devices")
+            .select("uptime")
+            .eq("id", selectedNodeId)
+            .single();
 
-        // Simulate starting delay
-        setTimeout(async () => {
-          // Update redux store with node info, including the uptime from database
-          dispatch(
-            startNode({
-              nodeId: selectedNode.id,
-              nodeName: selectedNode.name,
-              nodeType: selectedNode.type,
-              rewardTier: selectedNode.rewardTier,
-              maxUptime: tierInfo.maxUptime,
-              storedUptime: databaseUptime, // Pass the uptime from database
-            })
+          if (uptimeError) throw uptimeError;
+
+          const databaseUptime = uptimeData?.uptime || 0;
+          console.log(
+            `Loaded uptime from database for node ${selectedNodeId}: ${databaseUptime} seconds`
           );
 
-          // Update node status in local state
-          setNodes(
-            nodes.map((node) =>
-              node.id === selectedNodeId ? { ...node, status: "running" } : node
-            )
-          );
-
-          // Initial resource usage
-          dispatch(
-            updateNodeMetrics({
-              cpuUsage: Math.random() * 30 + 10,
-              memoryUsage: Math.random() * 20 + 5,
-              networkUsage: Math.random() * 5 + 0.5,
-            })
-          );
-
-          setIsStarting(false);
-          toast.success(
-            `Node "${selectedNode.name}" started and ready for tasks`
-          );
-
-          // Fetch and assign tasks to this node
-          try {
-            // This thunk action will fetch tasks and assign them to the node
+          // Simulate starting delay
+          setTimeout(async () => {
+            // Update redux store with node info, including the uptime from database
             dispatch(
-              fetchAndAssignTasks({
+              startNode({
                 nodeId: selectedNode.id,
-                userId: userProfile?.id,
+                nodeName: selectedNode.name,
+                nodeType: selectedNode.type,
+                rewardTier: selectedNode.rewardTier,
+                maxUptime: tierInfo.maxUptime,
+                storedUptime: databaseUptime, // Pass the uptime from database
               })
             );
-          } catch (error) {
-            console.error("Error assigning tasks:", error);
-            toast.error("Failed to assign tasks to node");
-          }
-        }, 2000);
+
+            // Update node status in local state
+            setNodes(
+              nodes.map((node) =>
+                node.id === selectedNodeId
+                  ? { ...node, status: "running" }
+                  : node
+              )
+            );
+
+            // Initial resource usage
+            dispatch(
+              updateNodeMetrics({
+                cpuUsage: Math.random() * 30 + 10,
+                memoryUsage: Math.random() * 20 + 5,
+                networkUsage: Math.random() * 5 + 0.5,
+              })
+            );
+
+            setIsStarting(false);
+            toast.success(
+              `Node "${selectedNode.name}" started and ready for tasks`
+            );
+
+            // Fetch and assign tasks to this node
+            try {
+              // This thunk action will fetch tasks and assign them to the node
+              dispatch(
+                fetchAndAssignTasks({
+                  nodeId: selectedNode.id,
+                  userId: userProfile?.id,
+                })
+              );
+            } catch (error) {
+              console.error("Error assigning tasks:", error);
+              toast.error("Failed to assign tasks to node");
+            }
+          }, 2000);
+        } catch (error) {
+          console.error("Error loading uptime from database:", error);
+          setIsStarting(false);
+          toast.error("Failed to load node uptime data");
+        }
       } catch (error) {
         console.error("Error starting node:", error);
         toast.error("Failed to start node. Please try again.");
         setIsStarting(false);
       }
+    }
+  };
+
+  const deleteNode = async () => {
+    if (!selectedNodeId || !userProfile?.id) return;
+
+    // Don't allow deleting an active node
+    if (isActive && nodeId === selectedNodeId) {
+      toast.error("Please stop the node before deleting it");
+      return;
+    }
+
+    setIsDeletingNode(true);
+
+    try {
+      // Delete the device from the database
+      const { error } = await client
+        .from("devices")
+        .delete()
+        .eq("id", selectedNodeId)
+        .eq("owner", userProfile.id);
+
+      if (error) throw error;
+
+      // Remove from local state
+      const updatedNodes = nodes.filter((node) => node.id !== selectedNodeId);
+      setNodes(updatedNodes);
+
+      // If there are other nodes, select the first one
+      if (updatedNodes.length > 0) {
+        setSelectedNodeId(updatedNodes[0].id);
+      } else {
+        setSelectedNodeId("");
+      }
+
+      toast.success("Node deleted successfully");
+      setShowDeleteConfirmDialog(false);
+    } catch (error) {
+      console.error("Error deleting node:", error);
+      toast.error("Failed to delete node");
+    } finally {
+      setIsDeletingNode(false);
     }
   };
 
@@ -660,40 +760,78 @@ export const NodeControlPanel = () => {
             </SelectContent>
           </Select>
 
-          <Button
-            variant="default"
-            disabled={isStarting || isStopping || !selectedNodeId}
-            onClick={toggleNodeStatus}
-            className={`rounded-full transition-all duration-300 shadow-md hover:shadow-lg text-white text-xs sm:text-sm px-3 py-1 sm:px-4 sm:py-2 h-9 sm:h-10 hover:translate-y-[-0.5px] ${
-              isActive
-                ? "bg-red-600 hover:bg-red-700 hover:shadow-red-500/30 shadow-red-500"
-                : "bg-green-600 hover:bg-green-700 hover:shadow-green-500/30 shadow-green-500"
-            }`}
-          >
-            {isStarting && (
-              <>
-                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
-                Starting...
-              </>
-            )}
-            {isStopping && (
-              <>
-                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
-                Stopping...
-              </>
-            )}
-            {!isStarting && !isStopping && (
-              <>
-                {isActive ? "Stop Node" : "Start Node"}
-                {!isActive ? (
-                  <VscDebugStart className="text-white/90 ml-1 sm:ml-2" />
-                ) : (
-                  <IoStopOutline className="text-white/90 ml-1 sm:ml-2" />
-                )}
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setShowDeleteConfirmDialog(true)}
+              disabled={
+                !selectedNodeId || (isActive && nodeId === selectedNodeId)
+              }
+              className="rounded-full h-9 sm:h-10 w-9 sm:w-10 border-red-700/30 hover:bg-red-900/20"
+              title={
+                isActive && nodeId === selectedNodeId
+                  ? "Stop node before deleting"
+                  : "Delete node"
+              }
+            >
+              <Trash2 className="h-4 w-4 text-red-500" />
+            </Button>
+            <Button
+              variant="default"
+              disabled={
+                isStarting ||
+                isStopping ||
+                !selectedNodeId ||
+                (!isActive && !walletConnected)
+              }
+              onClick={toggleNodeStatus}
+              className={`rounded-full transition-all duration-300 shadow-md hover:shadow-lg text-white text-xs sm:text-sm px-3 py-1 sm:px-4 sm:py-2 h-9 sm:h-10 hover:translate-y-[-0.5px] ${
+                isActive
+                  ? "bg-red-600 hover:bg-red-700 hover:shadow-red-500/30 shadow-red-500"
+                  : "bg-green-600 hover:bg-green-700 hover:shadow-green-500/30 shadow-green-500"
+              }`}
+              title={
+                !walletConnected && !isActive
+                  ? "Connect wallet to start node"
+                  : ""
+              }
+            >
+              {isStarting && (
+                <>
+                  <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
+                  Starting...
+                </>
+              )}
+              {isStopping && (
+                <>
+                  <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
+                  Stopping...
+                </>
+              )}
+              {!isStarting && !isStopping && (
+                <>
+                  {isActive ? "Stop Node" : "Start Node"}
+                  {!isActive ? (
+                    <VscDebugStart className="text-white/90 ml-1 sm:ml-2" />
+                  ) : (
+                    <IoStopOutline className="text-white/90 ml-1 sm:ml-2" />
+                  )}
+                </>
+              )}
+            </Button>
+          </div>
         </div>
+
+        {/* Show wallet connection notice when wallet is not connected */}
+        {!walletConnected && !isActive && (
+          <div className="bg-amber-800/20 border border-amber-700/30 rounded-lg p-2 mb-4 text-amber-200 text-xs">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              <span>Wallet connection required to start a node</span>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-3 sm:mb-6">
           <div className="p-2 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
@@ -1176,6 +1314,62 @@ export const NodeControlPanel = () => {
                 </>
               ) : (
                 "Confirm Device"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showDeleteConfirmDialog}
+        onOpenChange={setShowDeleteConfirmDialog}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-[#515194]">Delete Node</DialogTitle>
+            <DialogDescription className="text-[#515194]/80">
+              Are you sure you want to delete this node? This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {selectedNode && (
+              <div className="flex items-center gap-3 p-3 bg-[#1D1D33] rounded-lg">
+                {getDeviceIcon(selectedNode.type)}
+                <div>
+                  <p className="text-white font-medium">{selectedNode.name}</p>
+                  <p className="text-[#515194] text-sm">
+                    {selectedNode.brand} {selectedNode.model}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirmDialog(false)}
+              disabled={isDeletingNode}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={deleteNode}
+              disabled={isDeletingNode}
+            >
+              {isDeletingNode ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
               )}
             </Button>
           </DialogFooter>

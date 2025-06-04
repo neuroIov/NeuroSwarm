@@ -12,7 +12,15 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { updateUsername } from "@/store/slices/sessionSlice";
-import { User, Mail, Wallet, Calendar, CheckCircle, Copy } from "lucide-react";
+import {
+  User,
+  Mail,
+  Wallet,
+  Calendar,
+  CheckCircle,
+  Copy,
+  CreditCard,
+} from "lucide-react";
 import { Badge } from "./ui/badge";
 
 // Define extended session type with additional properties
@@ -25,6 +33,7 @@ interface ExtendedSession {
   createdAt?: string;
   referralCode?: string;
   referralCount?: number;
+  plan?: string;
 }
 
 interface ProfileEditModalProps {
@@ -42,7 +51,9 @@ export function ProfileEditModal({
   const [copySuccess, setCopySuccess] = useState(false);
 
   const dispatch = useAppDispatch();
-  const { userProfile, loading } = useAppSelector((state) => state.session);
+  const { userProfile, loading, plan } = useAppSelector(
+    (state) => state.session
+  );
 
   // Get the email from either the session prop or the userProfile
   const userEmail =
@@ -51,6 +62,9 @@ export function ProfileEditModal({
       ? String(userProfile.email)
       : null) ||
     "Not set";
+
+  // Get the plan from session or use default "free"
+  const userPlan = session.plan || plan || "free";
 
   // Helper function to clean username by removing wallet type metadata
   const cleanUsername = (username: string | null): string | null => {
@@ -83,7 +97,8 @@ export function ProfileEditModal({
   useEffect(() => {
     console.log("ProfileEditModal session:", session);
     console.log("ProfileEditModal userProfile:", userProfile);
-  }, [session, userProfile]);
+    console.log("ProfileEditModal plan:", userPlan);
+  }, [session, userProfile, userPlan]);
 
   const handleSaveUsername = async () => {
     if (!username.trim() || username.length < 3) {
@@ -155,6 +170,12 @@ export function ProfileEditModal({
     return `${address.substring(0, 6)}...${address.substring(
       address.length - 4
     )}`;
+  };
+
+  // Helper function to format subscription plan name
+  const formatPlanName = (plan: string): string => {
+    if (!plan) return "Free";
+    return plan.charAt(0).toUpperCase() + plan.slice(1);
   };
 
   return (
@@ -230,6 +251,41 @@ export function ProfileEditModal({
                     : "N/A"}
                 </span>
               </div>
+            </div>
+
+            {/* Subscription Plan */}
+            <div className="mb-4">
+              <Label
+                htmlFor="subscriptionPlan"
+                className="text-sm text-gray-400 mb-1 block"
+              >
+                Subscription Plan
+              </Label>
+              <div className="flex items-center gap-2 bg-[#1A1A1A] p-2 rounded border border-[#333] text-gray-300">
+                <CreditCard className="h-4 w-4 text-blue-400" />
+                <span>{formatPlanName(userPlan)}</span>
+                {userPlan !== "free" && (
+                  <Badge className="ml-2 bg-green-800 text-green-200">
+                    Premium
+                  </Badge>
+                )}
+              </div>
+              {userPlan === "free" && (
+                <div className="mt-2">
+                  <Button
+                    onClick={() =>
+                      window.open("https://app.neurolov.ai/", "_blank")
+                    }
+                    size="sm"
+                    className="w-full mt-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                  >
+                    Upgrade Plan
+                    <span className="text-xs font-thin text-white/70">
+                      connect to our app
+                    </span>
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
