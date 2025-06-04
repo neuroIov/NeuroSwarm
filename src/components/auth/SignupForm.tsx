@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { useSession } from "@/hooks/useSession";
 import { WalletConnectionModal } from "./WalletConnectionModal";
 import { SignupSuccessModal } from "./SignupSuccessModal";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Info } from "lucide-react";
 
 const formSchema = z
   .object({
@@ -37,6 +39,9 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [emailVerificationRequired, setEmailVerificationRequired] =
+    useState(false);
+  const [userEmail, setUserEmail] = useState("");
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -51,10 +56,20 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      await signupWithEmail(values.email, values.password, values.username);
+      const result = await signupWithEmail(
+        values.email,
+        values.password,
+        values.username
+      );
 
-      // After successful signup, show success modal instead of wallet modal
-      setShowSuccessModal(true);
+      if (result?.requiresEmailConfirmation) {
+        // Show email verification alert
+        setEmailVerificationRequired(true);
+        setUserEmail(values.email);
+      } else {
+        // After successful signup, show success modal
+        setShowSuccessModal(true);
+      }
     } catch (error) {
       console.error("Signup failed:", error);
       form.setError("root", {
@@ -82,6 +97,16 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
 
   return (
     <>
+      {emailVerificationRequired && (
+        <Alert className="mb-4 bg-blue-50 border-blue-200">
+          <Info className="h-4 w-4 text-blue-500" />
+          <AlertDescription className="text-blue-700">
+            Please check your inbox at <strong>{userEmail}</strong> to verify
+            your email address before logging in.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField

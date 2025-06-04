@@ -101,6 +101,7 @@ export const useSession = () => {
     username: string
   ) => {
     setIsAuthLoading(true);
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -113,19 +114,30 @@ export const useSession = () => {
       });
 
       if (error) throw error;
-      if (!data.user) throw new Error("No user data");
+      if (!data.user) throw new Error("Signup succeeded, but no user returned");
 
-      // Start session with email auth method
+      // Email confirmation is required
+      if (!data.session) {
+        console.log("Signup successful. Please check your email to confirm your account.");
+
+        // Show success modal or message in your UI
+        // Do not create session or user profile until confirmed
+        return {
+          requiresEmailConfirmation: true,
+          user: data.user,
+        };
+      }
+
+      // If email confirmation is not required and session is returned, proceed
       dispatch(
         startSession({
           userId: data.user.id,
           authMethod: "email",
-          email: email,
+          email,
           walletAddress: null,
         })
       );
 
-      // Create new user profile
       await dispatch(
         fetchOrCreateUserProfile({
           email,
@@ -140,6 +152,11 @@ export const useSession = () => {
           details: { email, username },
         })
       );
+
+      return {
+        requiresEmailConfirmation: false,
+        user: data.user,
+      };
     } catch (error) {
       console.error("Email signup failed:", error);
       throw error;
