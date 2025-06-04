@@ -158,6 +158,7 @@ export const NodeControlPanel = () => {
   // Delete node state
   const [isDeletingNode, setIsDeletingNode] = useState(false);
   const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   // Add useEffect for refreshing total earnings every 30 seconds
   useEffect(() => {
@@ -740,87 +741,99 @@ export const NodeControlPanel = () => {
         </div>
 
         <div className="flex flex-row gap-2 sm:gap-4 items-center mb-3 sm:mb-6">
-          <Select value={selectedNodeId} onValueChange={handleNodeSelect}>
+          <Select
+            value={selectedNodeId}
+            onValueChange={handleNodeSelect}
+            open={isOpen}
+            onOpenChange={setIsOpen}
+          >
             <SelectTrigger className="w-full bg-[#1D1D33] border-0 rounded-full text-[#515194] text-xs sm:text-sm h-9 sm:h-10">
-              <SelectValue placeholder="Select Node" />
+              <div className="flex items-center gap-2">
+                {selectedNode && (
+                  <>
+                    {getDeviceIcon(selectedNode.type)}
+                    <span>{selectedNode.name}</span>
+                  </>
+                )}
+                {!selectedNode && <span>Select Node</span>}
+              </div>
             </SelectTrigger>
             <SelectContent className="bg-[#0A1A2F] border-[#1E293B]">
               {nodes.map((node) => (
-                <SelectItem
-                  key={node.id}
-                  value={node.id}
-                  className="text-[#515194]"
-                >
-                  <div className="flex items-center gap-2">
-                    {getDeviceIcon(node.type)}
-                    <span>{node.name}</span>
+                <div key={node.id} className="relative">
+                  <SelectItem
+                    value={node.id}
+                    className="text-[#515194] hover:bg-[#1D1D33] focus:bg-[#1D1D33] pr-10"
+                  >
+                    <div className="flex items-center gap-2">
+                      {getDeviceIcon(node.type)}
+                      <span>{node.name}</span>
+                    </div>
+                  </SelectItem>
+                  <div
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedNodeId(node.id);
+                      setShowDeleteConfirmDialog(true);
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="p-1.5 rounded-full hover:bg-red-500/20 focus:outline-none"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </button>
                   </div>
-                </SelectItem>
+                </div>
               ))}
             </SelectContent>
           </Select>
 
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setShowDeleteConfirmDialog(true)}
-              disabled={
-                !selectedNodeId || (isActive && nodeId === selectedNodeId)
-              }
-              className="rounded-full h-9 sm:h-10 w-9 sm:w-10 border-red-700/30 hover:bg-red-900/20"
-              title={
-                isActive && nodeId === selectedNodeId
-                  ? "Stop node before deleting"
-                  : "Delete node"
-              }
-            >
-              <Trash2 className="h-4 w-4 text-red-500" />
-            </Button>
-            <Button
-              variant="default"
-              disabled={
-                isStarting ||
-                isStopping ||
-                !selectedNodeId ||
-                (!isActive && !walletConnected)
-              }
-              onClick={toggleNodeStatus}
-              className={`rounded-full transition-all duration-300 shadow-md hover:shadow-lg text-white text-xs sm:text-sm px-3 py-1 sm:px-4 sm:py-2 h-9 sm:h-10 hover:translate-y-[-0.5px] ${
-                isActive
-                  ? "bg-red-600 hover:bg-red-700 hover:shadow-red-500/30 shadow-red-500"
-                  : "bg-green-600 hover:bg-green-700 hover:shadow-green-500/30 shadow-green-500"
-              }`}
-              title={
-                !walletConnected && !isActive
-                  ? "Connect wallet to start node"
-                  : ""
-              }
-            >
-              {isStarting && (
-                <>
-                  <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
-                  Starting...
-                </>
-              )}
-              {isStopping && (
-                <>
-                  <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
-                  Stopping...
-                </>
-              )}
-              {!isStarting && !isStopping && (
-                <>
-                  {isActive ? "Stop Node" : "Start Node"}
-                  {!isActive ? (
-                    <VscDebugStart className="text-white/90 ml-1 sm:ml-2" />
-                  ) : (
-                    <IoStopOutline className="text-white/90 ml-1 sm:ml-2" />
-                  )}
-                </>
-              )}
-            </Button>
-          </div>
+          <Button
+            variant="default"
+            disabled={
+              isStarting ||
+              isStopping ||
+              !selectedNodeId ||
+              (!isActive && !walletConnected)
+            }
+            onClick={toggleNodeStatus}
+            className={`rounded-full transition-all duration-300 shadow-md hover:shadow-lg text-white text-xs sm:text-sm px-3 py-1 sm:px-4 sm:py-2 h-9 sm:h-10 hover:translate-y-[-0.5px] ${
+              isActive
+                ? "bg-red-600 hover:bg-red-700 hover:shadow-red-500/30 shadow-red-500"
+                : "bg-green-600 hover:bg-green-700 hover:shadow-green-500/30 shadow-green-500"
+            }`}
+            title={
+              !walletConnected && !isActive
+                ? "Connect wallet to start node"
+                : ""
+            }
+          >
+            {isStarting && (
+              <>
+                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
+                Starting...
+              </>
+            )}
+            {isStopping && (
+              <>
+                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
+                Stopping...
+              </>
+            )}
+            {!isStarting && !isStopping && (
+              <>
+                {isActive ? "Stop Node" : "Start Node"}
+                {!isActive ? (
+                  <VscDebugStart className="text-white/90 ml-1 sm:ml-2" />
+                ) : (
+                  <IoStopOutline className="text-white/90 ml-1 sm:ml-2" />
+                )}
+              </>
+            )}
+          </Button>
         </div>
 
         {/* Show wallet connection notice when wallet is not connected */}
