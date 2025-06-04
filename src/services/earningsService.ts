@@ -580,3 +580,173 @@ export const createTestEarning = async (userId) => {
         return { success: false, error: error.message };
     }
 };
+
+/**
+ * Handle daily check-in for a user
+ * @param {string} userId - User ID from profile
+ * @returns {Promise<{status: "checked_in" | "already_checked_in" | "rewarded" | "error", streak?: number, amount?: number, error?: string}>}
+ */
+export const handleDailyCheckIn = async (userId: string) => {
+    try {
+        if (!userId) {
+            return { status: "error" as const, error: "No user ID provided" };
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            return { status: "error" as const, error: "Supabase client not initialized" };
+        }
+
+        const today = new Date();
+        const todayStr = today.toISOString().split("T")[0];
+        const yesterday = new Date();
+        yesterday.setDate(today.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+        // 1. Fetch user's current check-in state
+        const { data: row, error: fetchError } = await client
+            .from("daily_checkins")
+            .select("*")
+            .eq("user_id", userId)
+            .single();
+
+        if (fetchError && fetchError.code !== "PGRST116") {
+            logger.error("Fetch error:", fetchError);
+            return { status: "error" as const, error: fetchError.message };
+        }
+
+        let streakCount = 1;
+
+        if (row) {
+            if (row.last_checkin_date === todayStr) {
+                return { status: "already_checked_in" as const, streak: row.streak_count }; // Already checked in today
+            }
+
+            // 2. Continue streak if last check-in was yesterday
+            if (row.last_checkin_date === yesterdayStr) {
+                streakCount = row.streak_count + 1;
+            } else {
+                streakCount = 1; // Missed a day, reset
+            }
+
+            // 3. If streak reaches 7 and not already rewarded
+            if (streakCount === 7 && row.last_rewarded_streak < 7) {
+                const totalReward = 10 + 20 + 30 + 40 + 50 + 60 + 70; // Sum of all 7 days
+
+                // Insert to `earnings` table
+                const { error: earningError } = await client.from("earnings").insert({
+                    user_id: userId,
+                    amount: totalReward,
+                    earning_type: "other",
+                });
+
+                if (earningError) {
+                    logger.error("Error creating streak reward earning:", earningError);
+                    return { status: "error" as const, error: earningError.message };
+                }
+
+                // Update or create `earnings_history`
+                const { data: latestHistory, error: historyError } = await client
+                    .from("earnings_history")
+                    .select("*")
+                    .eq("user_id", userId)
+                    .order("timestamp", { ascending: false })
+                    .limit(1)
+                    .single();
+
+                if (historyError && historyError.code !== "PGRST116") {
+                    logger.error("Error fetching earnings history:", historyError);
+                }
+
+                if (latestHistory) {
+                    await client
+                        .from("earnings_history")
+                        .update({
+                            amount: Number(latestHistory.amount) + totalReward,
+                            task_count: latestHistory.task_count + 1,
+                            timestamp: new Date().toISOString(),
+                        })
+                        .eq("id", latestHistory.id);
+                } else {
+                    await client.from("earnings_history").insert({
+                        user_id: userId,
+                        amount: totalReward,
+                        task_count: 1,
+                        timestamp: new Date().toISOString(),
+                    });
+                }
+
+                // Update streak state & reset after reward
+                await client.from("daily_checkins").update({
+                    streak_count: 0,
+                    last_checkin_date: todayStr,
+                    last_rewarded_streak: 7,
+                }).eq("user_id", userId);
+
+                return { status: "rewarded" as const, streak: 7, amount: totalReward };
+            }
+
+            // 4. Normal streak update (no reward)
+            await client.from("daily_checkins").update({
+                streak_count: streakCount,
+                last_checkin_date: todayStr,
+            }).eq("user_id", userId);
+
+            return { status: "checked_in" as const, streak: streakCount };
+        } else {
+            // 5. First time check-in
+            await client.from("daily_checkins").insert({
+                user_id: userId,
+                last_checkin_date: todayStr,
+                streak_count: 1,
+                last_rewarded_streak: 0,
+            });
+
+            return { status: "checked_in" as const, streak: 1 };
+        }
+    } catch (err) {
+        logger.error("Check-in error:", err);
+        return { status: "error" as const, error: err instanceof Error ? err.message : "Unknown error" };
+    }
+};
+
+/**
+ * Get user's current streak data
+ * @param {string} userId - User ID from profile
+ * @returns {Promise<{streak: number, lastCheckIn: string | null}>}
+ */
+export const getUserStreakData = async (userId: string) => {
+    try {
+        if (!userId) {
+            return { streak: 0, lastCheckIn: null };
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            return { streak: 0, lastCheckIn: null };
+        }
+
+        const { data, error } = await client
+            .from("daily_checkins")
+            .select("*")
+            .eq("user_id", userId)
+            .single();
+
+        if (error && error.code !== "PGRST116") {
+            logger.error("Error fetching streak data:", error);
+            return { streak: 0, lastCheckIn: null };
+        }
+
+        if (data) {
+            return {
+                streak: data.streak_count,
+                lastCheckIn: data.last_checkin_date,
+            };
+        }
+
+        return { streak: 0, lastCheckIn: null };
+    } catch (err) {
+        logger.error("Failed to fetch streak data:", err);
+        return { streak: 0, lastCheckIn: null };
+    }
+};

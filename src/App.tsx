@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/use-toast"; // ✅ added
 import { getSwarmSupabase, getTaskSupabase } from "./lib/supabase-client";
 import { store } from "./store";
 import { updatePlan } from "./store/slices/sessionSlice";
+import { ConnectAppModal } from "./components/ConnectAppModal";
 
 const queryClient = new QueryClient();
 
@@ -31,6 +32,7 @@ const AppContent = () => {
     (state: RootState) => state.node
   );
   const hasShownLimitToast = useRef(false);
+  const [showConnectModal, setShowConnectModal] = useState(false);
 
   useEffect(() => {
     const fetchUserPlan = async () => {
@@ -57,23 +59,7 @@ const AppContent = () => {
             dispatch(updatePlan("free"));
 
             // Show modal to connect swarm with app for exclusive access
-            toast({
-              title: "Connection Required",
-              description:
-                "Connect your Swarm account to our Neurolov App to get exclusive access and subscription plans",
-              action: (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    window.open("https://app.neurolov.ai/", "_blank")
-                  }
-                >
-                  Connect
-                </Button>
-              ),
-              duration: 10000,
-            });
+            setShowConnectModal(true);
           }
           return;
         }
@@ -224,6 +210,10 @@ const AppContent = () => {
       <Toaster />
       <Sonner />
       <SubscriptionNotice />
+      <ConnectAppModal
+        isOpen={showConnectModal}
+        onClose={() => setShowConnectModal(false)}
+      />
       <BrowserRouter>
         <Routes>
           <Route path="/*" element={<Index />} />

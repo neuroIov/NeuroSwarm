@@ -6,6 +6,8 @@ import {
   ArrowUpRight,
   Bug,
   Check,
+  Loader2,
+  HelpCircle,
 } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "./ui/button";
@@ -40,6 +42,7 @@ import {
   debugEarningsData,
   createTestEarning,
 } from "../services/earningsService";
+import { useDailyCheckIn } from "../hooks/useDailyCheckIn";
 
 type TimeRange = "daily" | "weekly" | "monthly" | "all-time";
 
@@ -58,9 +61,14 @@ export const EarningsDashboard = () => {
   const [chartPeriod, setChartPeriod] = useState<TimeRange>("daily");
   const [debugMode, setDebugMode] = useState<boolean>(false);
   const [debugData, setDebugData] = useState<any>(null);
+  const [checkInLoading, setCheckInLoading] = useState<boolean>(false);
+  const [streakCompleted, setStreakCompleted] = useState<boolean>(false);
+  const [streakReward, setStreakReward] = useState<number>(0);
 
   const { session } = useSession();
   const userId = session?.userProfile?.id;
+
+  const { streakData, fetchStreakData, checkIn } = useDailyCheckIn(userId);
 
   const walletAddress = useSelector(
     (state: RootState) => state.session.walletAddress
@@ -103,6 +111,13 @@ export const EarningsDashboard = () => {
       setWalletError(false);
     }
   }, [walletAddress]);
+
+  // Fetch streak data on component mount
+  useEffect(() => {
+    if (userId) {
+      fetchStreakData();
+    }
+  }, [userId, fetchStreakData]);
 
   // Process transactions into chart data based on selected period
   const chartData = useMemo<ChartDataPoint[]>(() => {
@@ -335,6 +350,61 @@ export const EarningsDashboard = () => {
       console.error("Error creating test earning:", err);
     }
   };
+
+  // Handle daily check-in
+  const handleDailyCheckIn = async () => {
+    if (!userId) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+
+    setCheckInLoading(true);
+    try {
+      const result = await checkIn();
+
+      switch (result.status) {
+        case "checked_in":
+          toast.success(
+            `Day ${result.streak} checked in! Keep the streak going!`
+          );
+          break;
+        case "already_checked_in":
+          toast.info("You've already checked in today");
+          break;
+        case "rewarded":
+          toast.success(
+            `Congratulations! You've completed a 7-day streak and earned ${result.amount} SP!`
+          );
+          // Show streak completion message
+          setStreakCompleted(true);
+          setStreakReward(result.amount || 280);
+          // Refresh earnings data to show updated balance
+          refreshData();
+          break;
+        case "error":
+          toast.error(`Error: ${result.error}`);
+          break;
+      }
+    } catch (err) {
+      toast.error("Failed to check in. Please try again.");
+      console.error("Check-in error:", err);
+    } finally {
+      setCheckInLoading(false);
+    }
+  };
+
+  // Add this to clear the streak completion message after a delay
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (streakCompleted) {
+      timer = setTimeout(() => {
+        setStreakCompleted(false);
+      }, 10000); // Hide after 10 seconds
+    }
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [streakCompleted]);
 
   // Chart tooltip components
   const CustomTooltip = ({
@@ -841,9 +911,54 @@ export const EarningsDashboard = () => {
             <div className="icon-container">
               <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
-            <h3 className="text-lg font-medium">Daily Rewards</h3>
+            <div className="flex items-center">
+              <h3 className="text-lg font-medium">Daily Rewards</h3>
+              <div className="ml-2 mt-2">
+                <InfoTooltip
+                  content={
+                    <div className="max-w-xs">
+                      <p className="mb-2">Check in daily to earn rewards!</p>
+                      <p className="mb-1">
+                        • Visit daily for 7 consecutive days
+                      </p>
+                      <p className="mb-1">
+                        • If you miss a day, your streak resets
+                      </p>
+                      <p className="mb-1">
+                        • Complete a 7-day streak to earn 280 SP
+                      </p>
+                      <p className="text-xs text-blue-300 mt-2">
+                        Rewards are added to your balance automatically
+                      </p>
+                    </div>
+                  }
+                  side="right"
+                />
+              </div>
+            </div>
           </div>
-          <Button className="gradient-button rounded-full">Check In</Button>
+          <div className="flex items-center gap-3">
+            {userId && (
+              <div className="flex items-center bg-blue-900/20 px-3 py-1 rounded-full">
+                <span className="text-xs text-blue-300 mr-1">
+                  Current streak:
+                </span>
+                <span className="text-sm font-medium text-blue-400">
+                  {streakData.streak} days
+                </span>
+              </div>
+            )}
+            <Button
+              className="gradient-button rounded-full"
+              onClick={handleDailyCheckIn}
+              disabled={checkInLoading || !userId}
+            >
+              {checkInLoading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : null}
+              Check In
+            </Button>
+          </div>
         </div>
 
         {/* Daily reward cards */}
@@ -851,47 +966,89 @@ export const EarningsDashboard = () => {
           <DailyRewardCard
             day={1}
             points={10}
-            isActive={true}
-            isCompleted={false}
+            isActive={streakData.streak === 0}
+            isCompleted={streakData.streak >= 1}
           />
           <DailyRewardCard
             day={2}
             points={20}
-            isActive={false}
-            isCompleted={false}
+            isActive={streakData.streak === 1}
+            isCompleted={streakData.streak >= 2}
           />
           <DailyRewardCard
             day={3}
             points={30}
-            isActive={false}
-            isCompleted={false}
+            isActive={streakData.streak === 2}
+            isCompleted={streakData.streak >= 3}
           />
           <DailyRewardCard
             day={4}
             points={40}
-            isActive={false}
-            isCompleted={false}
+            isActive={streakData.streak === 3}
+            isCompleted={streakData.streak >= 4}
           />
           <DailyRewardCard
             day={5}
             points={50}
-            isActive={false}
-            isCompleted={false}
+            isActive={streakData.streak === 4}
+            isCompleted={streakData.streak >= 5}
           />
           <DailyRewardCard
             day={6}
             points={60}
-            isActive={false}
-            isCompleted={false}
+            isActive={streakData.streak === 5}
+            isCompleted={streakData.streak >= 6}
           />
           <DailyRewardCard
             day={7}
             points={70}
-            isActive={false}
+            isActive={streakData.streak === 6}
             isCompleted={false}
           />
         </div>
+
+        {/* Last check-in info */}
+        {streakData.lastCheckIn && (
+          <div className="flex justify-center mt-4">
+            <div className="text-xs text-slate-400">
+              Last check-in:{" "}
+              {streakData.lastCheckIn ===
+              new Date().toISOString().split("T")[0] ? (
+                <span className="text-green-400">Today</span>
+              ) : (
+                new Date(streakData.lastCheckIn).toLocaleDateString()
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Streak completion message */}
+      {streakCompleted && (
+        <div className="w-full p-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-lg mt-4 border border-blue-500/30 flex items-center justify-between">
+          <div className="flex items-center">
+            <div className="bg-blue-500/20 p-2 rounded-full mr-3">
+              <Check className="h-6 w-6 text-blue-400" />
+            </div>
+            <div>
+              <h4 className="text-lg font-medium text-blue-300">
+                7-Day Streak Completed!
+              </h4>
+              <p className="text-sm text-slate-300">
+                You've earned {streakReward} SP for your consistency
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-slate-400 hover:text-slate-300"
+            onClick={() => setStreakCompleted(false)}
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
 
       {/* Recent Transactions */}
       <div className="w-full p-4 bg-[#161628] rounded-lg data-panel mt-6">
@@ -972,17 +1129,44 @@ export const EarningsDashboard = () => {
 
           <div className="flex justify-between items-center mb-3">
             <span className="text-sm text-gray-400">Test Tools</span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
-              onClick={handleCreateTestEarning}
-            >
-              Create Test Earning
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
+                onClick={handleCreateTestEarning}
+              >
+                Create Test Earning
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
+                onClick={fetchStreakData}
+              >
+                Refresh Streak Data
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-4">
+            <div>
+              <h4 className="text-md font-medium mb-2 text-blue-400">
+                Daily Check-in Status
+              </h4>
+              <pre className="text-xs bg-[#0D0D1A] p-2 rounded overflow-auto max-h-40">
+                {JSON.stringify(
+                  {
+                    streak: streakData.streak,
+                    lastCheckIn: streakData.lastCheckIn,
+                    today: new Date().toISOString().split("T")[0],
+                  },
+                  null,
+                  2
+                )}
+              </pre>
+            </div>
+
             <div>
               <h4 className="text-md font-medium mb-2 text-blue-400">
                 Hook Debug Info

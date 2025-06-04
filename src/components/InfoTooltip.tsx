@@ -1,6 +1,5 @@
-
-import React from 'react';
-import { HelpCircle } from 'lucide-react';
+import React, { ReactNode } from "react";
+import { HelpCircle } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -9,7 +8,7 @@ import {
 } from "@/components/ui/tooltip";
 
 interface InfoTooltipProps {
-  content: string;
+  content: string | ReactNode;
   side?: "top" | "right" | "bottom" | "left";
 }
 
@@ -18,10 +17,13 @@ export const InfoTooltip = ({ content, side = "top" }: InfoTooltipProps) => {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger>
-          <HelpCircle className="w-4 h-4 text-slate-500 hover:text-slate-300 transition-colors" />
+          <HelpCircle className="w-4 h-4 text-blue-400 hover:text-blue-300 transition-colors" />
         </TooltipTrigger>
-        <TooltipContent side={side} className="max-w-xs">
-          <p>{content}</p>
+        <TooltipContent
+          side={side}
+          className="max-w-xs bg-[#161628] border border-blue-500/30 text-white"
+        >
+          {typeof content === "string" ? <p>{content}</p> : content}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

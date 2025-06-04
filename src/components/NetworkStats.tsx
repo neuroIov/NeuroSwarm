@@ -301,8 +301,10 @@ export const NetworkStats = () => {
       <StatCard
         title="Your Plan"
         value={
-          userProfile?.plan?.charAt(0).toUpperCase() +
-          userProfile?.plan?.slice(1)
+          userProfile?.plan
+            ? userProfile?.plan?.charAt(0).toUpperCase() +
+              userProfile?.plan?.slice(1)
+            : "Free"
         }
         unit=""
         // changePercentage={2.4}
