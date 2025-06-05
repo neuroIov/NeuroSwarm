@@ -139,36 +139,15 @@ const AppContent = () => {
         event.preventDefault();
         event.returnValue = message; // Required for Chrome
 
-        // Update device status in a separate effect to avoid async issues
         return message; // For older browsers
       }
     };
 
-    // Separate effect to handle database updates when page is unloading
-    const updateDeviceStatus = async () => {
-      if (isActive && userProfile?.id) {
-        try {
-          const client = getSwarmSupabase();
-          const nodeId = (store.getState() as RootState).node.nodeId;
-
-          if (nodeId) {
-            console.log(`Setting node ${nodeId} to offline in database`);
-            await client
-              .from("devices")
-              .update({ status: "offline" })
-              .eq("id", nodeId);
-          }
-        } catch (err) {
-          console.error("Error updating device status:", err);
-        }
-      }
-    };
-
+    // Visibility change handler for when tab is hidden but not closed
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden" && isActive) {
         console.log("Page hidden - syncing uptime data");
         dispatch(syncUptime());
-        updateDeviceStatus();
       }
     };
 
@@ -184,7 +163,7 @@ const AppContent = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (syncInterval) clearInterval(syncInterval);
     };
-  }, [isActive, dispatch, userProfile?.id]);
+  }, [isActive, dispatch]);
 
   useEffect(() => {
     let uptimeInterval: NodeJS.Timeout | null = null;
