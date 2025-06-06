@@ -17,6 +17,7 @@ import { WalletConnectionModal } from "./WalletConnectionModal";
 import { SignupSuccessModal } from "./SignupSuccessModal";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info } from "lucide-react";
+import { ConnectAppModal } from "@/components/ConnectAppModal";
 
 const formSchema = z
   .object({
@@ -39,6 +40,7 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [showConnectModal, setShowConnectModal] = useState(false);
   const [emailVerificationRequired, setEmailVerificationRequired] =
     useState(false);
   const [userEmail, setUserEmail] = useState("");
@@ -87,12 +89,20 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
 
   const handleContinueToWallet = () => {
     setShowSuccessModal(false);
-    setShowWalletModal(true);
+    // Show connect app modal after a delay
+    setTimeout(() => {
+      setShowConnectModal(true);
+    }, 500);
   };
 
   const handleWalletModalClose = () => {
     setShowWalletModal(false);
     onSuccess(); // Close the auth modal when wallet modal is closed
+  };
+
+  const handleConnectModalClose = () => {
+    setShowConnectModal(false);
+    setShowWalletModal(true); // Show wallet modal after connect modal is closed
   };
 
   return (
@@ -198,6 +208,11 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         isOpen={showSuccessModal}
         onClose={handleSuccessModalClose}
         onContinue={handleContinueToWallet}
+      />
+
+      <ConnectAppModal
+        isOpen={showConnectModal}
+        onClose={handleConnectModalClose}
       />
 
       <WalletConnectionModal

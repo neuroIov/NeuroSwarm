@@ -21,6 +21,7 @@ import {
   createReferralRelationship,
 } from "@/store/slices/sessionSlice";
 import { UsernameDialog } from "@/components/UsernameDialog";
+import { ReferralCodeDialog } from "@/components/ReferralCodeDialog";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import HelpCenter from "@/components/HelpCenter";
@@ -55,6 +56,8 @@ const Dashboard = () => (
 const Index = () => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [showUsernameDialog, setShowUsernameDialog] = useState(false);
+  const [showReferralDialog, setShowReferralDialog] = useState(false);
+  const [detectedRefCode, setDetectedRefCode] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -78,7 +81,8 @@ const Index = () => {
     const refCode = searchParams.get("ref");
     if (refCode) {
       localStorage.setItem("ref_code", refCode);
-      toast.success("Referral code detected and saved");
+      setDetectedRefCode(refCode);
+      setShowReferralDialog(true);
       console.log(`Referral code saved: ${refCode}`);
     }
   }, [searchParams]);
@@ -95,6 +99,11 @@ const Index = () => {
   const handleSaveUsername = (username: string) => {
     // The dialog now handles both username and referral internally
     setShowUsernameDialog(false);
+  };
+
+  // Handler to close the referral code dialog
+  const handleCloseReferralDialog = () => {
+    setShowReferralDialog(false);
   };
 
   return (
@@ -160,6 +169,13 @@ const Index = () => {
         onClose={() => setShowUsernameDialog(false)}
         onSave={handleSaveUsername}
         initialUsername={userProfile?.user_name || ""}
+      />
+
+      {/* Referral code detection dialog */}
+      <ReferralCodeDialog
+        isOpen={showReferralDialog}
+        onClose={handleCloseReferralDialog}
+        referralCode={detectedRefCode}
       />
     </div>
   );
