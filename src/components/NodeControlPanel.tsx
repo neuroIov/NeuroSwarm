@@ -68,6 +68,7 @@ import {
 } from "@/services/earningsService";
 import { VscDebugStart } from "react-icons/vsc";
 import { IoStopOutline } from "react-icons/io5";
+import { setCurrentDevice } from "@/store/slices/deviceSlice";
 
 type DeviceGroup = "desktop_laptop" | "mobile_tablet";
 
@@ -137,24 +138,13 @@ export const NodeControlPanel = () => {
   const [totalEarnings, setTotalEarnings] = useState(0);
   const { subscriptionTier } = useSession();
   const tierInfo = getTierByName(subscriptionTier);
+  const [isRegistering, setIsRegistering] = useState(false);
 
   // Device selection state
-  const [showDeviceTypeDialog, setShowDeviceTypeDialog] = useState(false);
+  const [showScanResultDialog, setShowScanResultDialog] = useState(false);
   const [detectedHardware, setDetectedHardware] = useState<HardwareInfo | null>(
     null
   );
-  const [deviceGroup, setDeviceGroup] = useState<DeviceGroup>("desktop_laptop");
-  const [selectedDeviceType, setSelectedDeviceType] = useState<
-    "desktop" | "laptop" | "tablet" | "mobile"
-  >("desktop");
-  const [selectedBrand, setSelectedBrand] = useState<string>("");
-  const [selectedModel, setSelectedModel] = useState<string>("");
-  const [customSpecs, setCustomSpecs] = useState<{
-    cpu?: string;
-    gpu?: string;
-  }>({});
-  const [selectedVRAM, setSelectedVRAM] = useState<number>(0);
-  const [isCreatingDevice, setIsCreatingDevice] = useState(false);
 
   // Delete node state
   const [isDeletingNode, setIsDeletingNode] = useState(false);
@@ -179,6 +169,122 @@ export const NodeControlPanel = () => {
       clearInterval(earningsInterval);
     };
   }, [userProfile?.id]);
+
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [deviceName, setDeviceName] = useState("");
+  const [tempDeviceSpecs, setTempDeviceSpecs] = useState<any>(null);
+
+  const handleRegisterClick = () => {
+    if (!detectedHardware || !userProfile?.id) {
+      toast.error("Unable to register device. Please try again.");
+      return;
+    }
+
+    // Create device specs object matching the DeviceSpecs interface
+    const deviceSpecs = {
+      cpu: `${detectedHardware.cpuCores || 'Unknown'} Cores`,
+      gpu: detectedHardware.gpuInfo || 'Unknown',
+      ram: detectedHardware.deviceMemory || 0,
+      deviceType: 'desktop' as const,
+      deviceBrand: 'Generic',
+      deviceModel: `${detectedHardware.rewardTier.toUpperCase()} Device`,
+      maxUptime: tierInfo?.maxUptime || 4 * 60 * 60
+    };
+
+    setTempDeviceSpecs(deviceSpecs);
+    setShowNameDialog(true);
+    setShowScanResultDialog(false);
+  };
+
+  const registerDevice = async (customName: string) => {
+    if (!tempDeviceSpecs || !userProfile?.id || !detectedHardware) {
+      toast.error("Unable to register device. Please try again.");
+      return;
+    }
+
+    console.log("Registering device with hardware:", detectedHardware);
+
+    // Check device limit based on subscription
+    const { data: existingDevices } = await client
+      .from("devices")
+      .select("id")
+      .eq("owner", userProfile.id);
+
+    const deviceCount = existingDevices?.length || 0;
+    const deviceLimit = tierInfo?.deviceLimit || 1;
+
+    if (deviceCount >= deviceLimit) {
+      toast.error(`Your ${subscriptionTier} plan is limited to ${deviceLimit} device(s). Please upgrade your subscription to add more devices.`);
+      return;
+    }
+
+    setIsRegistering(true);
+    try {
+      // Only include fields that exist in the database schema
+      const deviceData = {
+        status: "offline",
+        gpu_model: detectedHardware.gpuInfo || "Unknown",
+        hash_rate: Math.floor(Math.random() * 50) + 50,
+        device_specs: {
+          ...tempDeviceSpecs,
+          deviceName: customName
+        },
+        owner: userProfile.id,
+        created_at: new Date().toISOString(),
+        last_seen: new Date().toISOString(),
+        uptime: 0,
+        stake_amount: 0,
+        performance_score: 100,
+        reward_tier: detectedHardware.rewardTier
+      };
+
+      console.log("Final device data:", deviceData);
+
+      const { data: device, error } = await client
+        .from("devices")
+        .insert(deviceData)
+        .select("*")
+        .single();
+
+      if (error) {
+        console.error("Registration error details:", error);
+        throw error;
+      }
+
+      console.log("Registered device:", device);
+
+      if (device) {
+        // Update Redux store with the full device data
+        dispatch(setCurrentDevice(device.id));
+        
+        // Convert device to NodeInfo format and update local state
+        const nodeInfo: NodeInfo = {
+          id: device.id,
+          name: device.device_specs.deviceName || 'Unnamed Device',
+          type: device.device_specs.deviceType || 'desktop',
+          brand: device.device_specs.deviceBrand,
+          model: device.device_specs.deviceModel,
+          rewardTier: device.reward_tier,
+          status: device.status,
+          cpuCores: device.device_specs.cpu,
+          memory: device.device_specs.ram,
+          gpuInfo: device.gpu_model
+        };
+        
+        setNodes(prev => [...prev, nodeInfo]);
+        setSelectedNodeId(device.id);
+      }
+
+      toast.success("Device registered successfully!");
+      setShowNameDialog(false);
+      setDeviceName("");
+    } catch (error: any) {
+      console.error("Error registering device:", error);
+      toast.error(error.message || "Failed to register device. Please try again.");
+    } finally {
+      setIsRegistering(false);
+    }
+  };
 
   const fetchEarningsData = async (silent = false) => {
     if (!userProfile?.id) return;
@@ -393,7 +499,6 @@ export const NodeControlPanel = () => {
     setScanStage("Detecting device type...");
 
     setTimeout(() => {
-      setScanProgress(10);
       performHardwareScan();
     }, 1000);
   };
@@ -408,110 +513,21 @@ export const NodeControlPanel = () => {
       updateProgress(20, "Analyzing system capabilities...");
       await new Promise((resolve) => setTimeout(resolve, 800));
 
-      updateProgress(40, "Checking hardware specs...");
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      updateProgress(60, "Determining device category...");
+      updateProgress(60, "Detecting hardware tier...");
       const hardwareInfo = await detectHardware();
       setDetectedHardware(hardwareInfo);
-      setDeviceGroup(hardwareInfo.deviceGroup);
 
-      updateProgress(100, "Initial scan complete!");
+      updateProgress(100, "Scan complete!");
       setIsScanning(false);
 
-      // Close scan dialog and open device selection
-      setTimeout(() => {
-        setShowScanDialog(false);
-        setShowDeviceTypeDialog(true);
-        // Reset selection state
-        setSelectedDeviceType("desktop");
-        setSelectedBrand("");
-        setSelectedModel("");
-        setCustomSpecs({});
-      }, 1000);
+      // Show scan results dialog
+      setShowScanDialog(false);
+      setShowScanResultDialog(true);
     } catch (error) {
       console.error("Hardware scan error:", error);
       toast.error("Failed to scan hardware. Please try again.");
       setShowScanDialog(false);
       setIsScanning(false);
-    }
-  };
-
-  const confirmDeviceType = async () => {
-    if (
-      !userProfile?.id ||
-      !detectedHardware ||
-      !selectedDeviceType ||
-      !selectedBrand ||
-      !selectedModel
-    )
-      return;
-
-    setIsCreatingDevice(true);
-
-    try {
-      // Create device specs object with different handling based on device type
-      const deviceSpecs: any = {
-        type: selectedDeviceType,
-        brand: selectedBrand,
-        model: selectedModel,
-        cpuCores: detectedHardware.cpuCores,
-        memory: detectedHardware.deviceMemory,
-        gpuInfo: detectedHardware.gpuInfo,
-      };
-
-      // Add CPU and GPU info for devices that require custom specs
-      if (requiresCustomSpecs(deviceGroup, selectedDeviceType)) {
-        deviceSpecs.cpu = customSpecs.cpu;
-        deviceSpecs.gpu = customSpecs.gpu;
-      }
-
-      // Insert device into database
-      const { data: device, error } = await client
-        .from("devices")
-        .insert({
-          status: "offline",
-          gpu_model: requiresCustomSpecs(deviceGroup, selectedDeviceType)
-            ? customSpecs.gpu
-            : `${selectedBrand} ${selectedModel} GPU`,
-          vram: selectedVRAM,
-          hash_rate: Math.floor(Math.random() * 50) + 50, // Random value between 50-100
-          device_specs: deviceSpecs,
-          owner: userProfile.id,
-        })
-        .select("id")
-        .single();
-
-      if (error) throw error;
-
-      // Create local node representation
-      const newNode: NodeInfo = {
-        id: device.id,
-        name: `${selectedBrand} ${selectedModel}`,
-        type: selectedDeviceType,
-        brand: selectedBrand,
-        model: selectedModel,
-        customSpecs: requiresCustomSpecs(deviceGroup, selectedDeviceType)
-          ? customSpecs
-          : undefined,
-        rewardTier: detectedHardware.rewardTier,
-        status: "idle",
-        cpuCores: detectedHardware.cpuCores,
-        memory: detectedHardware.deviceMemory,
-        gpuInfo: requiresCustomSpecs(deviceGroup, selectedDeviceType)
-          ? customSpecs.gpu
-          : `${selectedBrand} ${selectedModel} GPU`,
-      };
-
-      setNodes([...nodes, newNode]);
-      setSelectedNodeId(newNode.id);
-      setShowDeviceTypeDialog(false);
-      toast.success("Device added successfully!");
-    } catch (error) {
-      console.error("Error creating device:", error);
-      toast.error("Failed to create device. Please try again.");
-    } finally {
-      setIsCreatingDevice(false);
     }
   };
 
@@ -716,6 +732,21 @@ export const NodeControlPanel = () => {
         return "CPU (Basic Rewards)";
       default:
         return String(tier);
+    }
+  };
+
+  const getTierDescription = (tier?: string) => {
+    switch (tier) {
+      case "webgpu":
+        return "High-performance GPU with WebGPU support - Maximum rewards";
+      case "wasm":
+        return "Powerful system with 4+ CPU cores and 4GB+ memory";
+      case "webgl":
+        return "Standard GPU with WebGL support";
+      case "cpu":
+        return "Basic CPU-only processing";
+      default:
+        return "Unknown device tier";
     }
   };
 
@@ -1151,306 +1182,54 @@ export const NodeControlPanel = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={showDeviceTypeDialog}
-        onOpenChange={setShowDeviceTypeDialog}
-      >
-        <DialogContent
-          className="sm:max-w-md"
-          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
-        >
+      <Dialog open={showScanResultDialog} onOpenChange={setShowScanResultDialog}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-[#515194]">
-              {deviceGroup === "desktop_laptop"
-                ? "Desktop & Laptop Setup"
-                : "Mobile & Tablet Setup"}
-            </DialogTitle>
-            <DialogDescription className="text-[#515194]/80">
-              {deviceGroup === "desktop_laptop"
-                ? "We detected a desktop or laptop device. Please specify your exact device type."
-                : "We detected a mobile or tablet device. Please specify your exact device type."}
-            </DialogDescription>
+            <DialogTitle>Hardware Scan Results</DialogTitle>
           </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <h3 className="text-xl font-semibold">
+                Your Device Tier:{" "}
+                <span className="text-primary">{detectedHardware?.rewardTier.toUpperCase()}</span>
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {getTierDescription(detectedHardware?.rewardTier)}
+              </p>
 
-          <div className="py-4">
-            <div className="space-y-4">
-              <Select
-                value={selectedDeviceType}
-                onValueChange={(
-                  value: "desktop" | "laptop" | "tablet" | "mobile"
-                ) => {
-                  setSelectedDeviceType(value);
-                  setSelectedBrand("");
-                  setSelectedModel("");
-                  setCustomSpecs({});
-                }}
-              >
-                <SelectTrigger
-                  style={{
-                    backgroundColor: "#1D1D33",
-                    padding: "8px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid rgba(15, 23, 42, 0.3)",
-                  }}
+              <div className="flex flex-col w-full gap-4 mt-4">
+                <Button
+                  onClick={handleRegisterClick}
+                  disabled={isRegistering}
+                  className="w-full"
                 >
-                  <SelectValue
-                    placeholder="Select device type"
-                    style={{
-                      color: "#515194",
-                      fontSize: "14px",
-                    }}
-                  />
-                </SelectTrigger>
-                <SelectContent
-                  style={{
-                    backgroundColor: "rgba(9, 12, 24, 1)",
-                    padding: "8px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid rgba(9, 12, 24, 1)",
-                  }}
-                >
-                  {getDeviceTypesForGroup(deviceGroup).map((type) => (
-                    <SelectItem
-                      key={type}
-                      value={type}
-                      style={{
-                        backgroundColor: "rgba(9, 12, 24, 1)",
-                        padding: "8px 12px",
-                        borderRadius: "6px",
-                        border: "1px solid rgba(9, 12, 24, 1)",
-                      }}
-                    >
-                      <div className="flex items-center">
-                        {getDeviceIcon(
-                          type as "desktop" | "laptop" | "tablet" | "mobile"
-                        )}
-                        <span
-                          className="ml-2"
-                          style={{
-                            color: "#515194",
-                            fontSize: "14px",
-                          }}
-                        >
-                          {type.charAt(0).toUpperCase() + type.slice(1)}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  Register Device
+                </Button>
 
-              {selectedDeviceType && (
-                <Select
-                  value={selectedBrand}
-                  onValueChange={(value: string) => {
-                    setSelectedBrand(value);
-                    setSelectedModel("");
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowScanResultDialog(false);
+                    startScan();
                   }}
+                  className="w-full"
                 >
-                  <SelectTrigger style={{ backgroundColor: "#1D1D33" }}>
-                    <SelectValue
-                      placeholder="Select brand"
-                      style={{ color: "#515194" }}
-                    />
-                  </SelectTrigger>
-                  <SelectContent
-                    style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+                  Scan Again
+                </Button>
+
+                <div className="flex flex-col items-center gap-2">
+                  <p className="text-sm">Think this scan result is incorrect?</p>
+                  <Button
+                    variant="ghost"
+                    onClick={() => window.open('https://forms.gle/yourFormUrl', '_blank')}
+                    className="text-sm"
                   >
-                    {getDeviceBrands(deviceGroup, selectedDeviceType).map(
-                      (brand) => (
-                        <SelectItem
-                          key={brand}
-                          value={brand}
-                          style={{
-                            backgroundColor: "rgba(9, 12, 24, 1)",
-                            color: "#515194",
-                          }}
-                        >
-                          {brand}
-                        </SelectItem>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
-              )}
-
-              {selectedBrand && (
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger style={{ backgroundColor: "#1D1D33" }}>
-                    <SelectValue
-                      placeholder="Select model"
-                      style={{ color: "#515194" }}
-                    />
-                  </SelectTrigger>
-                  <SelectContent
-                    style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
-                  >
-                    {getDeviceModels(
-                      deviceGroup,
-                      selectedDeviceType,
-                      selectedBrand
-                    ).map((model) => (
-                      <SelectItem
-                        key={model}
-                        value={model}
-                        style={{
-                          backgroundColor: "rgba(9, 12, 24, 1)",
-                          color: "#515194",
-                        }}
-                      >
-                        {model}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-
-              {requiresCustomSpecs(deviceGroup, selectedDeviceType) &&
-                selectedModel && (
-                  <div className="space-y-4">
-                    <div>
-                      <label
-                        htmlFor="cpu"
-                        className="block text-sm font-medium mb-1 text-[#515194]"
-                      >
-                        CPU Model
-                      </label>
-                      <Input
-                        id="cpu"
-                        style={{ backgroundColor: "#1D1D33" }}
-                        placeholder="e.g. Intel Core i7-12700K"
-                        value={customSpecs.cpu || ""}
-                        onChange={(e) =>
-                          setCustomSpecs((prev) => ({
-                            ...prev,
-                            cpu: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="gpu"
-                        className="block text-sm font-medium mb-1 text-[#515194]"
-                      >
-                        GPU Model
-                      </label>
-                      <Input
-                        id="gpu"
-                        style={{ backgroundColor: "#1D1D33" }}
-                        placeholder="e.g. NVIDIA RTX 4070"
-                        value={customSpecs.gpu || ""}
-                        onChange={(e) =>
-                          setCustomSpecs((prev) => ({
-                            ...prev,
-                            gpu: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label
-                        htmlFor="vram"
-                        className="block text-sm font-medium mb-1 text-[#515194]"
-                      >
-                        VRAM (GB)
-                      </label>
-                      <Select
-                        value={selectedVRAM.toString()}
-                        onValueChange={(value) =>
-                          setSelectedVRAM(Number(value))
-                        }
-                      >
-                        <SelectTrigger
-                          style={{
-                            backgroundColor: "#1D1D33",
-                            color: "#515194",
-                          }}
-                        >
-                          <SelectValue placeholder="Select VRAM" />
-                        </SelectTrigger>
-                        <SelectContent
-                          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
-                        >
-                          {[4, 8, 12, 16, 32, 64].map((vram) => (
-                            <SelectItem
-                              key={vram}
-                              value={vram.toString()}
-                              style={{ color: "#515194" }}
-                            >
-                              {vram} GB
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
-
-              {!requiresCustomSpecs(deviceGroup, selectedDeviceType) &&
-                selectedModel && (
-                  <div>
-                    <label
-                      htmlFor="vram"
-                      className="block text-sm font-medium mb-1 text-[#515194]"
-                    >
-                      VRAM (GB)
-                    </label>
-                    <Select
-                      value={selectedVRAM.toString()}
-                      onValueChange={(value) => setSelectedVRAM(Number(value))}
-                    >
-                      <SelectTrigger
-                        style={{
-                          backgroundColor: "#1D1D33",
-                          color: "#515194",
-                        }}
-                      >
-                        <SelectValue placeholder="Select VRAM" />
-                      </SelectTrigger>
-                      <SelectContent
-                        style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
-                      >
-                        {[2, 4, 8, 12, 16].map((vram) => (
-                          <SelectItem
-                            key={vram}
-                            value={vram.toString()}
-                            style={{ color: "#515194" }}
-                          >
-                            {vram} GB
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                    Submit Device Validation Form
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
-
-          <DialogFooter>
-            <Button
-              onClick={confirmDeviceType}
-              disabled={
-                !selectedDeviceType ||
-                !selectedBrand ||
-                !selectedModel ||
-                (requiresCustomSpecs(deviceGroup, selectedDeviceType) &&
-                  (!customSpecs.cpu || !customSpecs.gpu || !selectedVRAM)) ||
-                (!requiresCustomSpecs(deviceGroup, selectedDeviceType) &&
-                  !selectedVRAM) ||
-                isCreatingDevice
-              }
-            >
-              {isCreatingDevice ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating Device...
-                </>
-              ) : (
-                "Confirm Device"
-              )}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1505,6 +1284,41 @@ export const NodeControlPanel = () => {
               ) : (
                 "Delete"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showNameDialog} onOpenChange={setShowNameDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Name Your Device</DialogTitle>
+            <DialogDescription>
+              Give your device a memorable name to help identify it in your dashboard.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Input
+                id="deviceName"
+                placeholder="My Mining Rig"
+                value={deviceName}
+                onChange={(e) => setDeviceName(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowNameDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => registerDevice(deviceName)}
+              disabled={!deviceName.trim() || isRegistering}
+            >
+              {isRegistering ? "Registering..." : "Register"}
             </Button>
           </DialogFooter>
         </DialogContent>

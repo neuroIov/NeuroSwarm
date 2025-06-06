@@ -693,7 +693,7 @@ export const ReferralProgram = () => {
         />
         <ReferralStatCard
           label="Total Referral Rewards"
-          value={`${totalReferralEarnings.toFixed(2)} NLOV`}
+          value={`${totalReferralEarnings.toFixed(2)} SP`}
           backgroundImage={"/images/flower_2.png"}
           highlight
         />

@@ -288,43 +288,105 @@ const determineRewardTier = async (
 
 // Main function to detect hardware capabilities
 export const detectHardware = async (): Promise<HardwareInfo> => {
-  console.log('Starting real hardware detection...');
+  console.log('Starting hardware tier detection...');
 
   try {
-    console.log('Detecting device hardware...');
+    // Get WebGL info first to identify the actual GPU
+    const gl = document.createElement('canvas').getContext('webgl2');
+    const debugInfo = gl?.getExtension('WEBGL_debug_renderer_info');
+    const gpuRenderer = debugInfo ? gl?.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'Unknown';
+    const gpuVendor = debugInfo ? gl?.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'Unknown';
 
-    // Run all detection in parallel
-    const [webgpuSupport, webglCapabilities, gpuInfo] = await Promise.all([
-      hasWebGPU(),
-      detectWebGLCapabilities(),
-      getGPUInfo(),
-    ]);
+    console.log('Detected GPU:', { renderer: gpuRenderer, vendor: gpuVendor });
 
-    // First just detect the device group
-    const deviceGroup = detectDeviceGroup();
+    // Check if this is a mobile device
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile) {
+      console.log('Mobile device detected - CPU tier');
+      return {
+        rewardTier: 'cpu',
+        deviceGroup: 'mobile_tablet',
+        cpuCores: getCPUCores(),
+        deviceMemory: getDeviceMemory(),
+        gpuInfo: gpuRenderer || 'Mobile GPU'
+      };
+    }
 
-    const rewardTier = await determineRewardTier(webgpuSupport, webglCapabilities);
+    // Check if this is an integrated GPU
+    const isIntegrated = 
+      (gpuRenderer?.toLowerCase().includes('intel') && !gpuRenderer?.toLowerCase().includes('arc')) ||
+      gpuRenderer?.toLowerCase().includes('hd graphics') ||
+      gpuRenderer?.toLowerCase().includes('uhd graphics') ||
+      gpuRenderer?.toLowerCase().includes('iris') ||
+      gpuVendor?.toLowerCase().includes('intel');
 
-    const hardwareInfo: HardwareInfo = {
+    // For integrated GPUs, go straight to CPU tier
+    if (isIntegrated) {
+      console.log('Integrated GPU detected - CPU tier');
+      return {
+        rewardTier: 'cpu',
+        deviceGroup: 'desktop_laptop',
+        cpuCores: getCPUCores(),
+        deviceMemory: getDeviceMemory(),
+        gpuInfo: gpuRenderer || 'Integrated GPU'
+      };
+    }
+
+    // For dedicated GPUs, check if it's a high-end one
+    const isHighEndGPU = 
+      gpuRenderer?.toLowerCase().includes('rtx') ||
+      gpuRenderer?.toLowerCase().includes('rx 6') ||
+      gpuRenderer?.toLowerCase().includes('quadro') ||
+      gpuRenderer?.toLowerCase().includes('radeon pro');
+
+    // Check for mid-range GPUs (WASM tier)
+    const isMidRangeGPU =
+      gpuRenderer?.toLowerCase().includes('gtx') ||
+      gpuRenderer?.toLowerCase().includes('rx 5') ||
+      gpuRenderer?.toLowerCase().includes('rx 4') ||
+      gpuRenderer?.toLowerCase().includes('vega');
+
+    if (isHighEndGPU) {
+      console.log('High-end GPU detected - WebGPU tier');
+      return {
+        rewardTier: 'webgpu',
+        deviceGroup: 'desktop_laptop',
+        cpuCores: getCPUCores(),
+        deviceMemory: getDeviceMemory(),
+        gpuInfo: gpuRenderer || 'High-end GPU'
+      };
+    }
+
+    // WASM tier for mid-range GPUs
+    if (isMidRangeGPU) {
+      console.log('Mid-range GPU detected - WASM tier');
+      return {
+        rewardTier: 'wasm',
+        deviceGroup: 'desktop_laptop',
+        cpuCores: getCPUCores(),
+        deviceMemory: getDeviceMemory(),
+        gpuInfo: gpuRenderer || 'Mid-range GPU'
+      };
+    }
+
+    // For other dedicated GPUs, use WebGL tier
+    console.log('Standard dedicated GPU detected - WebGL tier');
+    return {
+      rewardTier: 'webgl',
+      deviceGroup: 'desktop_laptop',
       cpuCores: getCPUCores(),
       deviceMemory: getDeviceMemory(),
-      gpuInfo,
-      deviceGroup,
-      rewardTier,
+      gpuInfo: gpuRenderer || 'Standard GPU'
     };
 
-    console.log('Hardware detection complete:', hardwareInfo);
-    return hardwareInfo;
   } catch (e) {
     console.error('Hardware detection error:', e);
-    const deviceGroup = detectDeviceGroup();
-    const fallbackInfo: HardwareInfo = {
+    return {
+      rewardTier: 'cpu',
+      deviceGroup: 'desktop_laptop',
       cpuCores: 1,
       deviceMemory: 'Unknown',
-      gpuInfo: 'Basic GPU',
-      deviceGroup,
-      rewardTier: 'cpu'
+      gpuInfo: 'Basic GPU'
     };
-    return fallbackInfo;
   }
 };
