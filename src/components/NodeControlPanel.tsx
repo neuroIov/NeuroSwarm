@@ -51,6 +51,7 @@ import {
   updateNodeMetrics,
   loadUptimeFromDatabase,
   setUptimeFromDatabase,
+  syncUptime,
 } from "@/store/slices/nodeSlice";
 import {
   fetchAndAssignTasks,
@@ -717,6 +718,126 @@ export const NodeControlPanel = () => {
         return String(tier);
     }
   };
+
+  // Sync uptime on app close/refresh
+  useEffect(() => {
+    const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
+      if (isActive) {
+        console.log("App closing/refreshing - syncing uptime data...");
+
+        // Only sync uptime to database - don't stop the node yet
+        dispatch(syncUptime());
+
+        // Display confirmation dialog
+        const message =
+          "If you reload or close this tab, the current process will be terminated. Are you sure?";
+        event.preventDefault();
+        event.returnValue = message; // Required for Chrome
+
+        return message; // For older browsers
+      }
+    };
+
+    // This function will be called when the page is actually being unloaded
+    const handleUnload = () => {
+      if (isActive && selectedNodeId) {
+        console.log("Page actually unloading - stopping node");
+
+        // Use synchronous localStorage to mark node for offline status
+        // This will be checked on next load to update the database
+        try {
+          localStorage.setItem("nodeToStop", selectedNodeId);
+          localStorage.setItem("nodeStopTime", new Date().toISOString());
+        } catch (e) {
+          console.error("Failed to save node stop info to localStorage", e);
+        }
+      }
+    };
+
+    // Separate effect to handle database updates when page is unloading
+    const updateDeviceStatus = async () => {
+      if (isActive && userProfile?.id) {
+        try {
+          if (selectedNodeId) {
+            console.log(
+              `Setting node ${selectedNodeId} to offline in database`
+            );
+            await client
+              .from("devices")
+              .update({ status: "offline" })
+              .eq("id", selectedNodeId);
+          }
+        } catch (err) {
+          console.error("Error updating device status:", err);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && isActive) {
+        console.log("Page hidden - syncing uptime data");
+        dispatch(syncUptime());
+      }
+    };
+
+    // Check if we need to stop a node from a previous unload
+    const checkPreviousUnload = async () => {
+      try {
+        const nodeToStop = localStorage.getItem("nodeToStop");
+        const nodeStopTime = localStorage.getItem("nodeStopTime");
+
+        if (nodeToStop && nodeStopTime) {
+          const stopTime = new Date(nodeStopTime);
+          const now = new Date();
+          const timeDiff = now.getTime() - stopTime.getTime();
+
+          // If the stored data is recent (within last 10 seconds), update the node status
+          if (timeDiff < 10000) {
+            console.log(
+              `Found node ${nodeToStop} that needs to be stopped from previous session`
+            );
+
+            await client
+              .from("devices")
+              .update({ status: "offline" })
+              .eq("id", nodeToStop);
+
+            console.log("Successfully updated node status to offline");
+
+            // If this is the currently active node, also update Redux state
+            if (isActive && nodeId === nodeToStop) {
+              dispatch(stopNode());
+              dispatch(clearAssignedTasks());
+            }
+          }
+
+          // Clear the stored data
+          localStorage.removeItem("nodeToStop");
+          localStorage.removeItem("nodeStopTime");
+        }
+      } catch (e) {
+        console.error("Error checking previous unload", e);
+      }
+    };
+
+    // Run once on component mount
+    checkPreviousUnload();
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("unload", handleUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    const syncInterval = isActive
+      ? setInterval(() => dispatch(syncUptime()), 5 * 60 * 1000)
+      : null;
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("unload", handleUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (syncInterval) clearInterval(syncInterval);
+    };
+  }, [isActive, selectedNodeId, dispatch, client, userProfile?.id, nodeId]);
 
   return (
     <div className="p-2.5 sm:p-4 md:p-6 rounded-2xl sm:rounded-3xl stat-card overflow-x-hidden">

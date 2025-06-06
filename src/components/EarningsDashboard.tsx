@@ -1109,9 +1109,9 @@ export const EarningsDashboard = () => {
                         </a>
                       )}
                     </div>
-                    <span className="text-xs text-[#515194]">
+                    {/* <span className="text-xs text-[#515194]">
                       ≈ ${(Number(tx.amount) * 3.27).toFixed(2)}
-                    </span>
+                    </span> */}
                   </div>
                 </div>
               ))}

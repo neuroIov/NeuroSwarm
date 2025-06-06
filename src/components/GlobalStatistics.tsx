@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Activity, Clock, Users, Server, RefreshCw } from "lucide-react";
+import {
+  Activity,
+  Clock,
+  Users,
+  Server,
+  RefreshCw,
+  Crown,
+  Medal,
+  TrendingUp,
+  Goal,
+} from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -23,16 +33,34 @@ const TASK_CACHE_KEY = "global_statistics_task_cache";
 const LAST_REFRESH_KEY = "global_statistics_last_refresh";
 const MIN_REFRESH_INTERVAL = 30000; // Minimum time between refreshes (30 seconds)
 
+// Interface for leaderboard entry
+interface LeaderboardEntry {
+  user_id: string;
+  username: string;
+  total_earnings: number;
+  rank: number;
+  task_count: number;
+}
+
 export const GlobalStatistics = () => {
+  console.log("Hello World - checking if logging works");
+
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const client = getSwarmSupabase();
+  // Get logged in user from Redux store's session state
+  const { userProfile } = useSelector((state: RootState) => state.session);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Cache for storing tasks to reduce duplicate requests
   const [taskCache, setTaskCache] = useState<AITask[]>([]);
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
   const [forceUpdate, setForceUpdate] = useState(0);
+  // Leaderboard state
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [currentUserRank, setCurrentUserRank] =
+    useState<LeaderboardEntry | null>(null);
+  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
 
   // Get tasks from Redux store
   const { allTasks } = useSelector((state: RootState) => state.tasks);
@@ -47,6 +75,8 @@ export const GlobalStatistics = () => {
     activeNodes: 0,
     networkLoad: 0,
   });
+
+  console.log("currentUserRank", currentUserRank);
 
   // Track completed tasks to trigger refresh when needed
   const [prevCompletedTasks, setPrevCompletedTasks] = useState(0);
@@ -155,6 +185,115 @@ export const GlobalStatistics = () => {
       }
     }
   }, [allTasks]);
+
+  // Fetch leaderboard data
+  const fetchLeaderboard = async () => {
+    try {
+      setIsLeaderboardLoading(true);
+
+      // First get user profiles to have usernames ready
+      const { data: userProfiles } = await client
+        .from("user_profiles")
+        .select("id, user_name, total_earnings, total_tasks_completed");
+
+      // Create a map of user IDs to usernames for quick lookup
+      const userMap = new Map();
+      if (userProfiles) {
+        userProfiles.forEach((profile: any) => {
+          userMap.set(profile.id, {
+            username: profile.user_name || "Anonymous",
+            totalEarnings: parseFloat(profile.total_earnings) || 0,
+            totalTasks: profile.total_tasks_completed || 0,
+          });
+        });
+      }
+
+      // Now get earnings aggregated by user_id
+      const { data: earnings, error: earningsError } = await client.from(
+        "earnings_history"
+      ).select(`
+          user_id,
+          amount,
+          task_count
+        `);
+
+      if (earningsError) throw earningsError;
+
+      // Aggregate earnings by user
+      const userEarnings = new Map<string, { total: number; tasks: number }>();
+
+      if (earnings) {
+        earnings.forEach((entry: any) => {
+          const userId = entry.user_id;
+          const amount = parseFloat(entry.amount);
+          const tasks = entry.task_count || 0;
+
+          if (userEarnings.has(userId)) {
+            const userData = userEarnings.get(userId)!;
+            userData.total += amount;
+            userData.tasks += tasks;
+          } else {
+            userEarnings.set(userId, {
+              total: amount,
+              tasks: tasks,
+            });
+          }
+        });
+      }
+
+      // Convert to array for sorting
+      let leaderboardData: LeaderboardEntry[] = [];
+
+      // Combine user profile data with earnings
+      userMap.forEach((userData, userId) => {
+        // Get earnings data or use zeroes if no earnings yet
+        const earningsData = userEarnings.get(userId) || { total: 0, tasks: 0 };
+
+        leaderboardData.push({
+          user_id: userId,
+          username: userData.username,
+          // Add profile earnings to transaction earnings for total
+          total_earnings: userData.totalEarnings + earningsData.total,
+          task_count: userData.totalTasks + earningsData.tasks,
+          rank: 0, // Will be assigned after sorting
+        });
+      });
+
+      // Sort by earnings (highest first)
+      leaderboardData.sort((a, b) => b.total_earnings - a.total_earnings);
+
+      // Assign ranks
+      leaderboardData = leaderboardData.map((entry, index) => ({
+        ...entry,
+        rank: index + 1,
+      }));
+
+      // Take only top 10 for the leaderboard display
+      const topTen = leaderboardData.slice(0, 10);
+      setLeaderboard(topTen);
+
+      // Always set the current user rank if the user exists in the data
+      if (userProfile) {
+        const currentUserEntry = leaderboardData.find(
+          (entry) => entry.user_id === userProfile.id
+        );
+
+        if (currentUserEntry) {
+          setCurrentUserRank(currentUserEntry);
+          console.log("Setting current user rank:", currentUserEntry.rank);
+        } else {
+          // User not found in leaderboard data
+          setCurrentUserRank(null);
+          console.log("User not found in leaderboard data");
+        }
+      }
+
+      setIsLeaderboardLoading(false);
+    } catch (error) {
+      console.error("Error fetching leaderboard data:", error);
+      setIsLeaderboardLoading(false);
+    }
+  };
 
   // Fetch database statistics
   const fetchDatabaseStats = useCallback(async () => {
@@ -286,6 +425,9 @@ export const GlobalStatistics = () => {
             await calculateAndUpdateStats(allTasks);
           }
         }
+
+        // Fetch leaderboard data
+        await fetchLeaderboard();
 
         setIsRefreshing(false);
         if (showToast) {
@@ -426,7 +568,11 @@ export const GlobalStatistics = () => {
 
   const toggleAutoRefresh = useCallback((checked: boolean) => {
     setAutoRefresh(checked);
-    toast(checked ? t("globalStatistics.toasts.autoRefreshEnabled") : t("globalStatistics.toasts.autoRefreshDisabled"));
+    toast(
+      checked
+        ? t("globalStatistics.toasts.autoRefreshEnabled")
+        : t("globalStatistics.toasts.autoRefreshDisabled")
+    );
   }, []);
 
   // Format timestamp to display time only
@@ -464,14 +610,16 @@ export const GlobalStatistics = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center text-slate-400 mb-1">
-            <Activity className="w-4 h-4 mr-2" /> {t("globalStatistics.cards.totalTasks")}
+            <Activity className="w-4 h-4 mr-2" />{" "}
+            {t("globalStatistics.cards.totalTasks")}
           </div>
           <div className="text-2xl font-bold">{stats.totalTasks}</div>
         </div>
 
         <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center text-slate-400 mb-1">
-            <Clock className="w-4 h-4 mr-2" /> {t("globalStatistics.cards.avgUptime")}
+            <Clock className="w-4 h-4 mr-2" />{" "}
+            {t("globalStatistics.cards.avgUptime")}
           </div>
           <div className="text-2xl font-bold">
             {formatUptime(stats.avgComputeTime)}
@@ -480,14 +628,16 @@ export const GlobalStatistics = () => {
 
         <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center text-slate-400 mb-1">
-            <Users className="w-4 h-4 mr-2" /> {t("globalStatistics.cards.totalUsers")}
+            <Users className="w-4 h-4 mr-2" />{" "}
+            {t("globalStatistics.cards.totalUsers")}
           </div>
           <div className="text-2xl font-bold">{stats.totalUsers}</div>
         </div>
 
         <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
           <div className="flex items-center text-slate-400 mb-1">
-            <Server className="w-4 h-4 mr-2" /> {t("globalStatistics.cards.activeNodes")}
+            <Server className="w-4 h-4 mr-2" />{" "}
+            {t("globalStatistics.cards.activeNodes")}
           </div>
           <div className="text-2xl font-bold">{stats.activeNodes}</div>
         </div>
@@ -529,6 +679,37 @@ export const GlobalStatistics = () => {
       if (uptimeInterval) clearInterval(uptimeInterval);
     };
   }, [isActive, dispatch, forceUpdate, fetchDatabaseStats]);
+
+  // Format currency for display
+  const formatCurrency = (amount: number) => {
+    // Format as SP tokens instead of dollars
+    return `${amount.toFixed(2)} SP`;
+  };
+
+  // Clean username by removing wallet type information
+  const cleanUsername = (username: string) => {
+    if (!username) return "Anonymous";
+    // Remove wallet type information like [wallet_type:phantom]
+    return username.replace(/\[wallet_type:[^\]]+\]/g, "").trim();
+  };
+
+  // Get medal icon based on rank
+  const getMedalIcon = (rank: number) => {
+    switch (rank) {
+      case 1:
+        return <span className="text-yellow-500">👑</span>;
+      case 2:
+        return <span className="text-gray-400">🥈</span>;
+      case 3:
+        return <span className="text-amber-700">🥉</span>;
+      default:
+        return (
+          <span className="w-4 h-4 flex items-center justify-center text-xs font-medium">
+            {rank}
+          </span>
+        );
+    }
+  };
 
   return (
     <div className="stat-card overflow-x-hidden">
@@ -673,20 +854,27 @@ export const GlobalStatistics = () => {
         <div className="flex flex-col p-4 earning-cards rounded-lg">
           <div className="flex gap-3 items-center">
             <div className="icon-bg icon-container flex items-center justify-center rounded-md p-1 sm:p-2">
-              <img
-                src="/images/total_tasks.png"
-                alt="Tasks"
-                className="w-6 h-6 sm:w-7 sm:h-7 relative z-10"
-                onError={(e) => {
-                  e.currentTarget.src =
-                    "https://raw.githubusercontent.com/Neurolov/NeuroSwarm/main/public/images/total_tasks.png";
-                }}
-              />
+              <Goal className="w-6 h-6 sm:w-7 sm:h-7 relative z-10" />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">{t("globalStatistics.cards.totalTasks")}</span>
+              <span className="text-sm text-[#515194]">Your rank</span>
               <span className="text-xl font-bold text-white">
-                {stats.totalTasks}
+                {currentUserRank ? (
+                  <>
+                    {currentUserRank.rank}
+                    {currentUserRank.rank <= 3 && (
+                      <span className="ml-1">
+                        {currentUserRank.rank === 1 && "👑"}
+                        {currentUserRank.rank === 2 && "🥈"}
+                        {currentUserRank.rank === 3 && "🥉"}
+                      </span>
+                    )}
+                  </>
+                ) : userProfile ? (
+                  "N/A"
+                ) : (
+                  "-"
+                )}
               </span>
             </div>
           </div>
@@ -706,7 +894,9 @@ export const GlobalStatistics = () => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">{t("globalStatistics.cards.processingTime")}</span>
+              <span className="text-sm text-[#515194]">
+                {t("globalStatistics.cards.processingTime")}
+              </span>
               <span className="text-xl font-bold text-white">
                 {(() => {
                   const seconds = stats.avgComputeTime || 0;
@@ -742,7 +932,9 @@ export const GlobalStatistics = () => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">{t("globalStatistics.cards.totalUsers")}</span>
+              <span className="text-sm text-[#515194]">
+                {t("globalStatistics.cards.totalUsers")}
+              </span>
               <span className="text-xl font-bold text-white">
                 {stats.totalUsers}
               </span>
@@ -764,7 +956,9 @@ export const GlobalStatistics = () => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">{t("globalStatistics.cards.activeNodes")}</span>
+              <span className="text-sm text-[#515194]">
+                {t("globalStatistics.cards.activeNodes")}
+              </span>
               <span className="text-xl font-bold text-white">
                 {stats.activeNodes}
               </span>
@@ -773,85 +967,113 @@ export const GlobalStatistics = () => {
         </div>
       </div>
 
+      {/* Leaderboard - Replacing task list */}
       <div className="mb-6 w-full">
-        <h3 className="text-base sm:text-lg font-medium mb-4">
-          {t("globalStatistics.tasks.title")}
+        <h3 className="text-base sm:text-lg font-medium mb-4 flex items-center">
+          <TrendingUp className="w-5 h-5 mr-2 text-blue-400" />
+          {t("globalStatistics.leaderboard.title", "Leaderboard")}
         </h3>
 
-        {displayTasks.length > 0 ? (
-          <div className="space-y-3 max-h-[300px] overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar">
-            {displayTasks.map((task, index) => (
+        {isLeaderboardLoading ? (
+          <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+            <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mb-2"></div>
+            <p>
+              {t(
+                "globalStatistics.leaderboard.loading",
+                "Loading leaderboard..."
+              )}
+            </p>
+          </div>
+        ) : leaderboard.length > 0 ? (
+          <div className="space-y-0 max-h-[300px] overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar bg-slate-900/60 rounded-lg border border-slate-800/50">
+            {/* Header row */}
+            <div className="grid grid-cols-12 gap-2 px-4 py-3 text-slate-400 text-sm border-b border-slate-800/50">
+              <div className="col-span-1">
+                {t("globalStatistics.leaderboard.rank", "Rank")}
+              </div>
+              <div className="col-span-5">
+                {t("globalStatistics.leaderboard.user", "User")}
+              </div>
+              <div className="col-span-3 text-right">
+                {t("globalStatistics.leaderboard.earnings", "Earnings")}
+              </div>
+              <div className="col-span-3 text-right">
+                {t("globalStatistics.leaderboard.tasks", "Tasks")}
+              </div>
+            </div>
+
+            {/* Top 10 Users */}
+            {leaderboard.map((entry) => (
               <div
-                key={`${task.id}-${index}`}
-                className="task-card data-panel p-3 sm:p-4 w-full"
+                key={entry.user_id}
+                className={`grid grid-cols-12 gap-2 py-3 px-4 
+                  ${
+                    userProfile && entry.user_id === userProfile.id
+                      ? "bg-blue-900/30 border-l-2 border-blue-500"
+                      : "hover:bg-slate-800/40"
+                  }`}
               >
-                <div className="flex items-start gap-2">
-                  <div className="p-1 sm:p-1.5 icon-bg rounded-md flex items-center justify-center shrink-0">
-                    <FileCode
-                      className={`w-3 h-3 z-10 ${getTaskTypeColorClass(
-                        task.type
-                      )}`}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0 break-words overflow-hidden">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="text-xs font-medium text-blue-400 truncate max-w-[80px] sm:max-w-[120px]">
-                        {task.model || "default"}
-                      </span>
-                      <span
-                        className={`text-xs bg-slate-700/50 px-1.5 py-0.5 rounded ${getTaskTypeColorClass(
-                          task.type
-                        )}`}
-                      >
-                        {task.type}
-                      </span>
-                      <span
-                        className={`text-xs px-1.5 py-0.5 rounded-full ml-auto
-                        ${
-                          task.status === "completed"
-                            ? "bg-green-900/20 text-green-300 border border-green-500/30"
-                            : ""
-                        }
-                        ${
-                          task.status === "processing"
-                            ? "bg-blue-900/20 text-blue-300 border border-blue-500/30"
-                            : ""
-                        }
-                        ${
-                          task.status === "pending"
-                            ? "bg-amber-900/20 text-amber-300 border border-amber-500/30"
-                            : ""
-                        }
-                        ${
-                          task.status === "failed"
-                            ? "bg-red-900/20 text-red-300 border border-red-500/30"
-                            : ""
-                        }
-                      `}
-                      >
-                        {task.status === "completed" && t("globalStatistics.tasks.status.completed")}
-                        {task.status === "processing" && t("globalStatistics.tasks.status.processing")}
-                        {task.status === "pending" && t("globalStatistics.tasks.status.pending")}
-                        {task.status === "failed" && t("globalStatistics.tasks.status.failed")}
-                      </span>
-                    </div>
-                    <p className="text-xs mb-1 break-words truncate">
-                      {t("globalStatistics.tasks.prompt")}: {task.prompt.substring(0, 60)}
-                      {task.prompt.length > 60 ? "..." : ""}
-                    </p>
-                    <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
-                      <span>{t("globalStatistics.tasks.assigning")}</span>
-                      <span>{formatTime(task.created_at)}</span>
-                    </div>
-                  </div>
+                <div className="col-span-1 flex items-center">
+                  {getMedalIcon(entry.rank)}
+                </div>
+                <div className="col-span-5 font-medium truncate">
+                  {cleanUsername(entry.username)}
+                  {userProfile && entry.user_id === userProfile.id && (
+                    <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
+                      {t("globalStatistics.leaderboard.you", "You")}
+                    </span>
+                  )}
+                </div>
+                <div className="col-span-3 text-right font-medium">
+                  {formatCurrency(entry.total_earnings)}
+                </div>
+                <div className="col-span-3 text-right text-slate-300">
+                  {entry.task_count}
                 </div>
               </div>
             ))}
+
+            {/* Current user outside top 10 */}
+            {currentUserRank &&
+              userProfile &&
+              !leaderboard.some(
+                (entry) => entry.user_id === userProfile.id
+              ) && (
+                <>
+                  <div className="flex justify-center py-2 border-t border-slate-800/50">
+                    <div className="text-slate-500 text-sm">. . .</div>
+                  </div>
+                  <div className="grid grid-cols-12 gap-2 py-3 px-4 bg-blue-900/30 border-l-2 border-blue-500">
+                    <div className="col-span-1 flex items-center">
+                      <span className="w-4 h-4 flex items-center justify-center text-xs font-medium">
+                        {currentUserRank.rank}
+                      </span>
+                    </div>
+                    <div className="col-span-5 font-medium truncate">
+                      {cleanUsername(currentUserRank.username)}
+                      <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
+                        {t("globalStatistics.leaderboard.you", "You")}
+                      </span>
+                    </div>
+                    <div className="col-span-3 text-right font-medium">
+                      {formatCurrency(currentUserRank.total_earnings)}
+                    </div>
+                    <div className="col-span-3 text-right text-slate-300">
+                      {currentUserRank.task_count}
+                    </div>
+                  </div>
+                </>
+              )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-slate-400">
-            <FileCode className="w-10 h-10 mb-2 text-slate-600" />
-            <p>{t("globalStatistics.tasks.noTasks")}</p>
+            <TrendingUp className="w-10 h-10 mb-2 text-slate-600" />
+            <p>
+              {t(
+                "globalStatistics.leaderboard.noData",
+                "No leaderboard data available yet"
+              )}
+            </p>
           </div>
         )}
       </div>
