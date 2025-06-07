@@ -267,47 +267,47 @@ export const fetchAndAssignTasks = createAsyncThunk(
 
 export const processNextTask = createAsyncThunk(
     'tasks/processNextTask',
-    async (_, { getState, dispatch, rejectWithValue }) => {
-        let taskToProcess = null;
+    async (_, { dispatch, getState, rejectWithValue }) => {
+        // Check if already processing a task
+        if (isProcessingTask) {
+            logger.log('Already processing a task, skipping');
+            return rejectWithValue('Already processing a task');
+        }
+
+        // Get the current state
+        const state = getState() as RootState;
+
+        // Find a pending task to process
+        const taskToProcess = state.tasks.assignedTasks.find(t => t.status === 'pending');
+        if (!taskToProcess) {
+            logger.log('No pending tasks to process');
+            return rejectWithValue('No pending tasks to process');
+        }
+
+        // Try to acquire the lock for this task
+        if (!taskProcessingLock.acquire(taskToProcess.id)) {
+            logger.log(`Failed to acquire lock for task ${taskToProcess.id}, skipping`);
+            return rejectWithValue(`Failed to acquire lock for task ${taskToProcess.id}`);
+        }
+
+        // Set processing state
+        isProcessingTask = true;
+        currentProcessingTaskId = taskToProcess.id;
+
+        // Get the current node's reward tier to pass as systemType
+        const systemType = state.node.rewardTier || 'cpu';
+        logger.log(`Processing task ${taskToProcess.id} with system type: ${systemType}`);
+
+        // Update task status to processing
+        dispatch(updateTaskStatus({
+            taskId: taskToProcess.id,
+            status: 'processing'
+        }));
 
         try {
-            // Get current state
-            const state = getState() as RootState;
-            const userId = state.session?.userProfile?.id;
+            // Process the task with the node's reward tier as systemType
+            const result = await processTask(taskToProcess.id, taskToProcess.user_id, systemType);
 
-            if (!userId) {
-                return rejectWithValue('No user ID available');
-            }
-
-            // Get the current task or find next pending task
-            taskToProcess = state.tasks.currentTask;
-
-            if (!taskToProcess || taskToProcess.status !== 'pending') {
-                logger.warn('No valid task to process');
-                return rejectWithValue('No pending tasks to process');
-            }
-
-            // Try to acquire lock - if already processing, don't start another task
-            if (!taskProcessingLock.acquire(taskToProcess.id)) {
-                logger.warn(`Cannot process task ${taskToProcess.id} - processing lock could not be acquired`);
-                return rejectWithValue('Processing lock could not be acquired');
-            }
-
-            // Set global processing state
-            isProcessingTask = true;
-            currentProcessingTaskId = taskToProcess.id;
-
-            // Step 1: Mark as processing
-            dispatch(updateTaskStatus({
-                taskId: taskToProcess.id,
-                status: 'processing'
-            }));
-
-            // Step 2: Process task
-            logger.log(`Starting to process task ${taskToProcess.id}`);
-            const result = await processTask(taskToProcess.id, userId);
-
-            // Step 3: Update status based on result
             if (result.success) {
                 dispatch(updateTaskStatus({
                     taskId: taskToProcess.id,

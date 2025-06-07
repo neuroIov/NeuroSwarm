@@ -13,6 +13,42 @@ const taskProcessingState = {
 };
 
 /**
+ * Speed multipliers vs CPU for different system types
+ * Higher values mean faster processing (less time needed)
+ */
+const SPEED_MULTIPLIERS = {
+  webgpu: 5,    // 5x faster than CPU
+  websm: 3,     // 3x faster than CPU
+  webgl: 1.5,   // 1.5x faster than CPU
+  wasm: 2,      // 2x faster than CPU
+  cpu: 1        // baseline (default)
+};
+
+/**
+ * Calculate adjusted processing time based on task type and system capabilities
+ * @param taskType - Type of task (image, text, inference)
+ * @param systemType - System capability type (webgpu, websm, webgl, cpu)
+ * @returns Adjusted processing time in seconds
+ */
+export function getAdjustedProcessingTime(taskType: string, systemType: string): number {
+  // Get base processing time from config
+  const baseTime = TASK_PROCESSING_CONFIG.PROCESSING_TIME[taskType];
+
+  if (!baseTime) {
+    throw new Error(`Unsupported task type: ${taskType}`);
+  }
+
+  // Get speed multiplier based on system type (default to CPU if not recognized)
+  const multiplier = SPEED_MULTIPLIERS[systemType.toLowerCase()] || 1;
+
+  // Calculate adjusted time (faster systems = less time needed)
+  const adjustedTime = baseTime / multiplier;
+
+  // Return rounded to 2 decimal places
+  return +adjustedTime.toFixed(2);
+}
+
+/**
  * Get pending unassigned tasks (where user_id is null)
  * Maintains proper distribution of task types (40% image, 60% text)
  */
@@ -153,8 +189,11 @@ export const assignTasksToUser = async (userId, nodeId, batchSize = 5) => {
 
 /**
  * Process a task sequentially - change status to processing, wait, then complete
+ * @param taskId - ID of the task to process
+ * @param userId - ID of the user processing the task
+ * @param systemType - Optional system type (webgpu, websm, webgl, cpu) for processing time adjustment
  */
-export const processTask = async (taskId, userId) => {
+export const processTask = async (taskId: string, userId: string, systemType: string = 'cpu') => {
     // Prevent processing multiple tasks simultaneously
     if (taskProcessingState.isProcessing) {
         logger.log(`Already processing task ${taskProcessingState.currentTask?.id}, skipping ${taskId}`);
@@ -203,9 +242,9 @@ export const processTask = async (taskId, userId) => {
             return { success: false };
         }
 
-        // Determine processing time based on task type
-        const processingTime = task.type === 'image' ? TASK_PROCESSING_CONFIG.PROCESSING_TIME.image : TASK_PROCESSING_CONFIG.PROCESSING_TIME.text; // seconds
-        logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds`);
+        // Determine processing time based on task type and system capabilities
+        const processingTime = getAdjustedProcessingTime(task.type, systemType);
+        logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds (using ${systemType})`);
 
         // Wait for processing time to complete
         await new Promise(resolve => setTimeout(resolve, processingTime * 1000));
