@@ -333,18 +333,32 @@ export function WalletConnectionModal({
           )}
 
           {!session.walletAddress && (
-            <div className="text-center text-sm text-gray-500 mt-2">
-              Don't have a wallet?{" "}
-              <a
-                href="https://phantom.app/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-500 inline-flex items-center"
+            <>
+              <Button
+                variant="outline"
+                className="w-full mt-4 border-dashed border-gray-600 text-gray-400 hover:text-white"
+                onClick={() => {
+                  onClose();
+                  // Navigate to profile settings
+                  window.location.href = "/dashboard?settings=profile";
+                }}
               >
-                Get one here
-                <ExternalLink className="h-3 w-3 ml-1" />
-              </a>
-            </div>
+                Enter wallet address later
+              </Button>
+              
+              <div className="text-center text-sm text-gray-500 mt-4">
+                Don't have a wallet?{" "}
+                <a
+                  href="https://phantom.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-500 inline-flex items-center"
+                >
+                  Get one here
+                  <ExternalLink className="h-3 w-3 ml-1" />
+                </a>
+              </div>
+            </>
           )}
         </DialogContent>
       </Dialog>

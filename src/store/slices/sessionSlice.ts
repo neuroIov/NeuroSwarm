@@ -48,7 +48,7 @@ export interface ReferralReward {
   referral?: Referral;
 }
 
-export type WalletType = 'phantom' | 'metamask';
+export type WalletType = 'phantom' | 'metamask' | 'manual';
 
 type SessionState = {
   sessionId: string | null;
@@ -146,19 +146,65 @@ export const connectWalletToAccount = createAsyncThunk(
 
       console.log(`Connecting wallet ${walletAddress} to user ${userId} with email ${email}`);
 
-      // First, get the user profile ID from the email
-      const { data: userProfile, error: userProfileError } = await supabase
-        .from('user_profiles')
-        .select('id, email, user_name')
-        .eq('email', email)
-        .single();
+      // First, try to get the user profile by email
+      let userProfile;
+      let userProfileId = userId;
 
-      if (userProfileError || !userProfile) {
-        console.error(`Error finding user profile: ${userProfileError?.message || 'User profile not found'}`);
-        throw new Error(userProfileError?.message || 'User profile not found for this email');
+      if (email) {
+        const { data: emailProfile, error: emailProfileError } = await supabase
+          .from('user_profiles')
+          .select('id, email, user_name')
+          .eq('email', email)
+          .maybeSingle(); // Use maybeSingle instead of single to avoid errors
+
+        if (emailProfileError) {
+          console.error(`Error finding user profile by email: ${emailProfileError.message}`);
+          throw new Error(emailProfileError.message);
+        }
+
+        if (emailProfile) {
+          userProfile = emailProfile;
+          userProfileId = emailProfile.id;
+        }
       }
 
-      const userProfileId = userProfile.id;
+      // If no profile found by email, try by userId
+      if (!userProfile) {
+        const { data: idProfile, error: idProfileError } = await supabase
+          .from('user_profiles')
+          .select('id, email, user_name')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (idProfileError) {
+          console.error(`Error finding user profile by ID: ${idProfileError.message}`);
+          throw new Error(idProfileError.message);
+        }
+
+        if (!idProfile) {
+          // Create new profile if none exists
+          const { data: newProfile, error: createError } = await supabase
+            .from('user_profiles')
+            .insert({
+              id: userId,
+              email: email || null,
+              wallet_address: null
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error(`Error creating user profile: ${createError.message}`);
+            throw new Error(createError.message);
+          }
+
+          userProfile = newProfile;
+        } else {
+          userProfile = idProfile;
+        }
+      }
+
+      // userProfileId is already set from above
       console.log(`Found user profile ID: ${userProfileId} for email: ${email}`);
 
       // Check if wallet is already connected to another account
@@ -190,27 +236,28 @@ export const connectWalletToAccount = createAsyncThunk(
       }
 
       // Update the user profile with the wallet address and wallet type
-      // Store wallet_type in the user_name field temporarily if user_name is not set
-      // This is a workaround until a proper wallet_type column is added
       let updateData: any = { wallet_address: walletAddress };
 
-      // Store wallet type in a metadata field
-      // Since there's no wallet_type column, we'll use a special format in user_name
-      // but keep it hidden from display
-      if (userProfile.user_name) {
-        // If user already has a username, keep it but update the wallet type info
-        const existingUsername = userProfile.user_name;
-        const walletTypeRegex = /\s*\[wallet_type:(phantom|metamask)\]\s*/;
+      // Only store wallet type in username for non-manual wallets
+      if (walletType !== 'manual') {
+        // Store wallet type in the user_name field temporarily if user_name is not set
+        // This is a workaround until a proper wallet_type column is added
+        if (userProfile.user_name) {
+          // If user already has a username, keep it but update the wallet type info
+          const existingUsername = userProfile.user_name;
+          const walletTypeRegex = /\s*\[wallet_type:(phantom|metamask|manual)\]\s*/;
 
-        // Remove any existing wallet type info
-        const cleanedUsername = existingUsername.replace(walletTypeRegex, '').trim();
+          // Remove any existing wallet type info
+          const cleanedUsername = existingUsername.replace(walletTypeRegex, '').trim();
 
-        // Add wallet type info at the end (invisible to user but stored in DB)
-        updateData.user_name = `${cleanedUsername} [wallet_type:${walletType}]`;
-      } else {
-        // If no username, just store the wallet type info
-        updateData.user_name = `[wallet_type:${walletType}]`;
+          // Add wallet type info at the end (invisible to user but stored in DB)
+          updateData.user_name = `${cleanedUsername} [wallet_type:${walletType}]`;
+        } else {
+          // If no username, just store the wallet type info
+          updateData.user_name = `[wallet_type:${walletType}]`;
+        }
       }
+      // Update the database with the new wallet information
 
       const { data, error } = await supabase
         .from('user_profiles')

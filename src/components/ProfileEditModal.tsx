@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useDispatch } from "react-redux";
+import { connectWalletToAccount } from "@/store/slices/sessionSlice";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +51,8 @@ export function ProfileEditModal({
 }: ProfileEditModalProps) {
   const [username, setUsername] = useState("");
   const [copySuccess, setCopySuccess] = useState(false);
+  const [manualWalletAddress, setManualWalletAddress] = useState("");
+  const [isSavingWallet, setIsSavingWallet] = useState(false);
 
   const dispatch = useAppDispatch();
   const { userProfile, loading, plan } = useAppSelector(
@@ -334,13 +338,72 @@ export function ProfileEditModal({
                 </div>
               </>
             ) : (
-              <div className="text-center py-4">
-                <p className="text-gray-400 mb-3">No wallet connected</p>
+              <div className="space-y-4 py-4">
+                <p className="text-gray-400 text-center">No wallet connected</p>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="manualWalletAddress">Enter Wallet Address</Label>
+                  <Input
+                    id="manualWalletAddress"
+                    placeholder="0x..."
+                    className="bg-[#1A1A1A] border-[#333]"
+                    value={manualWalletAddress}
+                    onChange={(e) => setManualWalletAddress(e.target.value)}
+                  />
+                  <Button
+                    variant="outline"
+                    className="w-full bg-[#1A1A1A] border-[#333] hover:bg-[#252525]"
+                    onClick={async () => {
+                      if (!manualWalletAddress.trim()) {
+                        toast.error("Please enter a wallet address");
+                        return;
+                      }
+                      if (!session.userId) {
+                        toast.error("User ID not found");
+                        return;
+                      }
+
+                      setIsSavingWallet(true);
+                      try {
+                        // Use Redux action to connect wallet
+                        await dispatch(connectWalletToAccount({
+                          userId: session.userId,
+                          email: session.email || "",
+                          walletAddress: manualWalletAddress,
+                          walletType: "manual",
+                          force: true // Force connect since it's manual entry
+                        })).unwrap();
+
+                        toast.success("Wallet address saved successfully");
+                        // Refresh the page to update the UI
+                        window.location.reload();
+                      } catch (error) {
+                        console.error("Error saving wallet address:", error);
+                        toast.error(typeof error === 'string' ? error : "Failed to save wallet address");
+                      } finally {
+                        setIsSavingWallet(false);
+                      }
+                    }}
+                    disabled={isSavingWallet}
+                  >
+                    {isSavingWallet ? "Saving..." : "Save Address"}
+                  </Button>
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-gray-700" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-gray-900 px-2 text-gray-400">Or</span>
+                  </div>
+                </div>
+
                 <Button
                   onClick={() =>
                     (window.location.href = "/dashboard?connect=wallet")
                   }
-                  className="bg-[#0066FF] hover:bg-[#0052CC] text-white"
+                  className="w-full bg-[#0066FF] hover:bg-[#0052CC] text-white"
                 >
                   Connect Wallet
                 </Button>

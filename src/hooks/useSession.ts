@@ -14,7 +14,7 @@ import { AppDispatch } from "@/store";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { getMaxUptimeByTier } from "@/lib/subscriptionTiers"; // ✅ NEW
 
-export type WalletType = "phantom" | "metamask";
+export type WalletType = "phantom" | "metamask" | "manual";
 
 export const useSession = () => {
   const dispatch = useDispatch<AppDispatch>();
