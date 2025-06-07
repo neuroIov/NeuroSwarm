@@ -180,14 +180,14 @@ export const NodeControlPanel = () => {
       return;
     }
 
-    // Create device specs object matching the DeviceSpecs interface
+    // Create temporary device info to be used during registration
     const deviceSpecs = {
       cpu: `${detectedHardware.cpuCores || 'Unknown'} Cores`,
       gpu: detectedHardware.gpuInfo || 'Unknown',
       ram: detectedHardware.deviceMemory || 0,
-      deviceType: 'desktop' as const,
-      deviceBrand: 'Generic',
-      deviceModel: `${detectedHardware.rewardTier.toUpperCase()} Device`,
+      deviceType: detectedHardware.deviceType || 'desktop' as const,
+      deviceBrand: detectedHardware.deviceBrand || 'Generic',
+      deviceModel: detectedHardware.deviceModel || `${detectedHardware.rewardTier.toUpperCase()} Device`,
       maxUptime: tierInfo?.maxUptime || 4 * 60 * 60
     };
 
@@ -225,17 +225,14 @@ export const NodeControlPanel = () => {
         status: "offline",
         gpu_model: detectedHardware.gpuInfo || "Unknown",
         hash_rate: Math.floor(Math.random() * 50) + 50,
-        device_specs: {
-          ...tempDeviceSpecs,
-          deviceName: customName
-        },
         owner: userProfile.id,
         created_at: new Date().toISOString(),
         last_seen: new Date().toISOString(),
         uptime: 0,
         stake_amount: 0,
         performance_score: 100,
-        reward_tier: detectedHardware.rewardTier
+        reward_tier: detectedHardware.rewardTier,
+        device_name: customName
       };
 
       console.log("Final device data:", deviceData);
@@ -260,14 +257,14 @@ export const NodeControlPanel = () => {
         // Convert device to NodeInfo format and update local state
         const nodeInfo: NodeInfo = {
           id: device.id,
-          name: device.device_specs.deviceName || 'Unnamed Device',
-          type: device.device_specs.deviceType || 'desktop',
-          brand: device.device_specs.deviceBrand,
-          model: device.device_specs.deviceModel,
+          name: device.device_name || 'Unnamed Device',
+          type: tempDeviceSpecs.deviceType || 'desktop',
+          brand: tempDeviceSpecs.deviceBrand,
+          model: tempDeviceSpecs.deviceModel,
           rewardTier: device.reward_tier,
-          status: device.status,
-          cpuCores: device.device_specs.cpu,
-          memory: device.device_specs.ram,
+          status: device.status === "offline" ? "idle" : "running",
+          cpuCores: parseInt(tempDeviceSpecs.cpu) || undefined,
+          memory: tempDeviceSpecs.ram,
           gpuInfo: device.gpu_model
         };
         
@@ -392,30 +389,21 @@ export const NodeControlPanel = () => {
         if (error) throw error;
 
         // Convert devices to NodeInfo format
-        const userNodes: NodeInfo[] = devices.map((device) => ({
-          id: device.id,
-          name: `${device.device_specs.brand} ${device.device_specs.model}`,
-          type: device.device_specs.type,
-          brand: device.device_specs.brand,
-          model: device.device_specs.model,
-          customSpecs: {
-            cpu: device.device_specs.cpu,
-            gpu: device.device_specs.gpu,
-          },
-          rewardTier: device.device_specs.gpuInfo
-            ?.toLowerCase()
-            .includes("webgpu")
-            ? "webgpu"
-            : device.device_specs.gpuInfo?.toLowerCase().includes("wasm")
-            ? "wasm"
-            : device.device_specs.gpuInfo?.toLowerCase().includes("webgl")
-            ? "webgl"
-            : "cpu",
-          status: device.status === "offline" ? "idle" : "running",
-          cpuCores: device.device_specs.cpuCores,
-          memory: device.device_specs.memory,
-          gpuInfo: device.gpu_model,
-        }));
+        const userNodes: NodeInfo[] = devices.map((device) => {
+          // Create a basic node info object with available data
+          return {
+            id: device.id,
+            name: device.device_name || `Device ${device.id.substring(0, 6)}`,
+            type: 'desktop', // Default to desktop if not specified
+            brand: 'Generic',
+            model: device.gpu_model.substring(0, 30), // Use first part of GPU model as device model
+            rewardTier: device.reward_tier,
+            status: device.status === "offline" ? "idle" : "running",
+            cpuCores: undefined, // We don't have this in the new schema
+            memory: undefined, // We don't have this in the new schema
+            gpuInfo: device.gpu_model
+          };
+        });
 
         setNodes(userNodes);
 
@@ -1086,29 +1074,21 @@ export const NodeControlPanel = () => {
               Reward Tier
             </span>
             <span className="px-1.5 sm:px-3 py-0.5 sm:py-1 bg-purple-500/20 text-purple-400 text-[10px] sm:text-xs font-medium rounded-full uppercase">
-              {rewardTier}
+              {isActive ? rewardTier : selectedNode?.rewardTier}
             </span>
           </div>
           <p className="text-[10px] sm:text-sm text-[#515194] break-words">
-            {rewardTier === "webgpu" &&
+            {(isActive ? rewardTier : selectedNode?.rewardTier) === "webgpu" &&
               "This device supports WebGPU acceleration, earning maximum Swarm Point rewards."}
-            {rewardTier === "wasm" &&
+            {(isActive ? rewardTier : selectedNode?.rewardTier) === "wasm" &&
               "This device uses WASM processing, earning high Swarm Point rewards."}
-            {rewardTier === "webgl" &&
+            {(isActive ? rewardTier : selectedNode?.rewardTier) === "webgl" &&
               "This device uses WebGL processing, earning medium Swarm Point rewards."}
-            {rewardTier === "cpu" &&
+            {(isActive ? rewardTier : selectedNode?.rewardTier) === "cpu" &&
               "This device uses CPU processing, earning basic Swarm Point rewards."}
           </p>
-          {selectedNode && selectedNode.cpuCores && (
-            <div className="grid grid-cols-2 gap-1 sm:gap-4 mt-2 sm:mt-4 text-[10px] sm:text-sm overflow-hidden">
-              <div className="text-[#515194] truncate">
-                CPU Cores:{" "}
-                <span className="text-white">{selectedNode.cpuCores}</span>
-              </div>
-              <div className="text-[#515194] truncate">
-                Memory:{" "}
-                <span className="text-white">{selectedNode.memory} GB</span>
-              </div>
+          {selectedNode && (
+            <div className="grid grid-cols-1 gap-1 sm:gap-4 mt-2 sm:mt-4 text-[10px] sm:text-sm overflow-hidden">
               {selectedNode.gpuInfo && (
                 <div className="col-span-2 text-[#515194] truncate">
                   GPU:{" "}
@@ -1255,8 +1235,8 @@ export const NodeControlPanel = () => {
                 {getDeviceIcon(selectedNode.type)}
                 <div>
                   <p className="text-white font-medium">{selectedNode.name}</p>
-                  <p className="text-[#515194] text-sm">
-                    {selectedNode.brand} {selectedNode.model}
+                  <p className="text-[#515194] text-sm truncate">
+                    {selectedNode.gpuInfo}
                   </p>
                 </div>
               </div>

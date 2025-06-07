@@ -1,15 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { getSwarmSupabase } from '@/lib/supabase-client';
 
-export interface DeviceSpecs {
-    cpu?: string;
-    gpu?: string;
-    ram?: number;
-    deviceType?: 'desktop' | 'laptop' | 'tablet' | 'mobile';
-    deviceBrand?: string;
-    deviceModel?: string;
-}
-
 export interface Device {
     id: string;
     status: 'offline' | 'online' | 'busy';
@@ -22,7 +13,8 @@ export interface Device {
     uptime: number;
     stake_amount: number;
     performance_score: number;
-    device_specs: DeviceSpecs;
+    reward_tier: 'webgpu' | 'wasm' | 'webgl' | 'cpu' | null;
+    device_name?: string | null;
 }
 
 interface DeviceState {
@@ -45,7 +37,8 @@ export const createDevice = createAsyncThunk(
         gpu_model: string;
         vram: number;
         hash_rate: number;
-        device_specs: DeviceSpecs;
+        reward_tier: 'webgpu' | 'wasm' | 'webgl' | 'cpu' | null;
+        device_name?: string | null;
     }) => {
         const client = getSwarmSupabase();
         const { data: { user } } = await client.auth.getUser();
