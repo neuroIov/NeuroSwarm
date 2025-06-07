@@ -25,8 +25,8 @@ export const getPendingUnassignedTasks = async (limit = 20) => {
         }
 
         // Calculate distribution limits
-        const imageLimit = Math.ceil(limit * 0.4); // 40% image tasks
-        const textLimit = limit - imageLimit;      // 60% text tasks
+        const imageLimit = Math.ceil(limit * 0.4); 
+        const textLimit = limit - imageLimit;     
 
         // Get pending unassigned image tasks
         const { data: imageTasks, error: imageError } = await client
