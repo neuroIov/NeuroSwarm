@@ -69,6 +69,7 @@ import {
 import { VscDebugStart } from "react-icons/vsc";
 import { IoStopOutline } from "react-icons/io5";
 import { setCurrentDevice } from "@/store/slices/deviceSlice";
+import { extractGPUModel } from "@/utils/gpuUtils";
 
 type DeviceGroup = "desktop_laptop" | "mobile_tablet";
 
@@ -1092,7 +1093,7 @@ export const NodeControlPanel = () => {
               {selectedNode.gpuInfo && (
                 <div className="col-span-2 text-[#515194] truncate">
                   GPU:{" "}
-                  <span className="text-white">{selectedNode.gpuInfo}</span>
+                  <span className="text-white">{extractGPUModel(selectedNode.gpuInfo)}</span>
                 </div>
               )}
             </div>
@@ -1236,7 +1237,7 @@ export const NodeControlPanel = () => {
                 <div>
                   <p className="text-white font-medium">{selectedNode.name}</p>
                   <p className="text-[#515194] text-sm truncate">
-                    {selectedNode.gpuInfo}
+                    {extractGPUModel(selectedNode.gpuInfo)}
                   </p>
                 </div>
               </div>
