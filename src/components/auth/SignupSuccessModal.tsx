@@ -7,7 +7,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Cpu } from "lucide-react";
+import { ExternalLink, Cpu, Check } from "lucide-react";
 
 interface SignupSuccessModalProps {
   isOpen: boolean;
@@ -25,38 +25,31 @@ export function SignupSuccessModal({
       <DialogContent className="bg-[#0F0F0F] border border-[#1F2937] text-white max-w-md">
         <DialogHeader>
           <div className="flex items-center justify-center mb-4">
-            <Cpu className="h-12 w-12 text-[#0066FF]" />
+            <div className="h-16 w-16 rounded-full bg-green-600/20 flex items-center justify-center">
+              <Check className="h-8 w-8 text-green-500" />
+            </div>
           </div>
           <DialogTitle className="text-xl font-bold text-center">
-            Welcome to NeuroSwarm
+            Account Created Successfully
           </DialogTitle>
           <DialogDescription className="text-gray-300 text-center">
-            Your account has been successfully created
+            Welcome to NeuroSwarm
           </DialogDescription>
         </DialogHeader>
 
         <div className="py-4 space-y-4">
-          <p className="text-white">
-            Make resources from your GPU power with NeuroSwarm and earn rewards
-            while contributing to the network.
+          <p className="text-white text-center">
+            Your account has been successfully created. You're now ready to start using NeuroSwarm.
           </p>
 
           <div className="bg-[#1A1A1A] p-4 rounded-lg border border-[#333]">
             <h3 className="font-medium mb-2 text-[#0066FF]">
-              Exclusive Features
+              Next Step: Connect Your Account
             </h3>
             <p className="text-sm text-gray-300">
-              To access our exclusive features and maximize your earnings,
-              connect NeuroSwarm with Neurolov.app
+              To maximize your earnings and access exclusive features, 
+              you'll need to connect your NeuroSwarm account with Neurolov App.
             </p>
-            <a
-              href="https://neurolov.app"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center mt-2 text-sm text-[#0066FF] hover:underline"
-            >
-              Visit Neurolov.app <ExternalLink className="h-3 w-3 ml-1" />
-            </a>
           </div>
         </div>
 
@@ -65,7 +58,7 @@ export function SignupSuccessModal({
             onClick={onContinue}
             className="w-full bg-[#0066FF] hover:bg-[#0052CC] text-white"
           >
-            I Understand
+            Continue
           </Button>
         </DialogFooter>
       </DialogContent>

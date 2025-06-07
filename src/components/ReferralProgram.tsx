@@ -14,6 +14,7 @@ import {
   Check,
   X as CloseIcon,
   Link as LinkIcon,
+  Lock,
 } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "@/components/ui/button";
@@ -41,22 +42,67 @@ import { FaWhatsapp } from "react-icons/fa6";
 import { FaSquareXTwitter } from "react-icons/fa6";
 import { FaInstagram, FaTelegram } from "react-icons/fa6";
 
+// Constants for localStorage keys
+const REFERRAL_CODE_KEY = "ref_code";
+
+// Extract referral code from a URL or plain text
+const extractReferralCode = (input: string): string => {
+  // If the input appears to be a URL with query parameters
+  if (input.includes('?ref=')) {
+    try {
+      // Try to extract the ref parameter from a URL
+      const url = new URL(input);
+      const code = url.searchParams.get('ref');
+      return code || input; // Return the code if found, otherwise the original input
+    } catch (e) {
+      // If URL parsing fails, try a more basic extraction
+      const refIndex = input.indexOf('?ref=');
+      if (refIndex !== -1) {
+        return input.substring(refIndex + 5); // Extract everything after "?ref="
+      }
+    }
+  }
+  // If no URL detected or extraction failed, return the original input
+  return input.trim();
+};
+
 // Separate component for reward item to use state
 const RewardItem = ({
   reward,
   userProfile,
   onRefresh,
+  onRewardClaimed,
 }: {
   reward: ReferralReward;
   userProfile: { id: string; referral_code?: string } | null;
   onRefresh: () => void;
+  onRewardClaimed: (amount: number) => void;
 }) => {
   const [isClaiming, setIsClaiming] = useState(false);
+  const [isClaimedLocally, setIsClaimedLocally] = useState(reward.claimed);
+  const [rewardAmount, setRewardAmount] = useState(reward.reward_amount);
 
-  const username =
-    reward.referral?.user_profile?.user_name ||
-    reward.referral?.referred_name ||
-    `User ${reward.referral?.referred_id.substring(0, 6)}...`;
+  // Reset claimed state if the reward changes
+  useEffect(() => {
+    setIsClaimedLocally(reward.claimed);
+    setRewardAmount(reward.reward_amount);
+  }, [reward.claimed, reward.reward_amount, reward.id]);
+
+  // Format username - remove wallet part
+  const displayUsername = () => {
+    let name = reward.referral?.user_profile?.user_name || 
+               reward.referral?.referred_name || 
+               `User ${reward.referral?.referred_id.substring(0, 6)}...`;
+    
+    // Remove wallet type information if present
+    if (name.includes("[wallet_type")) {
+      name = name.split("[")[0].trim();
+    }
+    
+    return name;
+  };
+
+  const username = displayUsername();
 
   const handleClaimReward = async () => {
     if (!userProfile?.id) {
@@ -66,26 +112,58 @@ const RewardItem = ({
 
     try {
       setIsClaiming(true);
+      // Store the reward amount before claiming in case backend is slow to update
+      const amountToAdd = rewardAmount;
+      console.log(`Claiming reward ${reward.id} with amount ${amountToAdd}`);
+      
+      // Update local state IMMEDIATELY before network request
+      setIsClaimedLocally(true);
+      setRewardAmount(0); // Reset amount since it's claimed
+      
+      // Immediately notify parent to update totals
+      onRewardClaimed(amountToAdd);
+      
+      // Now make the actual API call
       const result = await claimReferralReward(userProfile.id, reward.id);
 
       if (result.success) {
+        console.log(`Successfully claimed reward ${reward.id}, refreshing data...`);
         toast.success("Reward claimed successfully!");
-        onRefresh(); // Call the refresh function passed from parent
       } else {
+        console.error(`Failed to claim reward: ${result.message}`);
         toast.error(
           `Failed to claim reward: ${result.message || "Unknown error"}`
         );
+        
+        // Revert the UI changes if the API call failed
+        setIsClaimedLocally(false);
+        setRewardAmount(amountToAdd);
+        
+        // Also notify parent to revert the changes
+        onRewardClaimed(-amountToAdd);
       }
     } catch (err) {
       console.error("Error claiming reward:", err);
       toast.error("An error occurred while claiming the reward");
+      
+      // Revert UI changes on error
+      setIsClaimedLocally(false);
+      const originalAmount = reward.reward_amount;
+      setRewardAmount(originalAmount);
+      
+      // Also revert parent state changes
+      onRewardClaimed(-rewardAmount);
     } finally {
       setIsClaiming(false);
+      // Then refresh all data after a short delay to ensure DB updates are complete
+      setTimeout(() => {
+        onRefresh();
+      }, 500);
     }
   };
 
   // Only show claim button for unclaimed rewards
-  const showClaimButton = !reward.claimed && reward.reward_amount > 0;
+  const showClaimButton = !isClaimedLocally && rewardAmount > 0;
 
   // Format reward type for display
   const formatRewardType = (type: string) => {
@@ -122,7 +200,7 @@ const RewardItem = ({
       </div>
       <div className="flex items-center gap-2">
         <div className="text-green-400 font-medium">
-          +{reward.reward_amount.toFixed(2)}
+          +{rewardAmount.toFixed(2)}
         </div>
         {showClaimButton && (
           <Button
@@ -140,7 +218,7 @@ const RewardItem = ({
             <span>{isClaiming ? "Claiming..." : "Claim"}</span>
           </Button>
         )}
-        {reward.claimed && (
+        {isClaimedLocally && (
           <span className="text-xs bg-slate-700 px-2 py-1 rounded text-slate-400">
             Claimed
           </span>
@@ -301,6 +379,157 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
   );
 };
 
+// Thank You Dialog Component
+const ThankYouDialog = ({ isOpen, onClose, referralCode }) => {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-gradient-to-br from-[#1a1a2e] to-[#16213e] rounded-2xl shadow-2xl w-96 p-8 relative overflow-hidden"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          >
+            <button
+              className="absolute top-4 right-4 text-gray-300 hover:text-white"
+              onClick={onClose}
+            >
+              <CloseIcon className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mb-6">
+              <CheckCircle className="mx-auto w-12 h-12 text-green-400 mb-4" />
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 text-transparent bg-clip-text">
+                Welcome to NeuroSwarm!
+              </h2>
+            </div>
+
+            <div className="text-center mb-6">
+              <p className="text-gray-300 mb-2">
+                Thank you for joining through a referral link!
+              </p>
+              <p className="text-gray-400 text-sm">
+                Your referral code has been automatically applied to your account.
+              </p>
+            </div>
+
+            <Button
+              onClick={onClose}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl"
+            >
+              Start Earning
+            </Button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+// Error Dialog Component
+const ErrorDialog = ({ isOpen, onClose, message }) => {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-gradient-to-br from-[#1a1a2e] to-[#16213e] rounded-2xl shadow-2xl w-96 p-8 relative overflow-hidden"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          >
+            <button
+              className="absolute top-4 right-4 text-gray-300 hover:text-white"
+              onClick={onClose}
+            >
+              <CloseIcon className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mb-6">
+              <AlertCircle className="mx-auto w-12 h-12 text-red-400 mb-4" />
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-red-400 to-purple-600 text-transparent bg-clip-text">
+                Referral Error
+              </h2>
+            </div>
+
+            <div className="text-center mb-6">
+              <p className="text-gray-300 mb-2">
+                {message || "You cannot be referred multiple times."}
+              </p>
+            </div>
+
+            <Button
+              onClick={onClose}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl"
+            >
+              Got It
+            </Button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+// Sign In Required Dialog Component
+const SignInRequiredDialog = ({ isOpen, onClose }) => {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-gradient-to-br from-[#1a1a2e] to-[#16213e] rounded-2xl shadow-2xl w-96 p-8 relative overflow-hidden"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          >
+            <button
+              className="absolute top-4 right-4 text-gray-300 hover:text-white"
+              onClick={onClose}
+            >
+              <CloseIcon className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mb-6">
+              <Lock className="mx-auto w-12 h-12 text-blue-400 mb-4" />
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 text-transparent bg-clip-text">
+                Sign In Required
+              </h2>
+            </div>
+
+            <div className="text-center mb-6">
+              <p className="text-gray-300 mb-2">
+                Please sign in or sign up to join the referral program and start earning rewards.
+              </p>
+            </div>
+
+            
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 export const ReferralProgram = () => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -309,11 +538,21 @@ export const ReferralProgram = () => {
   const [totalReferralEarnings, setTotalReferralEarnings] = useState(0);
   const [claimedRewards, setClaimedRewards] = useState(0);
   const [pendingRewards, setPendingRewards] = useState(0);
+  const [isLoadingEarnings, setIsLoadingEarnings] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
 
   const [referralCode, setReferralCode] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [referralError, setReferralError] = useState("");
+  
+  // New state for dialogs
+  const [showThankYouDialog, setShowThankYouDialog] = useState(false);
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [showSignInRequiredDialog, setShowSignInRequiredDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [storedReferralCode, setStoredReferralCode] = useState<string | null>(null);
+  const [hasAttemptedAutoReferral, setHasAttemptedAutoReferral] = useState(false);
 
   const dispatch = useDispatch<AppDispatch>();
   const { userProfile, loading, referrals, referralRewards } = useSelector(
@@ -332,121 +571,236 @@ export const ReferralProgram = () => {
     referrals?.filter((ref) => ref.tier_level === "tier_2") || [];
   const tier3Referrals =
     referrals?.filter((ref) => ref.tier_level === "tier_3") || [];
+    
+  // Sort referrals by joined date (newest first)
+  tier1Referrals.sort((a, b) => new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime());
+  tier2Referrals.sort((a, b) => new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime());
+  tier3Referrals.sort((a, b) => new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime());
 
   // Calculate totals
   const directReferrals = tier1Referrals.length;
   const indirectReferrals = tier2Referrals.length + tier3Referrals.length;
+  const totalReferrals = directReferrals + indirectReferrals;
 
-  // Calculate total pending rewards from referral_rewards table
-  const pendingReferralRewards =
-    referralRewards?.reduce(
-      (total, reward) =>
-        total +
-        (!reward.claimed && reward.reward_amount > 0
-          ? Number(reward.reward_amount)
-          : 0),
-      0
-    ) || 0;
-
-  // Function to extract referral code from a full URL
-  const extractReferralCode = (input) => {
-    // Check if input is a URL with ref parameter
-    if (input.includes("?ref=")) {
-      try {
-        const url = new URL(input);
-        const refCode = url.searchParams.get("ref");
-        if (refCode) {
-          return refCode;
-        }
-      } catch (e) {
-        // If not a valid URL, try regex approach
-        const match = input.match(/[?&]ref=([^&]+)/);
-        if (match && match[1]) {
-          return match[1];
-        }
+  // Check for referral code in URL when component mounts
+  useEffect(() => {
+    // Get referral code from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const refCode = urlParams.get('ref');
+    
+    if (refCode) {
+      console.log("Found referral code in URL:", refCode);
+      // Store in localStorage
+      localStorage.setItem(REFERRAL_CODE_KEY, refCode);
+      // Update state
+      setStoredReferralCode(refCode);
+    } else {
+      // Check if we have a stored referral code in localStorage
+      const storedCode = localStorage.getItem(REFERRAL_CODE_KEY);
+      if (storedCode) {
+        console.log("Found stored referral code:", storedCode);
+        setStoredReferralCode(storedCode);
       }
     }
-    // If no URL pattern found, return the original input
-    return input;
-  };
+  }, []);
 
-  // Auto-generate a referral code if user doesn't have one
+  // Check user login status and handle stored referral code
   useEffect(() => {
-    if (
-      userProfile?.id &&
-      !userProfile?.referral_code &&
-      !isGenerating &&
-      userProfile?.wallet_address
-    ) {
-      handleGenerateReferralCode();
+    // If user is not logged in and there's a referral code, show sign in dialog
+    if (storedReferralCode && !userProfile?.id && !loading) {
+      console.log("User not logged in but has referral code, showing sign in dialog");
+      setShowSignInRequiredDialog(true);
     }
-  }, [userProfile]);
+    
+    // If user is logged in, referral code exists, and we haven't tried auto-referral yet
+    if (userProfile?.id && storedReferralCode && !hasAttemptedAutoReferral) {
+      console.log("User logged in with stored referral code, attempting auto-referral");
+      handleAutoReferral();
+    }
+  }, [userProfile?.id, storedReferralCode, loading]);
 
-  // Function to fetch claimed referral earnings from the earnings table
-  const fetchReferralEarnings = async (userWalletAddress: string) => {
-    if (!userWalletAddress) {
-      console.error("Cannot fetch referral earnings without wallet address");
+  // Handle automatic referral process
+  const handleAutoReferral = async () => {
+    if (!userProfile?.id || !storedReferralCode) {
       return;
     }
-
+    
+    setHasAttemptedAutoReferral(true);
+    console.log("Processing auto-referral with code:", storedReferralCode);
+    
+    // Clear any existing dialogs to prevent multiple dialogs showing
+    setShowErrorDialog(false);
+    setShowThankYouDialog(false);
+    
     try {
-      const client = getSwarmSupabase();
-
-      // Get total referral earnings where task_id is null and type is referral
-      const { data: earnings, error } = await client
-        .from("earnings")
-        .select("amount")
-        .eq("user_address", userWalletAddress)
-        .eq("earning_type", "referral")
-        .is("task_id", null);
-
-      if (error) {
-        console.error("Error fetching referral earnings:", error);
+      // First check if the user already has any referrer
+      const hasReferrer = await checkUserHasReferrer();
+      
+      if (hasReferrer) {
+        console.log("User already has a referrer, showing error dialog");
+        setErrorMessage("You are already part of a referral program and cannot join another one.");
+        setShowErrorDialog(true);
+        // Clear the stored referral code since it can't be used
+        localStorage.removeItem(REFERRAL_CODE_KEY);
+        setStoredReferralCode(null);
         return;
       }
-
-      // Calculate total earnings
-      const totalEarnings = earnings.reduce(
-        (sum, record) => sum + Number(record.amount),
-        0
+      
+      // Verify the referral code
+      const verifyResult = await dispatch(verifyReferralCode(storedReferralCode));
+      
+      if (!verifyReferralCode.fulfilled.match(verifyResult)) {
+        console.log("Invalid referral code");
+        setErrorMessage("Invalid referral code.");
+        setShowErrorDialog(true);
+        localStorage.removeItem(REFERRAL_CODE_KEY);
+        setStoredReferralCode(null);
+        return;
+      }
+      
+      const { isValid, referrerId } = verifyResult.payload as {
+        isValid: boolean;
+        referrerId: string;
+      };
+      
+      if (!isValid) {
+        console.log("Invalid referral code");
+        setErrorMessage("Invalid referral code.");
+        setShowErrorDialog(true);
+        localStorage.removeItem(REFERRAL_CODE_KEY);
+        setStoredReferralCode(null);
+        return;
+      }
+      
+      // Check if referrer is the current user (can't refer yourself)
+      if (referrerId === userProfile.id) {
+        console.log("User tried to use their own referral code");
+        setErrorMessage("You cannot use your own referral code.");
+        setShowErrorDialog(true);
+        localStorage.removeItem(REFERRAL_CODE_KEY);
+        setStoredReferralCode(null);
+        return;
+      }
+      
+      // Check if user already has a referral relationship with this code
+      const hasRelationship = await checkExistingReferralRelationship(referrerId);
+      if (hasRelationship) {
+        console.log("User already has a relationship with this referrer");
+        setErrorMessage("You are already referred by this user.");
+        setShowErrorDialog(true);
+        localStorage.removeItem(REFERRAL_CODE_KEY);
+        setStoredReferralCode(null);
+        return;
+      }
+      
+      // Create the referral relationship
+      const resultAction = await dispatch(
+        createReferralRelationship({
+          referrerCode: storedReferralCode,
+          referredId: userProfile.id,
+        })
       );
-      setClaimedRewards(totalEarnings);
-      setTotalReferralEarnings(totalEarnings + pendingReferralRewards);
-      setPendingRewards(pendingReferralRewards);
-
-      console.log(
-        `Fetched referral earnings: Claimed=${totalEarnings}, Pending=${pendingReferralRewards}, Total=${
-          totalEarnings + pendingReferralRewards
-        }`
-      );
+      
+      if (createReferralRelationship.fulfilled.match(resultAction)) {
+        console.log("Successfully created referral relationship!");
+        // Show thank you dialog
+        setShowThankYouDialog(true);
+        // Clear the stored referral code since it's been used
+        localStorage.removeItem(REFERRAL_CODE_KEY);
+        setStoredReferralCode(null);
+        // Refresh referral data
+        setTimeout(() => loadReferralData(), 500); // Small delay to ensure DB has updated
+      } else {
+        console.log("Failed to create referral relationship");
+        setErrorMessage("Failed to join referral program. Please try again.");
+        setShowErrorDialog(true);
+        // Don't clear the referral code in case they want to try again
+      }
     } catch (error) {
-      console.error("Error in fetchReferralEarnings:", error);
+      console.error("Error in auto-referral process:", error);
+      setErrorMessage("An error occurred while processing your referral.");
+      setShowErrorDialog(true);
     }
+  };
+
+  // Format username - remove wallet part helper function
+  const formatDisplayName = (name: string) => {
+    if (!name) return "";
+    // Remove wallet type information if present
+    if (name.includes("[wallet_type")) {
+      return name.split("[")[0].trim();
+    }
+    return name;
+  };
+
+  // Calculate total pending rewards from referral_rewards table
+  const calculatePendingRewards = () => {
+    if (!referralRewards || referralRewards.length === 0) {
+      console.log("No referral rewards data available, pending rewards = 0");
+      return 0;
+    }
+    
+    console.log(`Calculating pending rewards from ${referralRewards.length} rewards`);
+    
+    // Log all unclaimed rewards for debugging
+    const unclaimedRewards = referralRewards.filter(
+      reward => !reward.claimed && reward.reward_amount > 0
+    );
+    
+    console.log(`Found ${unclaimedRewards.length} unclaimed rewards:`);
+    unclaimedRewards.forEach(reward => {
+      console.log(`  - ID: ${reward.id}, Amount: ${reward.reward_amount}, Type: ${reward.reward_type}`);
+    });
+    
+    const pendingTotal = referralRewards.reduce(
+      (total, reward) => {
+        const amount = !reward.claimed && reward.reward_amount > 0 ? Number(reward.reward_amount) : 0;
+        return total + amount;
+      },
+      0
+    );
+    
+    console.log(`Calculated pending rewards: ${pendingTotal}`);
+    return pendingTotal;
   };
 
   // Load referral data when component mounts or when userProfile changes
   useEffect(() => {
     if (userProfile?.id) {
+      setDataReady(false); // Reset data ready state
       loadReferralData();
+    } else {
+      // If user is not logged in, make sure loading states are reset
+      setIsLoading(false);
+      setIsLoadingEarnings(false);
+      setDataReady(true); // Consider data ready to prevent loading spinners
     }
   }, [userProfile?.id]);
 
   // Fetch referral earnings whenever referralRewards change
   useEffect(() => {
-    if (userProfile?.wallet_address) {
-      fetchReferralEarnings(userProfile.wallet_address);
+    if (userProfile?.id && referralRewards) {
+      fetchReferralEarnings(userProfile.id);
     }
-  }, [referralRewards, userProfile?.wallet_address]);
+  }, [referralRewards, userProfile?.id]);
 
   const loadReferralData = async () => {
     if (!userProfile?.id) return;
 
     try {
       setIsLoading(true);
+      setDataReady(false);
+      
+      // Fetch referrals and rewards data
       await Promise.all([
         dispatch(fetchUserReferrals(userProfile.id)).unwrap(),
         dispatch(fetchReferralRewards(userProfile.id)).unwrap(),
       ]);
+      
+      // Also refresh earnings data
+      if (userProfile?.id) {
+        await fetchReferralEarnings(userProfile.id);
+      }
     } catch (err) {
       console.error("Failed to load referral data:", err);
       toast.error("Failed to load referral data");
@@ -456,8 +810,69 @@ export const ReferralProgram = () => {
   };
 
   const handleRefresh = () => {
+    setDataReady(false);
     loadReferralData();
     toast.success("Refreshing referral data...");
+  };
+
+  // Function to fetch claimed referral earnings from the earnings table
+  const fetchReferralEarnings = async (userWalletAddress: string) => {
+    if (!userProfile?.id) {
+      console.error("Cannot fetch referral earnings without user ID");
+      setIsLoadingEarnings(false); // Ensure loading state is off if no user
+      return;
+    }
+
+    try {
+      setIsLoadingEarnings(true);
+      console.log("Fetching referral earnings data...");
+      const client = getSwarmSupabase();
+
+      // Get total referral earnings where task_id is null and type is referral
+      const { data: earnings, error } = await client
+        .from("earnings")
+        .select("amount")
+        .eq("user_id", userProfile.id)
+        .eq("earning_type", "referral")
+        .is("task_id", null);
+
+      if (error) {
+        console.error("Error fetching referral earnings:", error);
+        setIsLoadingEarnings(false);
+        return;
+      }
+
+      // Calculate total claimed earnings from the database
+      const totalClaimedEarnings = earnings.reduce(
+        (sum, record) => sum + Number(record.amount),
+        0
+      );
+
+      console.log(`Fetched claimed referral earnings from database: ${totalClaimedEarnings}`);
+
+      // Calculate total pending rewards directly from current referral rewards data
+      const totalPendingRewards = calculatePendingRewards();
+
+      // Calculate total referral earnings (claimed + pending)
+      const totalEarnings = totalClaimedEarnings + totalPendingRewards;
+
+      console.log(
+        `Fetched referral earnings: Claimed=${totalClaimedEarnings}, Pending=${totalPendingRewards}, Total=${totalEarnings}`
+      );
+
+      // Update state
+      setClaimedRewards(totalClaimedEarnings);
+      setPendingRewards(totalPendingRewards);
+      setTotalReferralEarnings(totalEarnings);
+      
+      // Now all data is ready
+      setDataReady(true);
+    } catch (error) {
+      console.error("Error in fetchReferralEarnings:", error);
+      setDataReady(true); // Set to true even on error to allow UI to show
+    } finally {
+      setIsLoadingEarnings(false);
+    }
   };
 
   const handleGenerateReferralCode = async () => {
@@ -509,6 +924,126 @@ export const ReferralProgram = () => {
       });
   };
 
+  // Function to handle reward claim
+  const handleRewardClaimed = (amount: number) => {
+    console.log(`Handling reward claimed: ${amount} SP`);
+    
+    // Update claimed and pending rewards immediately in UI
+    setClaimedRewards(prev => {
+      const newValue = prev + amount;
+      console.log(`Updated claimed rewards: ${prev} -> ${newValue} SP`);
+      return newValue;
+    });
+    
+    setPendingRewards(prev => {
+      const newValue = Math.max(0, prev - amount);
+      console.log(`Updated pending rewards: ${prev} -> ${newValue} SP`);
+      return newValue;
+    });
+    
+    // Force a full data refresh immediately
+    setDataReady(false);
+    
+    // First immediate refresh attempt
+    if (userProfile?.id) {
+      // Invalidate current data to force complete reload
+      dispatch(fetchReferralRewards(userProfile.id)).unwrap()
+        .then(() => {
+          console.log("Refreshed referral rewards immediately after claim");
+          fetchReferralEarnings(userProfile.id);
+        })
+        .catch(err => console.error("Error refreshing data after claim:", err));
+    }
+    
+    // Second attempt after a short delay
+    setTimeout(() => {
+      if (userProfile?.id) {
+        console.log("Performing delayed reload after claim");
+        loadReferralData(); // Complete full data reload
+      }
+    }, 1500);
+    
+    // Third attempt to ensure consistency
+    setTimeout(() => {
+      if (userProfile?.id) {
+        console.log("Performing final verification reload after claim");
+        fetchReferralEarnings(userProfile.id);
+      }
+    }, 3000);
+  };
+
+  // Function to check if user is already part of any referral program
+  const checkUserHasReferrer = async () => {
+    if (!userProfile?.id) return false;
+    
+    try {
+      const client = getSwarmSupabase();
+      
+      // Check if there's any entry in the referrals table where this user is the referred_id
+      const { data, error } = await client
+        .from("referrals")
+        .select("id")
+        .eq("referred_id", userProfile.id)
+        .limit(1)
+        .maybeSingle();
+        
+      if (error) {
+        console.error("Error checking if user has a referrer:", error);
+        return false;
+      }
+      
+      console.log("User referrer check:", data ? "User already has a referrer" : "User has no referrer");
+      return !!data; // Return true if user already has a referrer
+    } catch (err) {
+      console.error("Error checking if user has a referrer:", err);
+      return false;
+    }
+  };
+
+  // Function to check if user already has a referral relationship
+  const checkExistingReferralRelationship = async (referrerId: string) => {
+    if (!userProfile?.id || !referrals) {
+      console.log("Cannot check relationship: missing user profile or referrals data");
+      return false;
+    }
+    
+    console.log(`Checking if user ${userProfile.id} has existing referral relationship with ${referrerId}`);
+    
+    // First check if the user is directly referred by this referrer (tier 1)
+    const directReferral = referrals.find(
+      ref => ref.referrer_id === referrerId && ref.tier_level === "tier_1"
+    );
+    
+    if (directReferral) {
+      console.log("Found existing direct referral relationship:", directReferral);
+      return true;
+    }
+    
+    // If we have a connection to the database, we can also check the referrals table directly
+    try {
+      const client = getSwarmSupabase();
+      
+      // Check if there's any referral relationship where this user is referred by the given referrer
+      const { data, error } = await client
+        .from("referrals")
+        .select("id")
+        .eq("referred_id", userProfile.id)
+        .eq("referrer_id", referrerId)
+        .maybeSingle();
+        
+      if (error) {
+        console.error("Error checking existing referral:", error);
+        return false;
+      }
+      
+      console.log("Database check for existing referral:", data ? "Found" : "Not found");
+      return !!data; // Return true if a relationship exists
+    } catch (err) {
+      console.error("Error checking referral relationship:", err);
+      return false;
+    }
+  };
+
   // Added functions for referral code verification
   const handleVerifyReferralCode = async () => {
     if (!referralCode.trim()) {
@@ -522,6 +1057,15 @@ export const ReferralProgram = () => {
     setIsVerifying(true);
 
     try {
+      // First check if the user already has any referrer
+      const hasReferrer = await checkUserHasReferrer();
+      if (hasReferrer) {
+        setReferralError("You are already part of a referral program and cannot join another one.");
+        setIsVerified(false);
+        setIsVerifying(false);
+        return;
+      }
+
       const resultAction = await dispatch(verifyReferralCode(extractedCode));
 
       if (verifyReferralCode.fulfilled.match(resultAction)) {
@@ -536,8 +1080,15 @@ export const ReferralProgram = () => {
             setReferralError("You cannot use your own referral code");
             setIsVerified(false);
           } else {
-            setIsVerified(true);
-            toast.success("Referral code verified successfully");
+            // Check if the user already has a referral relationship with the given code
+            const hasRelationship = await checkExistingReferralRelationship(referrerId);
+            if (hasRelationship) {
+              setReferralError("You cannot use this code again. You are already part of this referral program.");
+              setIsVerified(false);
+            } else {
+              setIsVerified(true);
+              toast.success("Referral code verified successfully");
+            }
           }
         } else {
           setReferralError("Invalid referral code");
@@ -563,6 +1114,38 @@ export const ReferralProgram = () => {
     const extractedCode = extractReferralCode(referralCode);
 
     try {
+      // First check if the user already has any referrer
+      const hasReferrer = await checkUserHasReferrer();
+      if (hasReferrer) {
+        setReferralError("You are already part of a referral program and cannot join another one.");
+        setIsVerified(false);
+        return;
+      }
+      
+      // Then verify the code to get the referrer ID
+      const verifyResult = await dispatch(verifyReferralCode(extractedCode));
+      if (!verifyReferralCode.fulfilled.match(verifyResult)) {
+        setReferralError("Invalid referral code");
+        return;
+      }
+
+      const { isValid, referrerId } = verifyResult.payload as {
+        isValid: boolean;
+        referrerId: string;
+      };
+
+      if (!isValid) {
+        setReferralError("Invalid referral code");
+        return;
+      }
+
+      // Check if user already has a referral relationship with this code
+      const hasRelationship = await checkExistingReferralRelationship(referrerId);
+      if (hasRelationship) {
+        setReferralError("You cannot use this code again. You are already part of this referral program.");
+        return;
+      }
+
       const resultAction = await dispatch(
         createReferralRelationship({
           referrerCode: extractedCode,
@@ -580,8 +1163,8 @@ export const ReferralProgram = () => {
         setReferralError("Failed to join referral program");
       }
     } catch (error) {
+      console.error("Error joining referral program:", error);
       setReferralError("Error joining referral program");
-      console.error("Error submitting referral:", error);
     }
   };
 
@@ -595,6 +1178,28 @@ export const ReferralProgram = () => {
 
   // Render a single referral item
   const renderReferralItem = (referral: Referral) => {
+    // Format display name for referral
+    let displayName = referral.user_profile?.user_name || 
+                     referral.referred_name || 
+                     `User ${referral.referred_id.substring(0, 6)}...`;
+    
+    // Remove wallet type information
+    displayName = formatDisplayName(displayName);
+    
+    // Get tier badge color based on tier level
+    const getTierBadgeColor = (tierLevel: string) => {
+      switch(tierLevel) {
+        case 'tier_1': return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
+        case 'tier_2': return 'bg-purple-500/20 text-purple-400 border-purple-500/40';
+        case 'tier_3': return 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40';
+        default: return 'bg-slate-700 text-slate-400';
+      }
+    };
+    
+    // Format joined date
+    const joinDate = new Date(referral.referred_at);
+    const formattedDate = joinDate.toLocaleDateString();
+    
     return (
       <div
         key={referral.id}
@@ -604,27 +1209,15 @@ export const ReferralProgram = () => {
           <User className="w-4 h-4 text-blue-400" />
           <div>
             <div className="font-medium">
-              {referral.user_profile?.user_name ||
-                referral.referred_name ||
-                `User ${referral.referred_id.substring(0, 6)}...`}
+              {displayName}
             </div>
             <div className="text-xs text-slate-400">
-              Joined{" "}
-              {formatDistanceToNow(new Date(referral.referred_at), {
-                addSuffix: true,
-              })}
+              Joined on {formattedDate} ({formatDistanceToNow(joinDate, {addSuffix: true})})
             </div>
           </div>
         </div>
-        <div className="text-xs bg-slate-700 px-2 py-1 rounded">
-          {referral.user_profile?.wallet_address
-            ? `${referral.user_profile.wallet_address.substring(
-                0,
-                6
-              )}...${referral.user_profile.wallet_address.substring(
-                referral.user_profile.wallet_address.length - 4
-              )}`
-            : "Address unknown"}
+        <div className={`text-xs px-2 py-1 rounded border ${getTierBadgeColor(referral.tier_level)}`}>
+          {referral.tier_level.replace('_', ' ').toUpperCase()}
         </div>
       </div>
     );
@@ -669,54 +1262,116 @@ export const ReferralProgram = () => {
     }
   };
 
+  // Add effect to periodically verify data consistency - only run when logged in
+  useEffect(() => {
+    // Only run this if we have user data and the component is mounted
+    if (!userProfile?.id || !dataReady) return;
+    
+    // Check consistency between claimed and pending rewards
+    const verifyDataConsistency = () => {
+      console.log("Verifying data consistency...");
+      
+      // If we have inconsistent data or values that don't make sense, reload
+      if (pendingRewards < 0 || 
+          (referralRewards?.some(r => !r.claimed && r.reward_amount > 0) && pendingRewards === 0)) {
+        console.log("Data inconsistency detected! Reloading data...");
+        loadReferralData();
+      } else {
+        console.log("Data appears consistent");
+      }
+    };
+    
+    // Run initial check after data is loaded
+    const initialCheck = setTimeout(verifyDataConsistency, 1000);
+    
+    // Then set up a periodic check that runs every 10 seconds
+    const intervalCheck = setInterval(verifyDataConsistency, 10000);
+    
+    return () => {
+      clearTimeout(initialCheck);
+      clearInterval(intervalCheck);
+    };
+  }, [dataReady, referralRewards, pendingRewards, userProfile?.id]);
+
   return (
     <div className="space-y-6 sm:space-y-8 p-3 sm:p-6 rounded-3xl">
+      {/* Dialogs */}
+      <ThankYouDialog 
+        isOpen={showThankYouDialog}
+        onClose={() => setShowThankYouDialog(false)}
+        referralCode={storedReferralCode}
+      />
+      
+      <ErrorDialog 
+        isOpen={showErrorDialog}
+        onClose={() => setShowErrorDialog(false)}
+        message={errorMessage}
+      />
+      
+      <SignInRequiredDialog 
+        isOpen={showSignInRequiredDialog}
+        onClose={() => setShowSignInRequiredDialog(false)}
+      />
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <ReferralStatCard
           label="First Tier"
-          value={directReferrals}
+          value={isLoading || !dataReady ? "..." : directReferrals}
           icon={<LucideUser className="w-5 h-5 text-white" />}
           backgroundImage={"/images/flower_1.png"}
         />
         <ReferralStatCard
           label="Second Tier"
-          value={tier2Referrals.length}
+          value={isLoading || !dataReady ? "..." : tier2Referrals.length}
           icon={<LucideUser className="w-5 h-5 text-white" />}
           backgroundImage={"/images/flower_1.png"}
         />
         <ReferralStatCard
           label="Third Tier"
-          value={tier3Referrals.length}
+          value={isLoading || !dataReady ? "..." : tier3Referrals.length}
           icon={<LucideUser className="w-5 h-5 text-white" />}
           backgroundImage={"/images/flower_1.png"}
         />
         <ReferralStatCard
           label="Total Referral Rewards"
-          value={`${totalReferralEarnings.toFixed(2)} SP`}
+          value={isLoadingEarnings || !dataReady ? 
+            "..." : 
+            `${totalReferralEarnings.toFixed(2)} SP`}
           backgroundImage={"/images/flower_2.png"}
           highlight
         />
       </div>
 
-      {/* Share and Tweet Buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
-        <button
-          className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
-          onClick={() => setIsShareModalOpen(true)}
-        >
-          <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
-          <span className="text-sm sm:text-base">Share Referral</span>
-        </button>
+      {/* Share and Tweet Buttons - Only show if user is logged in */}
+      {userProfile?.id ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
+          <button
+            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
+            onClick={() => setIsShareModalOpen(true)}
+          >
+            <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-sm sm:text-base">Share Referral</span>
+          </button>
 
-        <button
-          className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
-          onClick={() => openSocialShare(getShareMessage("Twitter"))}
-        >
-          <FaSquareXTwitter className="w-4 h-4 sm:w-5 sm:h-5" />
-          <span className="text-sm sm:text-base">Tweet Referral</span>
-        </button>
-      </div>
+          <button
+            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
+            onClick={() => openSocialShare(getShareMessage("Twitter"))}
+          >
+            <FaSquareXTwitter className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-sm sm:text-base">Tweet Referral</span>
+          </button>
+        </div>
+      ) : (
+        <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 p-5 rounded-xl border border-blue-500/20 text-center">
+          <Lock className="mx-auto h-10 w-10 text-blue-400 mb-2" />
+          <h3 className="text-white font-medium mb-2">Sign In Required</h3>
+          <p className="text-sm text-blue-300/80 mb-4">
+            Please sign in or sign up to join the referral program and start earning rewards.
+          </p>
+          
+        </div>
+      )}
 
       <SocialShareModal
         isOpen={isShareModalOpen}
@@ -726,207 +1381,235 @@ export const ReferralProgram = () => {
       />
 
       {/* Claims and Pending Rewards Container */}
-      <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
-        {/* Use Referral Code Section - Styled to match the theme */}
-        <div className="mb-6">
-          <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 p-5 rounded-xl border border-blue-500/20">
-            <div className="flex items-center gap-2 mb-4">
-              <LinkIcon className="h-5 w-5 text-blue-400" />
-              <h3 className="text-white font-medium">Use Referral Code</h3>
-            </div>
+      {userProfile?.id && (
+        <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
+          {/* Use Referral Code Section - Styled to match the theme */}
+          <div className="mb-6">
+            <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 p-5 rounded-xl border border-blue-500/20">
+              <div className="flex items-center gap-2 mb-4">
+                <LinkIcon className="h-5 w-5 text-blue-400" />
+                <h3 className="text-white font-medium">Use Referral Code</h3>
+              </div>
 
-            <p className="text-sm text-blue-300/80 mb-4">
-              Enter a referral code to join the program and earn rewards. You
-              can paste a referral link or code.
-            </p>
+              <p className="text-sm text-blue-300/80 mb-4">
+                Enter a referral code to join the program and earn rewards. You
+                can paste a referral link or code.
+              </p>
 
-            <div className="space-y-4">
-              <div>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                      <LinkIcon className="h-4 w-4 text-blue-400/60" />
+              <div className="space-y-4">
+                <div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                        <LinkIcon className="h-4 w-4 text-blue-400/60" />
+                      </div>
+                      <Input
+                        value={referralCode}
+                        onChange={handleReferralInputChange}
+                        className="pl-10 py-6 bg-[#111827]/50 border-blue-500/20 focus:border-blue-400 text-white rounded-xl focus-visible:ring-blue-500/30 focus-visible:ring-offset-0"
+                        placeholder="Enter referral code or link"
+                      />
                     </div>
-                    <Input
-                      value={referralCode}
-                      onChange={handleReferralInputChange}
-                      className="pl-10 py-6 bg-[#111827]/50 border-blue-500/20 focus:border-blue-400 text-white rounded-xl focus-visible:ring-blue-500/30 focus-visible:ring-offset-0"
-                      placeholder="Enter referral code or link"
-                    />
+                    <Button
+                      onClick={handleVerifyReferralCode}
+                      className="bg-blue-600 hover:bg-blue-700 rounded-xl px-5"
+                      disabled={isVerifying || !referralCode.trim()}
+                    >
+                      {isVerifying ? (
+                        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                      )}
+                      <span>{isVerifying ? "Verifying..." : "Verify"}</span>
+                    </Button>
                   </div>
-                  <Button
-                    onClick={handleVerifyReferralCode}
-                    className="bg-blue-600 hover:bg-blue-700 rounded-xl px-5"
-                    disabled={isVerifying || !referralCode.trim()}
-                  >
-                    {isVerifying ? (
-                      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                    ) : (
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                    )}
-                    <span>{isVerifying ? "Verifying..." : "Verify"}</span>
-                  </Button>
+                  {referralError && (
+                    <p className="text-red-400 text-sm mt-2 flex items-center">
+                      <AlertCircle className="w-3 h-3 mr-1" />
+                      {referralError}
+                    </p>
+                  )}
                 </div>
-                {referralError && (
-                  <p className="text-red-400 text-sm mt-2 flex items-center">
-                    <AlertCircle className="w-3 h-3 mr-1" />
-                    {referralError}
-                  </p>
+
+                {isVerified && (
+                  <div className="mt-3 bg-blue-900/20 p-4 rounded-xl border border-blue-500/20">
+                    <div className="flex items-center text-green-400 text-sm mb-3">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      <span>
+                        Referral code verified! Click below to join the referral
+                        program.
+                      </span>
+                    </div>
+                    <Button
+                      onClick={handleSubmitReferral}
+                      className="bg-blue-600 hover:bg-blue-700 w-full rounded-xl py-5"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <ArrowRight className="w-4 h-4 mr-2" />
+                      )}
+                      <span>
+                        {loading ? "Joining..." : "Join Referral Program"}
+                      </span>
+                    </Button>
+                  </div>
                 )}
               </div>
+            </div>
+          </div>
 
-              {isVerified && (
-                <div className="mt-3 bg-blue-900/20 p-4 rounded-xl border border-blue-500/20">
-                  <div className="flex items-center text-green-400 text-sm mb-3">
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    <span>
-                      Referral code verified! Click below to join the referral
-                      program.
-                    </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
+            <div className="bg-[#161628] rounded-2xl p-4 sm:p-6 hover:shadow-lg transition-all duration-300">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+                  <img
+                    src="/images/claimed_reward.png"
+                    alt="Claimed"
+                    className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
+                  />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-white font-medium text-sm sm:text-base">
+                      Claimed Rewards
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      {isLoadingEarnings || !dataReady ? (
+                        <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+                      ) : (
+                        <span className="text-green-400 font-bold text-sm sm:text-base">
+                          {claimedRewards.toFixed(2)} SP
+                        </span>
+                      )}
+                      <button 
+                        className="text-blue-400 hover:text-blue-300 p-1 rounded-full hover:bg-blue-500/10"
+                        onClick={() => fetchReferralEarnings(userProfile?.id || '')}
+                        title="Refresh earnings data"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
-                  <Button
-                    onClick={handleSubmitReferral}
-                    className="bg-blue-600 hover:bg-blue-700 w-full rounded-xl py-5"
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                    ) : (
-                      <ArrowRight className="w-4 h-4 mr-2" />
-                    )}
-                    <span>
-                      {loading ? "Joining..." : "Join Referral Program"}
-                    </span>
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
-          <div className="bg-[#161628] rounded-2xl p-4 sm:p-6 hover:shadow-lg transition-all duration-300">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
-                <img
-                  src="/images/claimed_reward.png"
-                  alt="Claimed"
-                  className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
-                />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-white font-medium text-sm sm:text-base">
-                    Claimed Rewards
-                  </h3>
-                  <span className="text-green-400 font-bold text-sm sm:text-base">
-                    {claimedRewards.toFixed(2)}
-                  </span>
-                </div>
-                <p className="text-[#515194]/80 text-xs sm:text-sm mt-1">
-                  Total earning from claimed referral rewards
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#161628] rounded-2xl p-4 sm:p-6 hover:shadow-lg transition-all duration-300">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
-                <img
-                  src="/images/pending_reward.png"
-                  alt="Pending"
-                  className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
-                />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-white font-medium text-sm sm:text-base">
-                    Pending Rewards
-                  </h3>
-                  <span className="text-amber-400 font-bold text-sm sm:text-base">
-                    {pendingRewards.toFixed(2)}
-                  </span>
-                </div>
-                <p className="text-[#515194]/80 text-xs sm:text-sm mt-1">
-                  Available rewards ready to claim
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Referral Earnings Breakdown */}
-        <div className="space-y-3 sm:space-y-4 mt-4 sm:mt-6">
-          <h3 className="text-white font-medium text-sm sm:text-base">
-            Referral Earnings Breakdown
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-6">
-            <div className="bg-[#161628] rounded-2xl p-3 sm:p-6 hover:shadow-lg transition-all duration-300">
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
-                  <img
-                    src="/images/referrals.png"
-                    alt="Tier 1"
-                    className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
-                    style={{ objectFit: "contain" }}
-                  />
-                </div>
-                <div>
-                  <h4 className="text-white font-medium text-sm sm:text-base">
-                    Tier 1
-                  </h4>
-                  <p className="text-blue-400 text-xs sm:text-sm">
-                    Earn 10% from your direct referrals
+                  <p className="text-[#515194]/80 text-xs sm:text-sm mt-1">
+                    Total earning from claimed referral rewards
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-[#161628] rounded-2xl p-3 sm:p-6 hover:shadow-lg transition-all duration-300">
+            <div className="bg-[#161628] rounded-2xl p-4 sm:p-6 hover:shadow-lg transition-all duration-300">
               <div className="flex items-center gap-3 sm:gap-4">
                 <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
                   <img
-                    src="/images/referrals.png"
-                    alt="Tier 2"
+                    src="/images/pending_reward.png"
+                    alt="Pending"
                     className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
-                    style={{ objectFit: "contain" }}
                   />
                 </div>
-                <div>
-                  <h4 className="text-white font-medium text-sm sm:text-base">
-                    Tier 2
-                  </h4>
-                  <p className="text-blue-400 text-xs sm:text-sm">
-                    Earn 5% from their referrals
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[#161628] rounded-2xl p-3 sm:p-6 hover:shadow-lg transition-all duration-300">
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
-                  <img
-                    src="/images/referrals.png"
-                    alt="Tier 3"
-                    className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
-                    style={{ objectFit: "contain" }}
-                  />
-                </div>
-                <div>
-                  <h4 className="text-white font-medium text-sm sm:text-base">
-                    Tier 3
-                  </h4>
-                  <p className="text-blue-400 text-xs sm:text-sm">
-                    Earn 2.5% from the next level
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-white font-medium text-sm sm:text-base">
+                      Pending Rewards
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      {isLoadingEarnings || !dataReady ? (
+                        <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
+                      ) : (
+                        <span className="text-amber-400 font-bold text-sm sm:text-base">
+                          {pendingRewards.toFixed(2)} SP
+                        </span>
+                      )}
+                      <button 
+                        className="text-blue-400 hover:text-blue-300 p-1 rounded-full hover:bg-blue-500/10"
+                        onClick={handleRefresh}
+                        title="Refresh rewards data"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[#515194]/80 text-xs sm:text-sm mt-1">
+                    Available rewards ready to claim
                   </p>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Referral Earnings Breakdown */}
+          <div className="space-y-3 sm:space-y-4 mt-4 sm:mt-6">
+            <h3 className="text-white font-medium text-sm sm:text-base">
+              Referral Earnings Breakdown
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-6">
+              <div className="bg-[#161628] rounded-2xl p-3 sm:p-6 hover:shadow-lg transition-all duration-300">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+                    <img
+                      src="/images/referrals.png"
+                      alt="Tier 1"
+                      className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
+                      style={{ objectFit: "contain" }}
+                    />
+                  </div>
+                  <div>
+                    <h4 className="text-white font-medium text-sm sm:text-base">
+                      Tier 1
+                    </h4>
+                    <p className="text-blue-400 text-xs sm:text-sm">
+                      Earn 10% from your direct referrals
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-[#161628] rounded-2xl p-3 sm:p-6 hover:shadow-lg transition-all duration-300">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+                    <img
+                      src="/images/referrals.png"
+                      alt="Tier 2"
+                      className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
+                      style={{ objectFit: "contain" }}
+                    />
+                  </div>
+                  <div>
+                    <h4 className="text-white font-medium text-sm sm:text-base">
+                      Tier 2
+                    </h4>
+                    <p className="text-blue-400 text-xs sm:text-sm">
+                      Earn 5% from their referrals
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-[#161628] rounded-2xl p-3 sm:p-6 hover:shadow-lg transition-all duration-300">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="icon-bg icon-container flex items-center justify-center rounded-md p-2">
+                    <img
+                      src="/images/referrals.png"
+                      alt="Tier 3"
+                      className="w-6 h-6 sm:w-8 sm:h-8 relative z-10"
+                      style={{ objectFit: "contain" }}
+                    />
+                  </div>
+                  <div>
+                    <h4 className="text-white font-medium text-sm sm:text-base">
+                      Tier 3
+                    </h4>
+                    <p className="text-blue-400 text-xs sm:text-sm">
+                      Earn 2.5% from the next level
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Referrals and Rewards Lists */}
       <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
@@ -934,26 +1617,32 @@ export const ReferralProgram = () => {
           <div className="bg-[#161628] rounded-2xl p-3 sm:p-6">
             <div className="flex items-center justify-between mb-2 sm:mb-3">
               <h3 className="text-white font-medium text-sm sm:text-base">
-                Direct Referrals (Tier 1)
+                All Referrals
               </h3>
-              <span className="text-[#515194]/80 text-xs sm:text-sm">
-                {directReferrals} total
+                              <span className="text-[#515194]/80 text-xs sm:text-sm">
+                {totalReferrals} total
               </span>
             </div>
 
-            {isLoading ? (
+            {isLoading || !dataReady ? (
               <div className="flex justify-center items-center py-6">
                 <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
               </div>
-            ) : tier1Referrals && tier1Referrals.length > 0 ? (
-              <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                {tier1Referrals.map(renderReferralItem)}
-              </div>
+                          ) : totalReferrals > 0 ? (
+                <div className="h-[200px] overflow-y-auto custom-scrollbar pr-2">
+                  <div className="space-y-2">
+                    {/* Combined list of all referrals across tiers */}
+                    {[...tier1Referrals, ...tier2Referrals, ...tier3Referrals]
+                      .sort((a, b) => new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime())
+                      .map(renderReferralItem)}
+                  </div>
+            
+                </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-6 bg-[#090C18]/50 rounded-lg text-center">
                 <Share2 className="w-8 h-8 text-[#515194] mb-2" />
                 <div className="text-sm text-[#515194]/80">
-                  No direct referrals yet. Share your link to start earning!
+                  No referrals yet. Share your link to start earning!
                 </div>
               </div>
             )}
@@ -969,21 +1658,27 @@ export const ReferralProgram = () => {
               </span>
             </div>
 
-            {isLoading ? (
+            {isLoading || isLoadingEarnings || !dataReady ? (
               <div className="flex justify-center items-center py-6">
                 <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
               </div>
             ) : referralRewards && referralRewards.length > 0 ? (
-              <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                {referralRewards.map((reward) => (
-                  <RewardItem
-                    key={reward.id}
-                    reward={reward}
-                    userProfile={userProfile}
-                    onRefresh={loadReferralData}
-                  />
-                ))}
-              </div>
+              <>
+                
+                  
+                {/* Rewards List */}
+                <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                  {referralRewards.map((reward) => (
+                    <RewardItem
+                      key={reward.id}
+                      reward={reward}
+                      userProfile={userProfile}
+                      onRefresh={loadReferralData}
+                      onRewardClaimed={handleRewardClaimed}
+                    />
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center py-6 bg-[#090C18]/50 rounded-lg text-center">
                 <DollarSign className="w-8 h-8 text-[#515194] mb-2" />

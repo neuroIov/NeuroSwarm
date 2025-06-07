@@ -1,11 +1,12 @@
 import React from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Cpu } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -22,19 +23,21 @@ export function ConnectAppModal({ isOpen, onClose }: ConnectAppModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#0F0F0F] border border-[#1F2937] text-white">
+      <DialogContent className="bg-[#0F0F0F] border border-[#1F2937] text-white max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold">
-            Connection Required
+          <div className="flex items-center justify-center mb-4">
+            <Cpu className="h-12 w-12 text-[#0066FF]" />
+          </div>
+          <DialogTitle className="text-xl font-bold text-center">
+            Connect to Neurolov App
           </DialogTitle>
-          <DialogDescription className="text-gray-400">
-            Connect your Swarm account to our Neurolov App to get exclusive
-            access and subscription plans
+          <DialogDescription className="text-gray-400 text-center">
+            Unlock exclusive features and premium subscription plans
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-6">
-          <div className="bg-[#1A1A1A] p-4 rounded-lg border border-[#333] mb-4">
+        <div className="py-4 space-y-4">
+          <div className="bg-[#1A1A1A] p-4 rounded-lg border border-[#333] mb-2">
             <div className="flex items-center justify-between mb-2">
               <span className="text-gray-400">Current Status</span>
               <span className="font-medium text-amber-400">Not Connected</span>
@@ -45,21 +48,29 @@ export function ConnectAppModal({ isOpen, onClose }: ConnectAppModalProps) {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
-            <Button
-              onClick={handleConnectApp}
-              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Connect to Neurolov App
-            </Button>
-
-            <div className="text-center text-xs text-gray-500">
-              Connect your account to unlock premium features and subscription
-              plans
-            </div>
-          </div>
+          <p className="text-sm text-gray-300">
+            Connect your NeuroSwarm account to Neurolov App to access premium features,
+            advanced settings, and maximize your earnings.
+          </p>
         </div>
+
+        <DialogFooter className="flex flex-col sm:flex-row sm:justify-center gap-2">
+          <Button
+            onClick={handleConnectApp}
+            className="w-full bg-[#0066FF] hover:bg-[#0052CC] text-white flex items-center justify-center gap-2"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Connect to Neurolov App
+          </Button>
+          
+          <Button
+            onClick={onClose}
+            className="w-full bg-transparent border border-gray-700 hover:bg-gray-800 text-gray-300"
+            variant="outline"
+          >
+            Skip for Now
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

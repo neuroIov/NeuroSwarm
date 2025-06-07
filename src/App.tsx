@@ -57,9 +57,8 @@ const AppContent = () => {
               "No plan found or connection issue - setting default plan to free"
             );
             dispatch(updatePlan("free"));
-
-            // Show modal to connect swarm with app for exclusive access
-            setShowConnectModal(true);
+            
+            // Don't show connect modal automatically here since it's handled in signup flow
           }
           return;
         }
