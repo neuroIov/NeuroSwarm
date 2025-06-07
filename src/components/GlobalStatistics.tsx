@@ -28,7 +28,8 @@ import { formatUptime } from "@/utils/timeUtils";
 import { updateUptime } from "@/store/slices/nodeSlice";
 
 // Default refresh interval in milliseconds
-const AUTO_REFRESH_INTERVAL = 120000; // Increased to 120 seconds (2 minutes)
+const AUTO_REFRESH_INTERVAL = 120000; // 120 seconds (2 minutes)
+const LEADERBOARD_REFRESH_INTERVAL = 300000; // 5 minutes
 const TASK_CACHE_KEY = "global_statistics_task_cache";
 const LAST_REFRESH_KEY = "global_statistics_last_refresh";
 const MIN_REFRESH_INTERVAL = 30000; // Minimum time between refreshes (30 seconds)
@@ -55,6 +56,7 @@ export const GlobalStatistics = () => {
   // Cache for storing tasks to reduce duplicate requests
   const [taskCache, setTaskCache] = useState<AITask[]>([]);
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
+  const [lastLeaderboardRefresh, setLastLeaderboardRefresh] = useState<number>(0);
   const [forceUpdate, setForceUpdate] = useState(0);
   // Leaderboard state
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -426,8 +428,12 @@ export const GlobalStatistics = () => {
           }
         }
 
-        // Fetch leaderboard data
-        await fetchLeaderboard();
+        // Only fetch leaderboard if enough time has passed
+        const currentTime = Date.now();
+        if (currentTime - lastLeaderboardRefresh >= LEADERBOARD_REFRESH_INTERVAL) {
+          await fetchLeaderboard();
+          setLastLeaderboardRefresh(currentTime);
+        }
 
         setIsRefreshing(false);
         if (showToast) {
