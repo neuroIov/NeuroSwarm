@@ -231,6 +231,14 @@ const RewardItem = ({
 // Social Share Modal Component
 const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
   const [isCopied, setIsCopied] = useState(false);
+  const [currentInviteLink, setCurrentInviteLink] = useState(inviteLink);
+  
+  // Update current invite link when props change
+  useEffect(() => {
+    if (inviteLink) {
+      setCurrentInviteLink(inviteLink);
+    }
+  }, [inviteLink]);
 
   const socialPlatforms = [
     {
@@ -251,29 +259,44 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
   ];
 
   const copyToClipboard = async () => {
+    if (!currentInviteLink) {
+      toast.error("No referral link available");
+      return;
+    }
+    
     try {
-      await navigator.clipboard.writeText(inviteLink);
+      await navigator.clipboard.writeText(currentInviteLink);
       setIsCopied(true);
       toast.success("Link copied!", { icon: "📋", duration: 2000 });
       setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
       toast.error("Failed to copy link");
+      console.error("Failed to copy link:", err);
     }
   };
 
   const openSocialShare = (shareUrl) => {
+    if (!shareUrl) {
+      toast.error("No share URL available");
+      return;
+    }
     window.open(shareUrl, "_blank", "width=600,height=400");
   };
 
   const getShareMessage = (platform) => {
+    if (!currentInviteLink) {
+      toast.error("No referral link available to share");
+      return null;
+    }
+    
     // Twitter message with emojis
-    const twitterMessage = `🚀 NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution 🌐\n💰 100M $NLOV tokens available\n📲 Connect your phone, laptop, or GPU — start earning in one click!\n🎯 Join before TGE\n🔗 ${inviteLink}`;
+    const twitterMessage = `🚀 NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution 🌐\n💰 100M $NLOV tokens available\n📲 Connect your phone, laptop, or GPU — start earning in one click!\n🎯 Join before TGE\n🔗 ${currentInviteLink}`;
 
     // WhatsApp uses single asterisks for bold
-    const whatsappMessage = `*NeuroSwarm Airdrop Confirmed!*\nSecure your spot in the $NLOV Connect-to-Earn revolution\n*100M $NLOV tokens available*\nConnect your phone, laptop, or GPU — start earning in one click!\nJoin before TGE\n${inviteLink}`;
+    const whatsappMessage = `*NeuroSwarm Airdrop Confirmed!*\nSecure your spot in the $NLOV Connect-to-Earn revolution\n*100M $NLOV tokens available*\nConnect your phone, laptop, or GPU — start earning in one click!\nJoin before TGE\n${currentInviteLink}`;
 
     // Telegram - plain text works best through URL params
-    const telegramMessage = `NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution\n100M $NLOV tokens available\nConnect your phone, laptop, or GPU — start earning in one click!\nJoin before TGE\n${inviteLink}`;
+    const telegramMessage = `NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution\n100M $NLOV tokens available\nConnect your phone, laptop, or GPU — start earning in one click!\nJoin before TGE\n${currentInviteLink}`;
 
     // Encode messages for sharing
     const encodedTwitterMessage = encodeURIComponent(twitterMessage);
@@ -283,18 +306,18 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
     switch (platform) {
       case "Instagram":
         return `https://www.instagram.com/?url=${encodeURIComponent(
-          inviteLink
+          currentInviteLink
         )}`;
       case "Telegram":
         return `https://t.me/share/url?url=${encodeURIComponent(
-          inviteLink
+          currentInviteLink
         )}&text=${encodedTelegramMessage}`;
       case "WhatsApp":
         return `https://wa.me/?text=${encodedWhatsappMessage}`;
       case "Twitter":
         return `https://twitter.com/intent/tweet?text=${encodedTwitterMessage}`;
       default:
-        return inviteLink;
+        return currentInviteLink;
     }
   };
 
@@ -334,7 +357,7 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
               <div className="flex items-center justify-between bg-black/20 p-3 rounded-lg border border-blue-500/20">
                 <input
                   type="text"
-                  value={inviteLink}
+                  value={currentInviteLink || "No referral link available"}
                   readOnly
                   className="flex-1 bg-transparent text-white focus:outline-none text-sm overflow-x-auto whitespace-nowrap"
                 />
@@ -343,6 +366,7 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
                     isCopied ? "bg-green-600/20" : "bg-blue-600/20"
                   }`}
                   onClick={copyToClipboard}
+                  disabled={!currentInviteLink}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                 >
@@ -363,8 +387,11 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
                   className={`p-3 rounded-lg bg-gradient-to-br ${platform.color} text-white flex items-center justify-start w-20 h-12`}
                   onClick={() => {
                     const shareUrl = getShareMessage(platform.name);
-                    openSocialShare(shareUrl);
+                    if (shareUrl) {
+                      openSocialShare(shareUrl);
+                    }
                   }}
+                  disabled={!currentInviteLink}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                 >
@@ -769,13 +796,19 @@ export const ReferralProgram = () => {
     if (userProfile?.id) {
       setDataReady(false); // Reset data ready state
       loadReferralData();
+      
+      // Auto-generate referral code if user doesn't have one
+      if (userProfile?.wallet_address && !userProfile?.referral_code) {
+        console.log("User has no referral code, auto-generating...");
+        handleGenerateReferralCode();
+      }
     } else {
       // If user is not logged in, make sure loading states are reset
       setIsLoading(false);
       setIsLoadingEarnings(false);
       setDataReady(true); // Consider data ready to prevent loading spinners
     }
-  }, [userProfile?.id]);
+  }, [userProfile?.id, userProfile?.referral_code, userProfile?.wallet_address]);
 
   // Fetch referral earnings whenever referralRewards change
   useEffect(() => {
@@ -875,42 +908,70 @@ export const ReferralProgram = () => {
     }
   };
 
-  const handleGenerateReferralCode = async () => {
+  const handleGenerateReferralCode = async (showToast = true) => {
     if (!userProfile?.id) {
-      toast.error("You need to be logged in to generate a referral code");
+      if (showToast) toast.error("You need to be logged in to generate a referral code");
       return;
     }
 
     if (!userProfile?.wallet_address) {
-      toast.error(
+      if (showToast) toast.error(
         "You need to connect a wallet first to generate a referral code"
       );
       return;
     }
 
+    // Skip if user already has a referral code
+    if (userProfile?.referral_code) {
+      console.log("User already has referral code:", userProfile.referral_code);
+      return;
+    }
+
     try {
       setIsGenerating(true);
-      await dispatch(generateReferralCode(userProfile?.id)).unwrap();
-      toast.success("Referral code generated successfully!");
+      const result = await dispatch(generateReferralCode(userProfile?.id)).unwrap();
+      if (showToast) toast.success("Referral code generated successfully!");
+      
+      // Force reload referral data to get the new code
+      await loadReferralData();
+      
+      return result;
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Unknown error occurred";
-      toast.error(`Failed to generate referral code: ${errorMessage}`);
+      if (showToast) toast.error(`Failed to generate referral code: ${errorMessage}`);
       console.error("Failed to generate referral code:", err);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleCopyReferralLink = () => {
+  const handleCopyReferralLink = async () => {
+    // If no referral link exists, try to generate one first
     if (!referralLink) {
-      toast.error("Please generate a referral code first");
+      console.log("No referral link available, attempting to generate one");
+      await handleGenerateReferralCode(false); // Don't show toast for auto-generation
+      
+      // Check again after generation attempt
+      if (!userProfile?.referral_code) {
+        toast.error("Please connect a wallet to generate a referral code");
+        return;
+      }
+    }
+    
+    // Get the most up-to-date referral link
+    const currentReferralLink = userProfile?.referral_code
+      ? `${window.location.origin}/dashboard?ref=${userProfile.referral_code}`
+      : null;
+      
+    if (!currentReferralLink) {
+      toast.error("Unable to generate referral link");
       return;
     }
 
     // Copy to clipboard
     navigator.clipboard
-      .writeText(referralLink)
+      .writeText(currentReferralLink)
       .then(() => {
         setCopySuccess(true);
         toast.success("Referral link copied to clipboard!");

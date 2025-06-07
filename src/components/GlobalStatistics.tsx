@@ -28,7 +28,8 @@ import { formatUptime } from "@/utils/timeUtils";
 import { updateUptime } from "@/store/slices/nodeSlice";
 
 // Default refresh interval in milliseconds
-const AUTO_REFRESH_INTERVAL = 120000; // Increased to 120 seconds (2 minutes)
+const AUTO_REFRESH_INTERVAL = 120000; // 120 seconds (2 minutes)
+const LEADERBOARD_REFRESH_INTERVAL = 60000; // 1 minute
 const TASK_CACHE_KEY = "global_statistics_task_cache";
 const LAST_REFRESH_KEY = "global_statistics_last_refresh";
 const MIN_REFRESH_INTERVAL = 30000; // Minimum time between refreshes (30 seconds)
@@ -55,6 +56,7 @@ export const GlobalStatistics = () => {
   // Cache for storing tasks to reduce duplicate requests
   const [taskCache, setTaskCache] = useState<AITask[]>([]);
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
+  const [lastLeaderboardRefresh, setLastLeaderboardRefresh] = useState<number>(0);
   const [forceUpdate, setForceUpdate] = useState(0);
   // Leaderboard state
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -279,6 +281,16 @@ export const GlobalStatistics = () => {
         );
 
         if (currentUserEntry) {
+          // Ensure rank is properly set before updating state
+          if (currentUserEntry.rank === 0) {
+            // Find the correct rank based on position in sorted array
+            const userIndex = leaderboardData.findIndex(
+              (entry) => entry.user_id === userProfile.id
+            );
+            if (userIndex !== -1) {
+              currentUserEntry.rank = userIndex + 1;
+            }
+          }
           setCurrentUserRank(currentUserEntry);
           console.log("Setting current user rank:", currentUserEntry.rank);
         } else {
@@ -361,7 +373,7 @@ export const GlobalStatistics = () => {
         // Check if it's too soon to refresh again
         const now = Date.now();
         const timeSinceLastRefresh = now - lastRefreshTime;
-        if (!forceRefresh && timeSinceLastRefresh < MIN_REFRESH_INTERVAL) {
+        if (!forceRefresh && timeSinceLastRefresh < 60000) {
           // Only log occasionally to reduce console spam
           if (Math.random() < 0.1) {
             console.log(
@@ -426,8 +438,12 @@ export const GlobalStatistics = () => {
           }
         }
 
-        // Fetch leaderboard data
-        await fetchLeaderboard();
+        // Always fetch leaderboard on manual refresh, otherwise check time interval
+        const currentTime = Date.now();
+        if (forceRefresh || currentTime - lastLeaderboardRefresh >= 60000) {
+          await fetchLeaderboard();
+          setLastLeaderboardRefresh(currentTime);
+        }
 
         setIsRefreshing(false);
         if (showToast) {
@@ -658,8 +674,8 @@ export const GlobalStatistics = () => {
         setForceUpdate((prev) => prev + 1);
 
         // Only update database stats occasionally to reduce load
-        if (forceUpdate % 30 === 0) {
-          // Every 30 seconds
+        if (forceUpdate % 60 === 0) {
+          // Every 60 seconds (1 minute)
           fetchDatabaseStats().then((dbStats) => {
             if (dbStats) {
               setStats((prev) => ({
@@ -969,10 +985,22 @@ export const GlobalStatistics = () => {
 
       {/* Leaderboard - Replacing task list */}
       <div className="mb-6 w-full">
-        <h3 className="text-base sm:text-lg font-medium mb-4 flex items-center">
-          <TrendingUp className="w-5 h-5 mr-2 text-blue-400" />
-          {t("globalStatistics.leaderboard.title", "Leaderboard")}
-        </h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-base sm:text-lg font-medium flex items-center">
+            <TrendingUp className="w-5 h-5 mr-2 text-blue-400" />
+            {t("globalStatistics.leaderboard.title", "Leaderboard")}
+          </h3>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-1 text-xs"
+            onClick={() => loadTasks(true, true)}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {t("globalStatistics.refresh", "Refresh")}
+          </Button>
+        </div>
 
         {isLeaderboardLoading ? (
           <div className="flex flex-col items-center justify-center py-8 text-slate-400">
