@@ -52,6 +52,7 @@ import {
   loadUptimeFromDatabase,
   setUptimeFromDatabase,
   syncUptime,
+  switchCurrentNode
 } from "@/store/slices/nodeSlice";
 import {
   fetchAndAssignTasks,
@@ -60,6 +61,7 @@ import {
 import { useSession } from "@/hooks/useSession";
 
 import { RootState, useAppDispatch } from "@/store";
+import { store } from "@/store";
 import { assignTasksToUser } from "@/services/swarmTaskService";
 import { useEarnings } from "@/hooks/useEarnings";
 import {
@@ -138,6 +140,8 @@ export const NodeControlPanel = () => {
   const [error, setError] = useState<string | null>(null);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const { subscriptionTier } = useSession();
+
+
   const tierInfo = getTierByName(subscriptionTier);
   const [isRegistering, setIsRegistering] = useState(false);
 
@@ -316,7 +320,7 @@ export const NodeControlPanel = () => {
       try {
         const { data, error } = await client
           .from("devices")
-          .select("uptime")
+          .select("uptime, device_name, reward_tier")
           .eq("id", selectedNodeId)
           .single();
 
@@ -324,13 +328,20 @@ export const NodeControlPanel = () => {
 
         if (data) {
           console.log(
-            `Fetched uptime for node ${selectedNodeId}: ${data.uptime} seconds`
+            `Fetched uptime for node "${data.device_name}" (${selectedNodeId}): ${data.uptime} seconds`
           );
+          
           // If the node is currently active, we don't want to override the current uptime
           // as it's being tracked in real-time
           if (!isActive || nodeId !== selectedNodeId) {
-            // Use the new action creator to set the uptime in Redux
-            dispatch(setUptimeFromDatabase(data.uptime || 0));
+            // Use switchCurrentNode to properly update the Redux store with this node's info
+            dispatch(switchCurrentNode({
+              nodeId: selectedNodeId,
+              nodeName: data.device_name || `Device ${selectedNodeId.substring(0, 6)}`,
+              nodeType: 'desktop', // Default to desktop since we don't have this info in the DB
+              rewardTier: data.reward_tier || 'cpu',
+              uptime: data.uptime || 0
+            }));
           }
         }
       } catch (error) {
@@ -465,7 +476,17 @@ export const NodeControlPanel = () => {
   }, [userProfile?.id, client, isActive, nodeId]);
 
   const handleNodeSelect = (value: string) => {
+    // Prevent changing nodes while a node is active
+    if (isActive) {
+      toast.error("Please stop the current node before switching to another node");
+      return;
+    }
+    
+    // Set the selected node ID in the local state
     setSelectedNodeId(value);
+    
+    // The fetchNodeUptime effect will be triggered by the selectedNodeId change
+    // This will fetch the uptime and update Redux with the switchCurrentNode action
   };
 
   const getDeviceIcon = (type: "desktop" | "laptop" | "tablet" | "mobile") => {
@@ -527,6 +548,38 @@ export const NodeControlPanel = () => {
       return;
     }
 
+    // Define fetchNodeUptime function to be used after stopping a node
+    const fetchNodeUptime = async () => {
+      if (!selectedNodeId || !userProfile?.id) return;
+
+      try {
+        const { data, error } = await client
+          .from("devices")
+          .select("uptime, device_name, reward_tier")
+          .eq("id", selectedNodeId)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          console.log(
+            `Fetched uptime for node "${data.device_name}" (${selectedNodeId}): ${data.uptime} seconds`
+          );
+          
+          // Use switchCurrentNode to properly update the Redux store with this node's info
+          dispatch(switchCurrentNode({
+            nodeId: selectedNodeId,
+            nodeName: data.device_name || `Device ${selectedNodeId.substring(0, 6)}`,
+            nodeType: 'desktop', // Default to desktop since we don't have this info in the DB
+            rewardTier: data.reward_tier || 'cpu',
+            uptime: data.uptime || 0
+          }));
+        }
+      } catch (error) {
+        console.error("Error fetching node uptime:", error);
+      }
+    };
+
     if (isActive) {
       // Stop the node
       setIsStopping(true);
@@ -540,13 +593,14 @@ export const NodeControlPanel = () => {
           .from("devices")
           .update({ status: "offline" })
           .eq("id", selectedNodeId)
-          .select("status")
+          .select("status, device_name, uptime")
           .single();
 
         if (updateError) throw updateError;
 
-        console.log(`Node status updated in database: ${JSON.stringify(data)}`);
+        console.log(`Node "${data?.device_name}" status updated in database: ${JSON.stringify(data)}`);
 
+        // Stop the node in Redux
         dispatch(stopNode());
         dispatch(clearAssignedTasks());
 
@@ -558,6 +612,11 @@ export const NodeControlPanel = () => {
         );
 
         toast.info(`Node "${selectedNode?.name}" stopped`);
+        
+        // Fetch the latest uptime for this node after stopping
+        setTimeout(() => {
+          fetchNodeUptime();
+        }, 1000);
       } catch (error) {
         console.error("Error stopping node:", error);
         toast.error("Failed to stop node. Please try again.");
@@ -578,19 +637,19 @@ export const NodeControlPanel = () => {
           .from("devices")
           .update({ status: "busy" })
           .eq("id", selectedNodeId)
-          .select("status")
+          .select("status, device_name")
           .single();
 
         if (updateError) throw updateError;
 
-        console.log(`Node status updated in database: ${JSON.stringify(data)}`);
+        console.log(`Node "${data?.device_name}" status updated in database: ${JSON.stringify(data)}`);
 
         // Load the current uptime from the database
         try {
           // Directly fetch uptime from the database
           const { data: uptimeData, error: uptimeError } = await client
             .from("devices")
-            .select("uptime")
+            .select("uptime, device_name")
             .eq("id", selectedNodeId)
             .single();
 
@@ -598,7 +657,7 @@ export const NodeControlPanel = () => {
 
           const databaseUptime = uptimeData?.uptime || 0;
           console.log(
-            `Loaded uptime from database for node ${selectedNodeId}: ${databaseUptime} seconds`
+            `Loaded uptime from database for node "${uptimeData?.device_name}" (${selectedNodeId}): ${databaseUptime} seconds`
           );
 
           // Simulate starting delay
@@ -745,8 +804,29 @@ export const NodeControlPanel = () => {
       if (isActive) {
         console.log("App closing/refreshing - syncing uptime data...");
 
-        // Only sync uptime to database - don't stop the node yet
+        // Sync uptime to database
         dispatch(syncUptime());
+        
+        // Store the current session info for recovery
+        if (selectedNodeId) {
+          try {
+            // Get values from Redux state
+            const { startTime, totalUptime } = store.getState().node;
+            
+            // Calculate current session uptime
+            const sessionUptime = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+            
+            // Store detailed session info
+            localStorage.setItem("node-session-info", JSON.stringify({
+              nodeId: selectedNodeId,
+              sessionUptime,
+              totalUptime,
+              timestamp: Date.now()
+            }));
+          } catch (e) {
+            console.error("Failed to save session info to localStorage", e);
+          }
+        }
 
         // Display confirmation dialog
         const message =
@@ -763,40 +843,27 @@ export const NodeControlPanel = () => {
       if (isActive && selectedNodeId) {
         console.log("Page actually unloading - stopping node");
 
-        // Use synchronous localStorage to mark node for offline status
-        // This will be checked on next load to update the database
         try {
+          // Store node stop info
           localStorage.setItem("nodeToStop", selectedNodeId);
           localStorage.setItem("nodeStopTime", new Date().toISOString());
+          
+          // Get values from Redux state
+          const { startTime, totalUptime } = store.getState().node;
+          
+          // Calculate and store final uptime
+          if (startTime) {
+            const sessionUptime = Math.floor((Date.now() - startTime) / 1000);
+            const finalUptime = totalUptime + sessionUptime;
+            
+            localStorage.setItem(`node-uptime-sync-pending-${selectedNodeId}`, JSON.stringify({
+              totalUptime: finalUptime,
+              timestamp: Date.now()
+            }));
+          }
         } catch (e) {
           console.error("Failed to save node stop info to localStorage", e);
         }
-      }
-    };
-
-    // Separate effect to handle database updates when page is unloading
-    const updateDeviceStatus = async () => {
-      if (isActive && userProfile?.id) {
-        try {
-          if (selectedNodeId) {
-            console.log(
-              `Setting node ${selectedNodeId} to offline in database`
-            );
-            await client
-              .from("devices")
-              .update({ status: "offline" })
-              .eq("id", selectedNodeId);
-          }
-        } catch (err) {
-          console.error("Error updating device status:", err);
-        }
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden" && isActive) {
-        console.log("Page hidden - syncing uptime data");
-        dispatch(syncUptime());
       }
     };
 
@@ -805,18 +872,21 @@ export const NodeControlPanel = () => {
       try {
         const nodeToStop = localStorage.getItem("nodeToStop");
         const nodeStopTime = localStorage.getItem("nodeStopTime");
+        const sessionInfo = localStorage.getItem("node-session-info");
 
+        // Process node stop info
         if (nodeToStop && nodeStopTime) {
           const stopTime = new Date(nodeStopTime);
           const now = new Date();
           const timeDiff = now.getTime() - stopTime.getTime();
 
-          // If the stored data is recent (within last 10 seconds), update the node status
-          if (timeDiff < 10000) {
+          // If the stored data is recent (within last 30 seconds), update the node status
+          if (timeDiff < 30000) {
             console.log(
               `Found node ${nodeToStop} that needs to be stopped from previous session`
             );
 
+            // Update node status in database
             await client
               .from("devices")
               .update({ status: "offline" })
@@ -835,6 +905,38 @@ export const NodeControlPanel = () => {
           localStorage.removeItem("nodeToStop");
           localStorage.removeItem("nodeStopTime");
         }
+        
+        // Process session info
+        if (sessionInfo) {
+          const parsedInfo = JSON.parse(sessionInfo);
+          const sessionTimestamp = parsedInfo.timestamp;
+          const now = Date.now();
+          const timeDiff = now - sessionTimestamp;
+          
+          // If the session info is recent (within last 30 seconds)
+          if (timeDiff < 30000 && parsedInfo.nodeId) {
+            console.log(`Found recent session info for node ${parsedInfo.nodeId}`);
+            
+            // Ensure the uptime is synced to the database
+            try {
+              await client
+                .from("devices")
+                .update({ 
+                  uptime: parsedInfo.totalUptime + parsedInfo.sessionUptime,
+                  status: "offline",
+                  last_seen: new Date().toISOString()
+                })
+                .eq("id", parsedInfo.nodeId);
+                
+              console.log(`Successfully synced final uptime for node ${parsedInfo.nodeId}`);
+            } catch (error) {
+              console.error("Error syncing final uptime:", error);
+            }
+          }
+          
+          // Clear the session info
+          localStorage.removeItem("node-session-info");
+        }
       } catch (e) {
         console.error("Error checking previous unload", e);
       }
@@ -845,6 +947,15 @@ export const NodeControlPanel = () => {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     window.addEventListener("unload", handleUnload);
+    
+    // Add visibility change handler
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && isActive) {
+        console.log("Page hidden - syncing uptime data");
+        dispatch(syncUptime());
+      }
+    };
+    
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const syncInterval = isActive

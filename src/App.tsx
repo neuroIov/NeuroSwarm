@@ -12,11 +12,16 @@ import NotFound from "./pages/NotFound";
 import { useSession } from "./hooks/useSession";
 import { WalletButton } from "./components/WalletButton";
 import { useSelector } from "react-redux";
-import { RootState, useAppDispatch } from "./store";
-import { syncUptime, updateUptime } from "./store/slices/nodeSlice";
+import { RootState, useAppDispatch, store } from "./store";
+import { 
+  syncUptime, 
+  updateUptime, 
+  checkPendingSyncOperations, 
+  getLastActiveNodeId,
+  saveLastActiveNodeId
+} from "./store/slices/nodeSlice";
 import { useToast } from "@/components/ui/use-toast"; // ✅ added
 import { getSwarmSupabase, getTaskSupabase } from "./lib/supabase-client";
-import { store } from "./store";
 import { updatePlan } from "./store/slices/sessionSlice";
 import { ConnectAppModal } from "./components/ConnectAppModal";
 
@@ -26,13 +31,75 @@ const AppContent = () => {
   const { session, logUserActivity, subscriptionTier } = useSession();
   const userProfile = session?.userProfile;
   const taskSupabase = getTaskSupabase();
+  const swarmSupabase = getSwarmSupabase();
   const dispatch = useAppDispatch();
   const { toast } = useToast(); // ✅ added
-  const { isActive, remainingFreeTierTime } = useSelector(
+  const { isActive, remainingFreeTierTime, nodeId } = useSelector(
     (state: RootState) => state.node
   );
   const hasShownLimitToast = useRef(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
+
+  // Check for pending sync operations when app loads
+  useEffect(() => {
+    const processPendingSyncs = async () => {
+      try {
+        await checkPendingSyncOperations();
+      } catch (error) {
+        console.error("Error processing pending sync operations:", error);
+      }
+    };
+    
+    processPendingSyncs();
+  }, []);
+
+  // Restore last active node on app load
+  useEffect(() => {
+    const restoreLastActiveNode = async () => {
+      if (!userProfile?.id) return;
+      
+      const lastNodeId = getLastActiveNodeId();
+      if (lastNodeId && !nodeId && !isActive) {
+        try {
+          console.log(`Restoring last active node: ${lastNodeId}`);
+          
+          // Fetch the node details from the database
+          const { data, error } = await swarmSupabase
+            .from("devices")
+            .select("id, device_name, reward_tier, uptime")
+            .eq("id", lastNodeId)
+            .eq("owner", userProfile.id)
+            .single();
+            
+          if (error) {
+            console.error("Error fetching last active node:", error);
+            return;
+          }
+          
+          if (data) {
+            console.log(`Found last active node: ${data.device_name} (${data.id})`);
+            
+            // Update the Redux store with this node's info
+            // Note: We're not starting the node, just setting it as the current selection
+            dispatch({
+              type: 'node/switchCurrentNode',
+              payload: {
+                nodeId: data.id,
+                nodeName: data.device_name,
+                nodeType: 'desktop', // Default to desktop
+                rewardTier: data.reward_tier || 'cpu',
+                uptime: data.uptime || 0
+              }
+            });
+          }
+        } catch (error) {
+          console.error("Error restoring last active node:", error);
+        }
+      }
+    };
+    
+    restoreLastActiveNode();
+  }, [userProfile?.id, nodeId, isActive, dispatch, swarmSupabase]);
 
   useEffect(() => {
     const fetchUserPlan = async () => {
@@ -130,6 +197,33 @@ const AppContent = () => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       if (isActive) {
         console.log("App closing/refreshing - syncing uptime data...");
+         
+        // Get current node state
+        const { nodeId, startTime, totalUptime } = store.getState().node;
+         
+        // Calculate current session uptime
+        if (startTime && nodeId) {
+          const sessionUptime = Math.floor((Date.now() - startTime) / 1000);
+          const finalUptime = totalUptime + sessionUptime;
+           
+          // Store sync info in localStorage for recovery
+          try {
+            localStorage.setItem(`node-uptime-sync-pending-${nodeId}`, JSON.stringify({
+              totalUptime: finalUptime,
+              timestamp: Date.now()
+            }));
+             
+            // Also store node stop info
+            localStorage.setItem("nodeToStop", nodeId);
+            localStorage.setItem("nodeStopTime", new Date().toISOString());
+             
+            console.log(`Stored pending sync for node ${nodeId}: ${finalUptime} seconds`);
+          } catch (e) {
+            console.error("Failed to store sync info:", e);
+          }
+        }
+         
+        // Try to sync immediately
         dispatch(syncUptime());
 
         // Display confirmation dialog
@@ -147,6 +241,10 @@ const AppContent = () => {
       if (document.visibilityState === "hidden" && isActive) {
         console.log("Page hidden - syncing uptime data");
         dispatch(syncUptime());
+      } else if (document.visibilityState === "visible" && isActive) {
+        // When page becomes visible again, check if we need to refresh data
+        console.log("Page visible again - checking for updates");
+        // This will trigger any necessary database fetches
       }
     };
 
