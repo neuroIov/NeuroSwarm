@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { ArrowUp, Clock } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { getSwarmSupabase } from "@/lib/supabase-client";
@@ -6,7 +6,7 @@ import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "@/store";
 import { formatUptime } from "@/utils/timeUtils";
 import { useSession } from "@/hooks/useSession";
-import { updateUptime } from "@/store/slices/nodeSlice";
+import { updateUptime, setUptimeFromDatabase } from "@/store/slices/nodeSlice";
 
 type StatCardProps = {
   title: string;
@@ -29,11 +29,11 @@ const StatCard = ({
 
   const getColor = () => {
     if (isPlan) {
-      if (value === "basic") {
+      if (value === "Basic") {
         return "text-white";
-      } else if (value === "ultimate") {
+      } else if (value === "Ultimate") {
         return "text-yellow-400";
-      } else if (value === "enterprise") {
+      } else if (value === "Enterprise") {
         return "text-green-400";
       } else {
         return "text-white";
@@ -81,12 +81,13 @@ const StatCard = ({
 export const NetworkStats = () => {
   const client = getSwarmSupabase();
   const dispatch = useAppDispatch();
-  const { session } = useSession();
+  const { session, subscriptionTier } = useSession();
   const userProfile = session?.userProfile;
   const [totalNodes, setTotalNodes] = useState(0);
   const [totalActiveNodes, setTotalActiveNodes] = useState(0);
   const [networkLoad, setNetworkLoad] = useState(0);
-  const [storedUptime, setStoredUptime] = useState(0);
+  const [nodesUptimeMap, setNodesUptimeMap] = useState<Record<string, number>>({});
+  const [totalStoredUptime, setTotalStoredUptime] = useState(0);
   const [localUptime, setLocalUptime] = useState(0);
   const [lastUpdate, setLastUpdate] = useState(Date.now()); // Track last update time
 
@@ -102,25 +103,39 @@ export const NetworkStats = () => {
     try {
       const { data, error } = await client
         .from("devices")
-        .select("uptime, id")
+        .select("uptime, id, device_name")
         .eq("owner", userProfile.id);
 
       if (error) throw error;
+
+      // Create a map of node ID to uptime
+      const uptimeMap: Record<string, number> = {};
+      data.forEach(device => {
+        uptimeMap[device.id] = device.uptime || 0;
+      });
+      
+      // Store the map for individual node tracking
+      setNodesUptimeMap(uptimeMap);
 
       // Calculate total uptime across all user's devices
       const totalUserUptime = data.reduce(
         (sum, device) => sum + (device.uptime || 0),
         0
       );
-      setStoredUptime(totalUserUptime);
+      setTotalStoredUptime(totalUserUptime);
 
       // If the current node is in the devices, update its local uptime
       if (nodeId) {
         const currentDevice = data.find((device) => device.id === nodeId);
-        if (currentDevice && currentDevice.uptime) {
+        if (currentDevice) {
           console.log(
-            `Found device uptime for current node: ${currentDevice.uptime}`
+            `Found device uptime for current node ${currentDevice.device_name} (${nodeId}): ${currentDevice.uptime} seconds`
           );
+          
+          // Only update Redux if the node is not active (to avoid overwriting active session tracking)
+          if (!isActive) {
+            dispatch(setUptimeFromDatabase(currentDevice.uptime || 0));
+          }
         }
       }
     } catch (error) {
@@ -156,9 +171,32 @@ export const NetworkStats = () => {
     };
   }, [isActive, dispatch, lastUpdate]);
 
-  // Calculate total uptime including current session if active
-  const calculatedTotalUptime =
-    storedUptime + (isActive ? currentSessionUptime : 0);
+  // Calculate displayed uptime based on current node selection and active status
+  const calculatedDisplayUptime = useMemo(() => {
+    // If a node is selected (either active or not)
+    if (nodeId) {
+      // If the node is active, add current session uptime to its stored uptime
+      if (isActive) {
+        const baseNodeUptime = nodesUptimeMap[nodeId] || 0;
+        return baseNodeUptime + currentSessionUptime;
+      } 
+      // If node is selected but not active, just show its stored uptime
+      else {
+        return nodesUptimeMap[nodeId] || 0;
+      }
+    }
+    
+    // If no node is selected, show total uptime across all nodes
+    return totalStoredUptime;
+  }, [isActive, nodeId, currentSessionUptime, nodesUptimeMap, totalStoredUptime]);
+
+  // Listen for node changes to update the displayed uptime
+  useEffect(() => {
+    if (nodeId) {
+      // When node ID changes, fetch the latest uptime for all devices
+      fetchUserDevicesUptime();
+    }
+  }, [nodeId]);
 
   const getTotalNodes = async () => {
     try {
@@ -301,20 +339,19 @@ export const NetworkStats = () => {
       <StatCard
         title="Your Plan"
         value={
-          userProfile?.plan
-            ? userProfile?.plan?.charAt(0).toUpperCase() +
-              userProfile?.plan?.slice(1)
+          subscriptionTier
+            ? subscriptionTier?.charAt(0).toUpperCase() +
+              subscriptionTier?.slice(1)
             : "Free"
         }
         unit=""
-        // changePercentage={2.4}
         info="Current utilization of the network's total processing capacity"
       />
       <StatCard
         title="Uptime"
-        value={formatUptime(calculatedTotalUptime)}
+        value={formatUptime(calculatedDisplayUptime)}
         changePercentage={5}
-        info="Total accumulated uptime across all your nodes"
+        info={nodeId ? "Current selected node uptime" : "Total accumulated uptime across all your nodes"}
         isUptime={true}
       />
     </div>
