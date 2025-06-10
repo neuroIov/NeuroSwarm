@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getTierByName } from "@/lib/subscriptionTiers";
+import { getTierByName, getMaxUptimeByTier } from "@/lib/subscriptionTiers";
 
 import {
   Cpu,
@@ -155,6 +155,7 @@ export const NodeControlPanel = () => {
   const [isDeletingNode, setIsDeletingNode] = useState(false);
   const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [showUptimeLimitDialog, setShowUptimeLimitDialog] = useState(false);
 
   // Add useEffect for refreshing total earnings every 30 seconds
   useEffect(() => {
@@ -546,6 +547,31 @@ export const NodeControlPanel = () => {
     if (!userProfile?.id) {
       toast.error("User profile not loaded. Please reload the page.");
       return;
+    }
+    
+    // If trying to start a node, check if uptime limit has been reached
+    if (!isActive && selectedNode) {
+      try {
+        // Fetch the current uptime from the database
+        const { data, error } = await client
+          .from("devices")
+          .select("uptime")
+          .eq("id", selectedNodeId)
+          .single();
+          
+        if (error) throw error;
+        
+        const currentUptime = data?.uptime || 0;
+        const maxUptime = tierInfo?.maxUptime || 3600; // Default to 1 hour if not specified
+        
+        // Check if the uptime has reached the limit
+        if (currentUptime >= maxUptime) {
+          setShowUptimeLimitDialog(true);
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking uptime limit:", error);
+      }
     }
 
     // Define fetchNodeUptime function to be used after stopping a node
@@ -971,12 +997,54 @@ export const NodeControlPanel = () => {
   }, [isActive, selectedNodeId, dispatch, client, userProfile?.id, nodeId]);
 
   return (
-    <div className="p-2.5 sm:p-4 md:p-6 rounded-2xl sm:rounded-3xl stat-card overflow-x-hidden">
-      <div className="flex flex-col">
-        <div className="flex flex-row justify-between items-center gap-2 sm:gap-0 mb-3 sm:mb-6">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <h2 className="text-sm sm:text-lg font-medium text-white/90">
-              Node Control Panel
+    <>
+      {/* Uptime Limit Dialog */}
+      <Dialog open={showUptimeLimitDialog} onOpenChange={setShowUptimeLimitDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Subscription Tier Limit Reached
+            </DialogTitle>
+            <DialogDescription>
+              Your {subscriptionTier} tier uptime limit of {tierInfo?.maxUptime} seconds has been reached.
+              You cannot start this node until your uptime is reset or you upgrade your subscription plan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">Current Plan</span>
+                <span className="text-xs text-muted-foreground">{subscriptionTier}</span>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowUptimeLimitDialog(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+          <DialogFooter className="flex flex-col sm:flex-row sm:justify-between sm:space-x-0">
+            <Button
+              type="button"
+              variant="default"
+              onClick={() => {
+                setShowUptimeLimitDialog(false);
+                // Here you would typically navigate to upgrade page
+                // For now just show a toast
+                toast.info("Please upgrade your subscription plan to get more uptime");
+              }}
+            >
+              Upgrade Plan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      <div className="p-2.5 sm:p-4 md:p-6 rounded-2xl sm:rounded-3xl stat-card overflow-x-hidden">
+        <div className="flex flex-col">
+          <div className="flex flex-row justify-between items-center gap-2 sm:gap-0 mb-3 sm:mb-6">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <h2 className="text-sm sm:text-lg font-medium text-white/90">
+                Node Control Panel
             </h2>
             <InfoTooltip content="Manage your computing nodes, start or stop them, and view performance metrics" />
           </div>
@@ -1416,5 +1484,6 @@ export const NodeControlPanel = () => {
         </DialogContent>
       </Dialog>
     </div>
+    </>
   );
 };

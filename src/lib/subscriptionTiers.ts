@@ -2,7 +2,8 @@ export const subscriptionTiers = [
     {
       name: "Basic",
       price: 10,
-      maxUptime: ( 6) * 60 * 60, // 10 hours
+      // maxUptime: ( 6) * 60 * 60, // 10 hours
+      maxUptime: 300,
       deviceLimit: 1,
       aiCredits: {
         neuroImageGen: "limited",
@@ -21,7 +22,8 @@ export const subscriptionTiers = [
     {
       name: "Ultimate",
       price: 15,
-      maxUptime: (4 + 6) * 60 * 60, // 12 hours
+      // maxUptime: (4 + 6) * 60 * 60, // 12 hours
+      maxUptime: 300,
       deviceLimit: 2,
       aiCredits: {
         neuroImageGen: "unlimited",
@@ -40,7 +42,8 @@ export const subscriptionTiers = [
     {
       name: "Enterprice",
       price: 50,
-      maxUptime: 24 * 60 * 60, // 24 hours
+      // maxUptime: 24 * 60 * 60, // 24 hours
+      maxUptime: 300,
       deviceLimit: 6,
       aiCredits: {
         neuroImageGen: "unlimited",
