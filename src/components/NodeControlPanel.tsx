@@ -113,7 +113,6 @@ export const NodeControlPanel = () => {
   const client = getSwarmSupabase();
   const { session } = useSession();
   const userProfile = session.userProfile;
-  const walletConnected = !!session.walletAddress;
 
   const {
     isActive,
@@ -1117,7 +1116,7 @@ export const NodeControlPanel = () => {
               isStarting ||
               isStopping ||
               !selectedNodeId ||
-              (!isActive && !walletConnected)
+              (!isActive && !userProfile?.id)
             }
             onClick={toggleNodeStatus}
             className={`rounded-full transition-all duration-300 shadow-md hover:shadow-lg text-white text-xs sm:text-sm px-3 py-1 sm:px-4 sm:py-2 h-9 sm:h-10 hover:translate-y-[-0.5px] ${
@@ -1126,8 +1125,8 @@ export const NodeControlPanel = () => {
                 : "bg-green-600 hover:bg-green-700 hover:shadow-green-500/30 shadow-green-500"
             }`}
             title={
-              !walletConnected && !isActive
-                ? "Connect wallet to start node"
+              !userProfile?.id && !isActive
+                ? "Login required to start node"
                 : ""
             }
           >
@@ -1157,11 +1156,11 @@ export const NodeControlPanel = () => {
         </div>
 
         {/* Show wallet connection notice when wallet is not connected */}
-        {!walletConnected && !isActive && (
+        {!userProfile?.id && !isActive && (
           <div className="bg-amber-800/20 border border-amber-700/30 rounded-lg p-2 mb-4 text-amber-200 text-xs">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4" />
-              <span>Wallet connection required to start a node</span>
+              <span>Login required to start node</span>
             </div>
           </div>
         )}
@@ -1171,57 +1170,17 @@ export const NodeControlPanel = () => {
             <div className="flex items-center gap-1.5 sm:gap-3 mb-0.5 sm:mb-2">
               <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
                 <img
-                  src="/images/cpu_usage.png"
-                  alt="CPU"
+                  src="/images/coins.png"
+                  alt="Reward Tier"
                   className="w-5 h-5 sm:w-7 sm:h-7 object-contain z-10"
                 />
               </div>
               <div className="flex flex-col overflow-hidden">
                 <span className="text-[#515194] text-[10px] sm:text-sm whitespace-nowrap">
-                  CPU Usage
+                  Reward Tier
                 </span>
                 <div className="text-sm sm:text-xl font-medium text-white">
-                  {cpuUsage.toFixed(2)}%
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-2 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
-            <div className="flex items-center gap-1.5 sm:gap-3 mb-0.5 sm:mb-2">
-              <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
-                <img
-                  src="/images/memory_usage.png"
-                  alt="Memory"
-                  className="w-5 h-5 sm:w-7 sm:h-7 object-contain z-10"
-                />
-              </div>
-              <div className="flex flex-col overflow-hidden">
-                <span className="text-[#515194] text-[10px] sm:text-sm whitespace-nowrap">
-                  Memory
-                </span>
-                <div className="text-sm sm:text-xl font-medium text-white">
-                  {memoryUsage.toFixed(2)}%
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-2 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
-            <div className="flex items-center gap-1.5 sm:gap-3 mb-0.5 sm:mb-2">
-              <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
-                <img
-                  src="/images/network_usage.png"
-                  alt="Network"
-                  className="w-5 h-5 sm:w-7 sm:h-7 object-contain z-10"
-                />
-              </div>
-              <div className="flex flex-col overflow-hidden">
-                <span className="text-[#515194] text-[10px] sm:text-sm whitespace-nowrap">
-                  Network
-                </span>
-                <div className="text-sm sm:text-xl font-medium text-white">
-                  {networkUsage.toFixed(2)} MB/s
+                  {selectedNode?.rewardTier?.toUpperCase() || 'N/A'}
                 </div>
               </div>
             </div>
@@ -1248,36 +1207,49 @@ export const NodeControlPanel = () => {
           </div>
         </div>
 
-        <div className="p-2 sm:p-4 rounded-xl bg-[#1D1D33] mb-3 sm:mb-6 overflow-hidden">
-          <div className="flex items-center justify-between mb-1 sm:mb-2">
-            <span className="text-[#515194] text-[10px] sm:text-sm">
-              Reward Tier
-            </span>
-            <span className="px-1.5 sm:px-3 py-0.5 sm:py-1 bg-purple-500/20 text-purple-400 text-[10px] sm:text-xs font-medium rounded-full uppercase">
-              {isActive ? rewardTier : selectedNode?.rewardTier}
-            </span>
-          </div>
-          <p className="text-[10px] sm:text-sm text-[#515194] break-words">
-            {(isActive ? rewardTier : selectedNode?.rewardTier) === "webgpu" &&
-              "This device supports WebGPU acceleration, earning maximum Swarm Point rewards."}
-            {(isActive ? rewardTier : selectedNode?.rewardTier) === "wasm" &&
-              "This device uses WASM processing, earning high Swarm Point rewards."}
-            {(isActive ? rewardTier : selectedNode?.rewardTier) === "webgl" &&
-              "This device uses WebGL processing, earning medium Swarm Point rewards."}
-            {(isActive ? rewardTier : selectedNode?.rewardTier) === "cpu" &&
-              "This device uses CPU processing, earning basic Swarm Point rewards."}
-          </p>
-          {selectedNode && (
-            <div className="grid grid-cols-1 gap-1 sm:gap-4 mt-2 sm:mt-4 text-[10px] sm:text-sm overflow-hidden">
-              {selectedNode.gpuInfo && (
-                <div className="col-span-2 text-[#515194] truncate">
-                  GPU:{" "}
-                  <span className="text-white">{extractGPUModel(selectedNode.gpuInfo)}</span>
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 mb-3 sm:mb-6">
+            <div className="p-2 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
+              <div className="flex items-center gap-1.5 sm:gap-3 mb-0.5 sm:mb-2">
+                <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
+                  <img
+                    src="/images/devices.png"
+                    alt="Connected Devices"
+                    className="w-5 h-5 sm:w-7 sm:h-7 object-contain z-10"
+                  />
                 </div>
-              )}
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-[#515194] text-[10px] sm:text-sm whitespace-nowrap">
+                    Connected Devices
+                  </span>
+                  <div className="text-sm sm:text-xl font-medium text-white">
+                    {nodes.length}
+                  </div>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+
+            <div className="p-2 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
+              <div className="flex items-center gap-1.5 sm:gap-3 mb-0.5 sm:mb-2">
+                <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
+                  <img
+                    src="/images/gpu_model.png"
+                    alt="GPU Model"
+                    className="w-5 h-5 sm:w-7 sm:h-7 object-contain z-10"
+                  />
+                </div>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-[#515194] text-[10px] sm:text-sm whitespace-nowrap">
+                    GPU Model
+                  </span>
+                  <div className="text-sm sm:text-xl font-medium text-white">
+                    {selectedNode ? extractGPUModel(selectedNode.gpuInfo) : 'N/A'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        
 
         <div className="p-4 sm:p-6 flex flex-row items-center justify-between rounded-xl sm:rounded-2xl bg-gradient-to-r from-[#090C18] to-[#14273F] border border-[#1D5AB3] relative overflow-hidden gap-4">
           <div className="flex items-center gap-4 z-10">
@@ -1305,6 +1277,7 @@ export const NodeControlPanel = () => {
             </span>
             <span className="text-white/90 text-sm">SP</span>
           </div>
+          <p className="absolute bottom-2 right-4 text-[10px] text-white/50 italic">*All Swarm Points will be converted to $NLOV after TGE</p>
         </div>
       </div>
 
