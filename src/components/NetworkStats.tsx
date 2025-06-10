@@ -27,7 +27,6 @@ const StatCard = ({
 }: StatCardProps) => {
   let isPlan = title === "Your Plan";
 
-  console.log("value", value);
 
   const getColor = () => {
     if (isPlan) {
