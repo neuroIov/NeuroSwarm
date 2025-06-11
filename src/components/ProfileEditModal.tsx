@@ -191,13 +191,26 @@ export function ProfileEditModal({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* User Info Section */}
-          <div className="border border-gray-800 rounded-md p-4 bg-gray-900/30">
-            <div className="flex items-center gap-2 mb-4">
-              <User className="h-5 w-5 text-blue-400" />
-              <h3 className="text-sm font-medium">User Information</h3>
-            </div>
+        <Tabs defaultValue="user" className="space-y-4">
+          <TabsList className="grid grid-cols-2 bg-gray-800/30">
+            <TabsTrigger value="user" className="data-[state=active]:bg-gray-700/30">
+              <span className="flex items-center gap-2">
+                <User className="h-4 w-4" /> User Info
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="wallet" className="data-[state=active]:bg-gray-700/30">
+              <span className="flex items-center gap-2">
+                <Wallet className="h-4 w-4" /> Wallet
+              </span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="user" className="space-y-4 mt-4">
+            <div className="border border-gray-800 rounded-md p-4 bg-gray-900/30">
+              <div className="flex items-center gap-2 mb-4">
+                <User className="h-5 w-5 text-blue-400" />
+                <h3 className="text-sm font-medium">User Information</h3>
+              </div>
 
             {/* Email */}
             <div className="mb-4">
@@ -292,13 +305,14 @@ export function ProfileEditModal({
               )}
             </div>
           </div>
+          </TabsContent>
 
-          {/* Wallet Section */}
-          <div className="border border-gray-800 rounded-md p-4 bg-gray-900/30">
-            <div className="flex items-center gap-2 mb-4">
-              <Wallet className="h-5 w-5 text-blue-400" />
-              <h3 className="text-sm font-medium">Wallet Information</h3>
-            </div>
+          <TabsContent value="wallet" className="space-y-4 mt-4">
+            <div className="border border-gray-800 rounded-md p-4 bg-gray-900/30">
+              <div className="flex items-center gap-2 mb-4">
+                <Wallet className="h-5 w-5 text-blue-400" />
+                <h3 className="text-sm font-medium">Wallet Information</h3>
+              </div>
 
             {session.walletAddress ? (
               <>
@@ -409,8 +423,9 @@ export function ProfileEditModal({
                 </Button>
               </div>
             )}
-          </div>
-        </div>
+            </div>
+          </TabsContent>
+        </Tabs>
 
         <div className="flex justify-end mt-4">
           <Button onClick={onClose} className="bg-blue-600 hover:bg-blue-700">

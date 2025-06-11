@@ -64,9 +64,11 @@ export const EarningsDashboard = () => {
   const [checkInLoading, setCheckInLoading] = useState<boolean>(false);
   const [streakCompleted, setStreakCompleted] = useState<boolean>(false);
   const [streakReward, setStreakReward] = useState<number>(0);
+  const [showWalletPrompt, setShowWalletPrompt] = useState<boolean>(true);
 
   const { session } = useSession();
   const userId = session?.userProfile?.id;
+  const hasWallet = !!session.walletAddress;
 
   const { streakData, fetchStreakData, checkIn } = useDailyCheckIn(userId);
 
@@ -456,8 +458,8 @@ export const EarningsDashboard = () => {
     return null;
   };
 
-  // If wallet is not connected, show wallet connection message
-  if (walletAddress === null) {
+  // If user is not logged in, show login message
+  if (!userId) {
     return (
       <div className="flex flex-col stat-card">
         <div className="flex justify-between items-center mb-8">
@@ -471,11 +473,10 @@ export const EarningsDashboard = () => {
             className="w-16 h-16 mb-4 opacity-50"
           />
           <h3 className="text-xl font-semibold text-amber-400 mb-2">
-            Wallet Connection Required
+            Login Required
           </h3>
           <p className="text-slate-400 text-center mb-6">
-            To view your earnings dashboard, you need to connect your wallet
-            first.
+            Please log in with your email to view your earnings dashboard.
           </p>
           <div className="flex items-center justify-center text-blue-400">
             <svg
@@ -489,11 +490,11 @@ export const EarningsDashboard = () => {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth="2"
-                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
               ></path>
             </svg>
             <span className="text-sm font-medium">
-              Connect using the wallet icon in the header
+              Log in using your email address
             </span>
           </div>
         </div>

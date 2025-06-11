@@ -303,22 +303,31 @@ export const detectHardware = async (): Promise<HardwareInfo> => {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     if (isMobile) {
       console.log('Mobile device detected - CPU tier');
+      // Determine if it's a tablet or mobile phone
+      const isTablet = /iPad|Android(?!.*Mobile)/i.test(navigator.userAgent);
       return {
         rewardTier: 'cpu',
         deviceGroup: 'mobile_tablet',
+        deviceType: isTablet ? 'tablet' : 'mobile',  // Explicitly set device type for icon display
         cpuCores: getCPUCores(),
         deviceMemory: getDeviceMemory(),
         gpuInfo: gpuRenderer || 'Mobile GPU'
       };
     }
 
-    // Check if this is an integrated GPU
+    // Check for integrated GPUs
     const isIntegrated = 
       (gpuRenderer?.toLowerCase().includes('intel') && !gpuRenderer?.toLowerCase().includes('arc')) ||
       gpuRenderer?.toLowerCase().includes('hd graphics') ||
       gpuRenderer?.toLowerCase().includes('uhd graphics') ||
       gpuRenderer?.toLowerCase().includes('iris') ||
       gpuVendor?.toLowerCase().includes('intel');
+      
+    // Determine if device is likely a laptop vs desktop (heuristic-based)
+    const isLaptop = 
+      /MacBook|Laptop|Notebook|ThinkPad|ZenBook|XPS|Spectre|EliteBook|Inspiron/i.test(navigator.userAgent) ||
+      // Check if any battery API is available (will likely be a laptop)
+      ('getBattery' in navigator || 'battery' in navigator || typeof (navigator as any).getBattery === 'function');
 
     // For integrated GPUs, go straight to CPU tier
     if (isIntegrated) {
@@ -326,6 +335,7 @@ export const detectHardware = async (): Promise<HardwareInfo> => {
       return {
         rewardTier: 'cpu',
         deviceGroup: 'desktop_laptop',
+        deviceType: isLaptop ? 'laptop' : 'desktop', // Set device type for icon display
         cpuCores: getCPUCores(),
         deviceMemory: getDeviceMemory(),
         gpuInfo: gpuRenderer || 'Integrated GPU'
@@ -351,6 +361,7 @@ export const detectHardware = async (): Promise<HardwareInfo> => {
       return {
         rewardTier: 'webgpu',
         deviceGroup: 'desktop_laptop',
+        deviceType: isLaptop ? 'laptop' : 'desktop', // Set device type for icon display
         cpuCores: getCPUCores(),
         deviceMemory: getDeviceMemory(),
         gpuInfo: gpuRenderer || 'High-end GPU'
@@ -363,6 +374,7 @@ export const detectHardware = async (): Promise<HardwareInfo> => {
       return {
         rewardTier: 'wasm',
         deviceGroup: 'desktop_laptop',
+        deviceType: isLaptop ? 'laptop' : 'desktop', // Set device type for icon display
         cpuCores: getCPUCores(),
         deviceMemory: getDeviceMemory(),
         gpuInfo: gpuRenderer || 'Mid-range GPU'
@@ -374,6 +386,7 @@ export const detectHardware = async (): Promise<HardwareInfo> => {
     return {
       rewardTier: 'webgl',
       deviceGroup: 'desktop_laptop',
+      deviceType: isLaptop ? 'laptop' : 'desktop', // Set device type for icon display
       cpuCores: getCPUCores(),
       deviceMemory: getDeviceMemory(),
       gpuInfo: gpuRenderer || 'Standard GPU'
@@ -384,6 +397,7 @@ export const detectHardware = async (): Promise<HardwareInfo> => {
     return {
       rewardTier: 'cpu',
       deviceGroup: 'desktop_laptop',
+      deviceType: 'desktop', // Default to desktop for fallback case
       cpuCores: 1,
       deviceMemory: 'Unknown',
       gpuInfo: 'Basic GPU'

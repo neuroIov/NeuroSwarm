@@ -914,13 +914,6 @@ export const ReferralProgram = () => {
       return;
     }
 
-    if (!userProfile?.wallet_address) {
-      if (showToast) toast.error(
-        "You need to connect a wallet first to generate a referral code"
-      );
-      return;
-    }
-
     // Skip if user already has a referral code
     if (userProfile?.referral_code) {
       console.log("User already has referral code:", userProfile.referral_code);
@@ -937,52 +930,12 @@ export const ReferralProgram = () => {
       
       return result;
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Unknown error occurred";
+      const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
       if (showToast) toast.error(`Failed to generate referral code: ${errorMessage}`);
       console.error("Failed to generate referral code:", err);
     } finally {
       setIsGenerating(false);
     }
-  };
-
-  const handleCopyReferralLink = async () => {
-    // If no referral link exists, try to generate one first
-    if (!referralLink) {
-      console.log("No referral link available, attempting to generate one");
-      await handleGenerateReferralCode(false); // Don't show toast for auto-generation
-      
-      // Check again after generation attempt
-      if (!userProfile?.referral_code) {
-        toast.error("Please connect a wallet to generate a referral code");
-        return;
-      }
-    }
-    
-    // Get the most up-to-date referral link
-    const currentReferralLink = userProfile?.referral_code
-      ? `${window.location.origin}/dashboard?ref=${userProfile.referral_code}`
-      : null;
-      
-    if (!currentReferralLink) {
-      toast.error("Unable to generate referral link");
-      return;
-    }
-
-    // Copy to clipboard
-    navigator.clipboard
-      .writeText(currentReferralLink)
-      .then(() => {
-        setCopySuccess(true);
-        toast.success("Referral link copied to clipboard!");
-
-        // Reset after 3 seconds
-        setTimeout(() => setCopySuccess(false), 3000);
-      })
-      .catch((err) => {
-        toast.error("Failed to copy referral link");
-        console.error("Failed to copy: ", err);
-      });
   };
 
   // Function to handle reward claim
@@ -1753,4 +1706,6 @@ export const ReferralProgram = () => {
       </div>
     </div>
   );
-};
+}
+
+export default ReferralProgram;
