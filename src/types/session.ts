@@ -23,6 +23,7 @@ export interface UserSession {
 export interface UserProfile {
     id: string;
     wallet_address: string;
+    email: string;
     total_earnings: number;
     total_tasks_completed: number;
     reputation_score: number;
