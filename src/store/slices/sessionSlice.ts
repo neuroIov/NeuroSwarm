@@ -433,13 +433,13 @@ export const generateReferralCode = createAsyncThunk(
   async (userId: string, { getState, rejectWithValue }) => {
     try {
       const state = getState() as { session: SessionState };
-      const walletAddress = state.session.walletAddress;
+      const email = state.session.email;
 
-      if (!walletAddress) {
-        throw new Error('Wallet address not found. Unable to generate referral code.');
+      if (!email) {
+        throw new Error('Email not found. Unable to generate referral code.');
       }
 
-      const referralCode = await createUniqueReferralCode(userId, walletAddress);
+      const referralCode = await createUniqueReferralCode(userId, email);
       const supabase = getSwarmSupabase();
 
       console.log(`Generating referral code for user ${userId}: ${referralCode}`);
@@ -499,20 +499,100 @@ export const createReferralRelationship = createAsyncThunk(
     try {
       const supabase = getSwarmSupabase();
 
-      console.log(`Creating referral relationship: ${referrerCode} -> ${referredId}`);
+      // First verify the referral code
+      const { data: referrer, error: verifyError } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('referral_code', referrerCode)
+        .single();
 
-      const { data: result, error } = await supabase.rpc('create_referral_relationship', {
-        p_referrer_code: referrerCode,
-        p_referred_id: referredId
-      });
-
-      if (error) {
-        console.error(`Error creating referral relationship: ${error.message}`);
-        throw new Error(error.message);
+      if (verifyError || !referrer) {
+        throw new Error('Invalid referral code');
       }
 
-      console.log('Referral relationship created:', result);
-      return result;
+      // Create the referral relationship
+      const { data: referral, error: referralError } = await supabase
+        .from('referrals')
+        .insert({
+          referrer_id: referrer.id,
+          referred_id: referredId,
+          tier_level: 'tier_1',
+          referred_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (referralError) {
+        throw new Error(referralError.message);
+      }
+
+      // Add 500 SP reward for joining the referral program
+      const { data: earning, error: earningError } = await supabase
+        .from('earnings')
+        .insert({
+          user_id: referredId,
+          amount: 500,
+          earning_type: 'referral',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (earningError) {
+        console.error('Error adding referral reward:', earningError);
+        // Don't throw error here, as the referral was still created successfully
+      } else {
+        // Update earnings history
+        try {
+          // Get the latest earnings history record for this user
+          const { data: latestHistory, error: fetchError } = await supabase
+            .from('earnings_history')
+            .select('*')
+            .eq('user_id', referredId)
+            .eq('payout_status', 'pending')
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (fetchError) {
+            console.error('Error fetching earnings history:', fetchError);
+          } else if (latestHistory) {
+            // Update existing record
+            const { error: updateError } = await supabase
+              .from('earnings_history')
+              .update({
+                amount: latestHistory.amount + 500,
+                task_count: latestHistory.task_count,
+                timestamp: new Date().toISOString()
+              })
+              .eq('id', latestHistory.id);
+
+            if (updateError) {
+              console.error('Error updating earnings history:', updateError);
+            }
+          } else {
+            // Create new history record
+            const { error: insertHistoryError } = await supabase
+              .from('earnings_history')
+              .insert({
+                user_id: referredId,
+                amount: 500,
+                task_count: 0,
+                timestamp: new Date().toISOString(),
+                payout_status: 'pending'
+              });
+
+            if (insertHistoryError) {
+              console.error('Error creating earnings history record:', insertHistoryError);
+            }
+          }
+        } catch (historyError) {
+          console.error('Error updating earnings history:', historyError);
+        }
+      }
+
+      return referral;
     } catch (error) {
       console.error('Error in createReferralRelationship:', error);
       return rejectWithValue((error as Error).message);

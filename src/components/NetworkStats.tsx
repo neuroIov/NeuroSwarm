@@ -27,13 +27,14 @@ const StatCard = ({
 }: StatCardProps) => {
   let isPlan = title === "Your Plan";
 
+
   const getColor = () => {
     if (isPlan) {
       if (value === "Basic") {
         return "text-white";
       } else if (value === "Ultimate") {
         return "text-yellow-400";
-      } else if (value === "Enterprise") {
+      } else if (value === "Enterprice") {
         return "text-green-400";
       } else {
         return "text-white";
