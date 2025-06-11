@@ -89,7 +89,7 @@ export interface AiCredits {
   export const freeSubscriptionTier: SubscriptionTier = {
     name: "Free",
     price: 0,
-    maxUptime: 1 * 60 * 60, // 1 hour
+    maxUptime: 4 * 60 * 60, // 1 hour
     deviceLimit: 1,
     aiCredits: {
       neuroImageGen: 100,
