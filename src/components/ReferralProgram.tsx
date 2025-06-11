@@ -557,6 +557,60 @@ const SignInRequiredDialog = ({ isOpen, onClose }) => {
   );
 };
 
+// Add this new component after the other dialog components
+const RewardDialog = ({ isOpen, onClose }) => {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-gradient-to-br from-[#1a1a2e] to-[#16213e] rounded-2xl shadow-2xl w-96 p-8 relative overflow-hidden"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          >
+            <button
+              className="absolute top-4 right-4 text-gray-300 hover:text-white"
+              onClick={onClose}
+            >
+              <CloseIcon className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mb-6">
+              <DollarSign className="mx-auto w-12 h-12 text-green-400 mb-4" />
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-blue-600 text-transparent bg-clip-text">
+                Congratulations!
+              </h2>
+            </div>
+
+            <div className="text-center mb-6">
+              <p className="text-gray-300 mb-2">
+                You've received 500 SP for joining the referral program!
+              </p>
+              <p className="text-gray-400 text-sm">
+                Start inviting friends to earn more rewards.
+              </p>
+            </div>
+
+            <Button
+              onClick={onClose}
+              className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-xl"
+            >
+              Start Earning
+            </Button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 export const ReferralProgram = () => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -580,6 +634,7 @@ export const ReferralProgram = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const [storedReferralCode, setStoredReferralCode] = useState<string | null>(null);
   const [hasAttemptedAutoReferral, setHasAttemptedAutoReferral] = useState(false);
+  const [showRewardDialog, setShowRewardDialog] = useState(false);
 
   const dispatch = useDispatch<AppDispatch>();
   const { userProfile, loading, referrals, referralRewards } = useSelector(
@@ -732,6 +787,8 @@ export const ReferralProgram = () => {
         console.log("Successfully created referral relationship!");
         // Show thank you dialog
         setShowThankYouDialog(true);
+        // Show the reward dialog
+        setShowRewardDialog(true);
         // Clear the stored referral code since it's been used
         localStorage.removeItem(REFERRAL_CODE_KEY);
         setStoredReferralCode(null);
@@ -798,7 +855,7 @@ export const ReferralProgram = () => {
       loadReferralData();
       
       // Auto-generate referral code if user doesn't have one
-      if (userProfile?.wallet_address && !userProfile?.referral_code) {
+      if (userProfile?.email && !userProfile?.referral_code) {
         console.log("User has no referral code, auto-generating...");
         handleGenerateReferralCode();
       }
@@ -808,7 +865,7 @@ export const ReferralProgram = () => {
       setIsLoadingEarnings(false);
       setDataReady(true); // Consider data ready to prevent loading spinners
     }
-  }, [userProfile?.id, userProfile?.referral_code, userProfile?.wallet_address]);
+  }, [userProfile?.id, userProfile?.referral_code, userProfile?.email]);
 
   // Fetch referral earnings whenever referralRewards change
   useEffect(() => {
@@ -914,6 +971,13 @@ export const ReferralProgram = () => {
       return;
     }
 
+    if (!userProfile?.email) {
+      if (showToast) toast.error(
+        "You need to have an email address to generate a referral code"
+      );
+      return;
+    }
+
     // Skip if user already has a referral code
     if (userProfile?.referral_code) {
       console.log("User already has referral code:", userProfile.referral_code);
@@ -930,12 +994,52 @@ export const ReferralProgram = () => {
       
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+      const errorMessage =
+        err instanceof Error ? err.message : "Unknown error occurred";
       if (showToast) toast.error(`Failed to generate referral code: ${errorMessage}`);
       console.error("Failed to generate referral code:", err);
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleCopyReferralLink = async () => {
+    // If no referral link exists, try to generate one first
+    if (!referralLink) {
+      console.log("No referral link available, attempting to generate one");
+      await handleGenerateReferralCode(false); // Don't show toast for auto-generation
+      
+      // Check again after generation attempt
+      if (!userProfile?.referral_code) {
+        toast.error("Please connect a wallet to generate a referral code");
+        return;
+      }
+    }
+    
+    // Get the most up-to-date referral link
+    const currentReferralLink = userProfile?.referral_code
+      ? `${window.location.origin}/dashboard?ref=${userProfile.referral_code}`
+      : null;
+      
+    if (!currentReferralLink) {
+      toast.error("Unable to generate referral link");
+      return;
+    }
+
+    // Copy to clipboard
+    navigator.clipboard
+      .writeText(currentReferralLink)
+      .then(() => {
+        setCopySuccess(true);
+        toast.success("Referral link copied to clipboard!");
+
+        // Reset after 3 seconds
+        setTimeout(() => setCopySuccess(false), 3000);
+      })
+      .catch((err) => {
+        toast.error("Failed to copy referral link");
+        console.error("Failed to copy: ", err);
+      });
   };
 
   // Function to handle reward claim
@@ -1171,6 +1275,8 @@ export const ReferralProgram = () => {
         toast.success("Successfully joined referral program!");
         setReferralCode("");
         setIsVerified(false);
+        // Show the reward dialog
+        setShowRewardDialog(true);
         // Refresh referral data after successful submission
         loadReferralData();
       } else {
@@ -1325,6 +1431,12 @@ export const ReferralProgram = () => {
       <SignInRequiredDialog 
         isOpen={showSignInRequiredDialog}
         onClose={() => setShowSignInRequiredDialog(false)}
+      />
+
+      {/* Add the RewardDialog component */}
+      <RewardDialog 
+        isOpen={showRewardDialog}
+        onClose={() => setShowRewardDialog(false)}
       />
 
       {/* Stats Cards */}
@@ -1706,6 +1818,4 @@ export const ReferralProgram = () => {
       </div>
     </div>
   );
-}
-
-export default ReferralProgram;
+};
