@@ -8,11 +8,11 @@ export function extractGPUModel(gpuString: string): string {
 
   // Special case for Apple mobile devices which often just report "Apple GPU"
   if (gpuString.toLowerCase().includes('apple gpu')) {
-    return 'Apple GPU'; // Return the standardized name for Apple mobile GPUs
+    return 'Apple GPU';
   }
   
-  // Special case for Adreno GPUs in mobile devices
-  const adrenoMatch = gpuString.match(/adreno\s*\(?\s*(\d{3,4})/i);
+  // Special case for Adreno GPUs in mobile devices (including TM variants)
+  const adrenoMatch = gpuString.match(/adreno\s*(?:\(tm\))?\s*(\d{3,4})/i);
   if (adrenoMatch && adrenoMatch[1]) {
     return `Adreno ${adrenoMatch[1]}`;
   }
@@ -21,6 +21,23 @@ export function extractGPUModel(gpuString: string): string {
   const maliMatch = gpuString.match(/mali[\s-]*([a-z]\d{3,4})/i);
   if (maliMatch && maliMatch[1]) {
     return `Mali-${maliMatch[1].toUpperCase()}`;
+  }
+
+  // MediaTek GPUs (PowerVR, Mali variants in MediaTek SoCs)
+  const mediaTekMatch = gpuString.match(/mediatek/i);
+  if (mediaTekMatch) {
+    // Try to extract specific GPU info from MediaTek string
+    const mtGpuMatch = gpuString.match(/(?:powervr|mali)[\s-]*([a-z0-9]{3,6})/i);
+    if (mtGpuMatch) {
+      return `MediaTek ${mtGpuMatch[0]}`;
+    }
+    return 'MediaTek GPU';
+  }
+
+  // PowerVR GPUs (common in MediaTek and some other SoCs)
+  const powerVRMatch = gpuString.match(/powervr[\s-]*([a-z0-9]{2,6})/i);
+  if (powerVRMatch && powerVRMatch[1]) {
+    return `PowerVR ${powerVRMatch[1].toUpperCase()}`;
   }
 
   // Normalize the input
@@ -37,6 +54,8 @@ export function extractGPUModel(gpuString: string): string {
     /uhd\s+graphics/i,               // fallback for just "UHD Graphics"
     /snapdragon\s?\d{3,4}/i,         // e.g., Snapdragon 888
     /apple\s+m\d/i,                  // e.g., Apple M2
+    /tegra\s+\d+/i,                  // NVIDIA Tegra mobile GPUs
+    /exynos\s+\d+/i,                 // Samsung Exynos SoCs
   ];
 
   for (const pattern of patterns) {
@@ -46,6 +65,23 @@ export function extractGPUModel(gpuString: string): string {
         .replace(/intel\(r\)?/i, 'Intel')  // Clean Intel name
         .replace(/\s+/g, ' ')              // Normalize spacing
         .trim();
+    }
+  }
+
+  // Try to extract brand names for better fallback
+  const brandMatches = [
+    /qualcomm/i,
+    /mediatek/i,
+    /samsung/i,
+    /huawei/i,
+    /broadcom/i,
+    /imagination/i
+  ];
+
+  for (const brandPattern of brandMatches) {
+    if (gpuString.match(brandPattern)) {
+      const brand = gpuString.match(brandPattern)?.[0];
+      return `${brand} GPU`;
     }
   }
 

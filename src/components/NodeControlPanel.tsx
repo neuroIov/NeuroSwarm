@@ -237,7 +237,8 @@ export const NodeControlPanel = () => {
         stake_amount: 0,
         performance_score: 100,
         reward_tier: detectedHardware.rewardTier,
-        device_name: customName
+        device_name: customName,
+        device_type: detectedHardware.deviceType || 'desktop'
       };
 
       console.log("Final device data:", deviceData);
@@ -406,7 +407,7 @@ export const NodeControlPanel = () => {
           return {
             id: device.id,
             name: device.device_name || `Device ${device.id.substring(0, 6)}`,
-            type: 'desktop', // Default to desktop if not specified
+            type: device.device_type || 'desktop', // Use device_type from database
             brand: 'Generic',
             model: device.gpu_model.substring(0, 30), // Use first part of GPU model as device model
             rewardTier: device.reward_tier,
