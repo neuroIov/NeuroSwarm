@@ -5,13 +5,24 @@ export const TASK_TABLES = ['img_gen_messages', 'freedomai_messages',]
 export const TASK_PROCESSING_CONFIG = {
     // Processing time in seconds for different task types
     PROCESSING_TIME: {
-        image: 10,
-        text: 5
+        image: 300,
+        text: 150
     },
+    // Hardware-specific time multipliers - lower means faster processing
+    HARDWARE_MULTIPLIERS: {
+        webgpu: 0.5, //2x
+        wasm: 0.65, //1.6x
+        webgl: 0.85, //1.3x
+        cpu: 1.0 //1x
+    },
+
+    
     EARNINGS_NLOVE: {
         image: 2,
         text: 1,
     },
+
+    
 
     // Ideal distribution percentages for different task types
     DISTRIBUTION: {
@@ -36,6 +47,21 @@ export const TASK_PROCESSING_CONFIG = {
         LAST_FETCH_TIMESTAMP: 'neuroswarm_last_fetch_timestamp',
         ADDED_TO_SWARM: 'neuroswarm_tasks_added_to_swarm'
     }
+};
+
+/**
+ * Calculate task processing time based on task type and hardware tier
+ * @param taskType 'image' | 'text' - The type of task
+ * @param hardwareTier 'webgpu' | 'wasm' | 'webgl' | 'cpu' - The hardware tier
+ * @returns Processing time in seconds
+ */
+export const calculateProcessingTime = (
+    taskType: 'image' | 'text',
+    hardwareTier: 'webgpu' | 'wasm' | 'webgl' | 'cpu'
+): number => {
+    const baseTime = TASK_PROCESSING_CONFIG.PROCESSING_TIME[taskType];
+    const multiplier = TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[hardwareTier];
+    return baseTime * multiplier;
 };
 
 

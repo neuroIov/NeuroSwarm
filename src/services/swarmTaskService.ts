@@ -1,8 +1,9 @@
 import { getSwarmSupabase } from '@/lib/supabase-client';
 import { AITask, TaskStatus, TaskType } from './types';
 import { logger } from '../utils/logger';
-import { TASK_PROCESSING_CONFIG } from './config';
+import { TASK_PROCESSING_CONFIG, calculateProcessingTime } from './config';
 import { taskCache } from './taskCacheService';
+import { store } from '@/store';
 
 // Helper function to get user ID safely without creating circular dependencies
 let getUserIdFn: () => string | null | undefined = () => null;
@@ -310,13 +311,13 @@ export const processTask = async (
         } else {
             // Different task is being processed
             logger.warn(`Cannot process task ${taskId} - already processing task ${taskProcessingState.currentTaskId}`);
-            return { success: false };
+            return { success: false, message: 'ALREADY_PROCESSING' };
         }
     }
 
     // Try to acquire the processing lock
     if (!await taskProcessingState.acquireLock(taskId)) {
-        return { success: false };
+        return { success: false, message: 'LOCK_ACQUISITION_FAILED' };
     }
 
     // Create a new processing promise and store it
@@ -370,10 +371,14 @@ export const processTask = async (
                 return { success: false };
             }
 
-            // Process the task with fixed duration based on type
-            const processingTime = task.type === 'image' ? TASK_PROCESSING_CONFIG.PROCESSING_TIME.image : TASK_PROCESSING_CONFIG.PROCESSING_TIME.text; // 120s for images, 40s for text
+            // Get current device's reward tier from store
+            const state = store.getState();
+            const rewardTier = state.node?.rewardTier || 'cpu'; // Default to CPU if not available
 
-            logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds`);
+            // Process the task with duration based on task type and hardware tier
+            const processingTime = calculateProcessingTime(task.type as 'image' | 'text', rewardTier as 'webgpu' | 'wasm' | 'webgl' | 'cpu');
+
+            logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds (${rewardTier} hardware tier)`);
 
             // Update task to processing state with proper conditions to prevent race conditions
             // This uses a conditional update that only succeeds if our conditions are met
