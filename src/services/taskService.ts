@@ -3,8 +3,9 @@
 import { getSwarmSupabase } from '@/lib/supabase-client';
 import { AITask, TaskStatus } from './types';
 import { logger } from '../utils/logger';
-import { TASK_PROCESSING_CONFIG } from './config';
+import { TASK_PROCESSING_CONFIG, calculateProcessingTime } from './config';
 import { recordTaskEarning, processReferralRewards } from './earningsService';
+import { store } from '@/store';
 
 // Simple cache to track current processing task
 const taskProcessingState = {
@@ -158,14 +159,14 @@ export const processTask = async (taskId, userId) => {
     // Prevent processing multiple tasks simultaneously
     if (taskProcessingState.isProcessing) {
         logger.log(`Already processing task ${taskProcessingState.currentTask?.id}, skipping ${taskId}`);
-        return { success: false };
+        return { success: false, message: 'ALREADY_PROCESSING' };
     }
 
     try {
         const client = getSwarmSupabase();
         if (!client) {
             logger.error('Supabase client is not initialized');
-            return { success: false };
+            return { success: false, message: 'SUPABASE_NOT_INITIALIZED' };
         }
 
         // First check if the task exists and belongs to this user
@@ -174,38 +175,60 @@ export const processTask = async (taskId, userId) => {
             .select('*')
             .eq('id', taskId)
             .eq('user_id', userId)
-            .eq('status', 'pending')
             .single();
 
         if (fetchError || !task) {
             logger.error(`Task ${taskId} not found or not assigned to user ${userId}`);
-            return { success: false };
+            return { success: false, message: 'TASK_NOT_FOUND' };
+        }
+
+        // Check if task is already completed or failed
+        if (task.status === 'completed') {
+            logger.log(`Task ${taskId} is already completed, skipping`);
+            return { success: true, result: task.result };
+        }
+        
+        if (task.status === 'failed') {
+            logger.log(`Task ${taskId} is marked as failed, attempting recovery`);
+            // Continue processing to attempt recovery
         }
 
         // Set as currently processing task
         taskProcessingState.isProcessing = true;
         taskProcessingState.currentTask = task;
-
+        
         // Update status to processing
-        const { error: updateError } = await client
-            .from('tasks')
-            .update({
-                status: 'processing',
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', taskId)
-            .eq('user_id', userId);
+        // Only update if task is in pending state to prevent overwriting completed tasks
+        if (task.status === 'pending') {
+            const { error: updateError } = await client
+                .from('tasks')
+                .update({
+                    status: 'processing',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', taskId)
+                .eq('user_id', userId);
 
-        if (updateError) {
-            logger.error(`Error updating task ${taskId} to processing:`, updateError);
-            taskProcessingState.isProcessing = false;
-            taskProcessingState.currentTask = null;
-            return { success: false };
+            if (updateError) {
+                logger.error(`Error updating task ${taskId} to processing:`, updateError);
+                taskProcessingState.isProcessing = false;
+                taskProcessingState.currentTask = null;
+                return { success: false, message: 'UPDATE_ERROR' };
+            }
         }
-
+        
         // Determine processing time based on task type
-        const processingTime = task.type === 'image' ? TASK_PROCESSING_CONFIG.PROCESSING_TIME.image : TASK_PROCESSING_CONFIG.PROCESSING_TIME.text; // seconds
-        logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds`);
+        // Get current device's reward tier or default to CPU
+        const state = store.getState();
+        const rewardTier = state.node?.rewardTier || 'cpu'; 
+        
+        // Calculate processing time based on task type and hardware tier
+        const processingTime = calculateProcessingTime(task.type as 'image' | 'text', rewardTier as 'webgpu' | 'wasm' | 'webgl' | 'cpu'); // seconds
+        
+        // Log detailed timing information to help debug stuck task detection
+        const stuckDetectionTime = processingTime + 60; // 60s buffer (increased from 20s)
+        logger.log(`Processing ${task.type} task ${taskId} for ${processingTime} seconds (${rewardTier} hardware tier)`);
+        logger.log(`Task will be considered stuck after ${stuckDetectionTime} seconds with current settings`);
 
         // Wait for processing time to complete
         await new Promise(resolve => setTimeout(resolve, processingTime * 1000));
@@ -215,7 +238,23 @@ export const processTask = async (taskId, userId) => {
             ? `https://example.com/generated-image-${taskId}.png`
             : `Generated text for prompt: "${task.prompt?.substring(0, 30) || 'No prompt'}..."`;
 
-        // Update task as completed
+        // Before updating, check current task status to handle race conditions with recovery
+        const { data: currentTask } = await client
+            .from('tasks')
+            .select('status')
+            .eq('id', taskId)
+            .single();
+            
+        // If task has been completed by another process or manually, don't overwrite
+        if (currentTask?.status === 'completed') {
+            logger.log(`Task ${taskId} was already completed by another process, skipping update`);
+            taskProcessingState.isProcessing = false;
+            taskProcessingState.currentTask = null;
+            return { success: true };
+        }
+            
+        // Update task as completed - use a more robust update that works even if task was marked failed
+        // This helps recover from race conditions where task was marked as failed but actually completes
         const { error: completeError } = await client
             .from('tasks')
             .update({
@@ -226,13 +265,14 @@ export const processTask = async (taskId, userId) => {
                 output_tokens: task.type === 'text' ? Math.ceil(result.length / 4) : 0
             })
             .eq('id', taskId)
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .in('status', ['processing', 'failed', 'pending']); // Allow updating from any of these states
 
         if (completeError) {
             logger.error(`Error completing task ${taskId}:`, completeError);
             taskProcessingState.isProcessing = false;
             taskProcessingState.currentTask = null;
-            return { success: false };
+            return { success: false, message: 'COMPLETION_ERROR' };
         }
 
         logger.log(`Successfully completed task ${taskId} in ${processingTime}s`);
@@ -287,7 +327,7 @@ export const processTask = async (taskId, userId) => {
         taskProcessingState.isProcessing = false;
         taskProcessingState.currentTask = null;
 
-        return { success: false };
+        return { success: false, message: 'PROCESSING_ERROR' };
     }
 };
 

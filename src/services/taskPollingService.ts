@@ -200,9 +200,21 @@ class TaskPollingService {
                         )
                     );
 
-                    // If any task has been processing for more than 1 minute, recover all stuck tasks
-                    if (now - oldestProcessingTime > 60000) {
-                        logger.warn(`Found stuck tasks in processing state (oldest: ${(now - oldestProcessingTime) / 1000}s), recovering...`);
+                    // Calculate max task processing time to determine if task is truly stuck
+                    // Get max processing time based on task type and hardware tier
+                    const state = store.getState();
+                    const rewardTier = state.node?.rewardTier || 'cpu';
+                    const maxProcessingTime = Math.max(
+                        TASK_PROCESSING_CONFIG.PROCESSING_TIME.image * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier],
+                        TASK_PROCESSING_CONFIG.PROCESSING_TIME.text * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier]
+                    ) * 1000; // Convert to milliseconds
+                    
+                    // Add a larger 60 seconds buffer to accommodate any delays
+                    const stuckThreshold = maxProcessingTime + 60000;
+                    
+                    // Only recover tasks that have been processing longer than the max time + buffer
+                    if (now - oldestProcessingTime > stuckThreshold) {
+                        logger.warn(`Found stuck tasks in processing state (oldest: ${(now - oldestProcessingTime) / 1000}s, threshold: ${stuckThreshold / 1000}s), recovering...`);
                         store.dispatch(recoverStuckTasks());
                     }
                 }

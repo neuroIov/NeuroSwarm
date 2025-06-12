@@ -1,6 +1,12 @@
 export type TaskType = 'image' | 'video' | 'model' | 'text' | 'inference' | 'training' | 'data_processing';
 export type TaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
+export interface TaskProcessingResult {
+    success: boolean;
+    result?: string;
+    message?: string;
+}
+
 export interface AITask {
     id: string;
     type: TaskType;
