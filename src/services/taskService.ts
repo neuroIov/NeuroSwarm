@@ -99,6 +99,13 @@ export const assignTasksToUser = async (userId, nodeId, batchSize = 5) => {
             return [];
         }
 
+        // Check if node is active
+        const state = store.getState();
+        if (!state.node?.isActive) {
+            logger.warn('Cannot assign tasks: Node is not active');
+            return [];
+        }
+
         // Get pending unassigned tasks
         const pendingTasks = await getPendingUnassignedTasks(batchSize * 2);
         if (pendingTasks.length === 0) {
@@ -156,6 +163,13 @@ export const assignTasksToUser = async (userId, nodeId, batchSize = 5) => {
  * Process a task sequentially - change status to processing, wait, then complete
  */
 export const processTask = async (taskId, userId) => {
+    // Check if the node is active before processing
+    const state = store.getState();
+    if (!state.node?.isActive) {
+        logger.warn(`Cannot process task ${taskId}: Node is not active`);
+        return { success: false, message: 'NODE_INACTIVE' };
+    }
+    
     // Prevent processing multiple tasks simultaneously
     if (taskProcessingState.isProcessing) {
         logger.log(`Already processing task ${taskProcessingState.currentTask?.id}, skipping ${taskId}`);
@@ -217,9 +231,43 @@ export const processTask = async (taskId, userId) => {
             }
         }
         
+        // Keep checking if node is still active during processing
+        // Register monitoring interval to check node status
+        let processingCancelled = false;
+        const nodeActiveCheckInterval = setInterval(() => {
+            const currentState = store.getState();
+            if (!currentState.node?.isActive) {
+                processingCancelled = true;
+                logger.warn(`Node deactivated while processing task ${taskId}, marking for cancellation`);
+                clearInterval(nodeActiveCheckInterval);
+                
+                // Immediately try to update the task status back to pending
+                try {
+                    client
+                        .from('tasks')
+                        .update({
+                            status: 'pending',
+                            updated_at: new Date().toISOString(),
+                            user_id: null,  // Release the task so others can pick it up
+                            node_id: null   // Clear the node ID
+                        })
+                        .eq('id', taskId)
+                        .eq('user_id', userId)
+                        .then(({ error }) => {
+                            if (error) {
+                                logger.error(`Error resetting task ${taskId} after node deactivation:`, error);
+                            } else {
+                                logger.warn(`Task ${taskId} reset to pending due to node deactivation`);
+                            }
+                        });
+                } catch (resetError) {
+                    logger.error(`Error handling task reset on deactivation:`, resetError);
+                }
+            }
+        }, 1000); // Check every second
+        
         // Determine processing time based on task type
         // Get current device's reward tier or default to CPU
-        const state = store.getState();
         const rewardTier = state.node?.rewardTier || 'cpu'; 
         
         // Calculate processing time based on task type and hardware tier
@@ -231,7 +279,54 @@ export const processTask = async (taskId, userId) => {
         logger.log(`Task will be considered stuck after ${stuckDetectionTime} seconds with current settings`);
 
         // Wait for processing time to complete
-        await new Promise(resolve => setTimeout(resolve, processingTime * 1000));
+        await new Promise<void>(resolve => {
+            const timeoutId = setTimeout(resolve, processingTime * 1000);
+            
+            // Check every second if processing was cancelled due to node deactivation
+            const cancellationCheckInterval = setInterval(() => {
+                if (processingCancelled) {
+                    clearTimeout(timeoutId);
+                    clearInterval(cancellationCheckInterval);
+                    resolve();
+                }
+            }, 500);
+        });
+        
+        // Clear the node active check interval
+        clearInterval(nodeActiveCheckInterval);
+
+        // If node was deactivated during processing, reset task and exit
+        if (processingCancelled) {
+            try {
+                // Mark task as pending, clear user_id and node_id so it can be picked up again
+                await client
+                    .from('tasks')
+                    .update({
+                        status: 'pending',
+                        updated_at: new Date().toISOString(),
+                        user_id: null,  // Release the task so others can pick it up
+                        node_id: null   // Clear the node ID
+                    })
+                    .eq('id', taskId)
+                    .eq('user_id', userId);
+                
+                logger.warn(`Task ${taskId} reset to pending due to node deactivation`);
+                
+                // Clear processing state
+                taskProcessingState.isProcessing = false;
+                taskProcessingState.currentTask = null;
+                
+                return { success: false, message: 'NODE_DEACTIVATED' };
+            } catch (resetError) {
+                logger.error(`Error resetting task ${taskId} after cancellation:`, resetError);
+                
+                // Clear processing state even on error
+                taskProcessingState.isProcessing = false;
+                taskProcessingState.currentTask = null;
+                
+                return { success: false, message: 'RESET_ERROR' };
+            }
+        }
 
         // Generate simple result based on task type
         const result = task.type === 'image'
@@ -315,7 +410,9 @@ export const processTask = async (taskId, userId) => {
                 .from('tasks')
                 .update({
                     status: 'failed',
-                    updated_at: new Date().toISOString()
+                    updated_at: new Date().toISOString(),
+                    user_id: null,  // Release the task
+                    node_id: null   // Clear the node ID
                 })
                 .eq('id', taskId)
                 .eq('user_id', userId);
