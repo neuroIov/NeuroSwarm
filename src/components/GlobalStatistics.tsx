@@ -728,8 +728,8 @@ export const GlobalStatistics = () => {
   };
 
   return (
-    <div className="stat-card overflow-x-hidden">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-4">
+    <div className="stat-card overflow-x-hidden px-4 md:px-0">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-4 w-full">
         <div className="flex items-center gap-2">
           <h2 className="text-base sm:text-xl font-semibold">
             {t("globalStatistics.title")}
@@ -1013,85 +1013,85 @@ export const GlobalStatistics = () => {
             </p>
           </div>
         ) : leaderboard.length > 0 ? (
-          <div className="space-y-0 max-h-[300px] overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar bg-slate-900/60 rounded-lg border border-slate-800/50">
-            {/* Header row */}
-            <div className="grid grid-cols-12 gap-2 px-4 py-3 text-slate-400 text-sm border-b border-slate-800/50">
-              <div className="col-span-1">
-                {t("globalStatistics.leaderboard.rank", "Rank")}
-              </div>
-              <div className="col-span-5">
-                {t("globalStatistics.leaderboard.user", "User")}
-              </div>
-              <div className="col-span-3 text-right">
-                {t("globalStatistics.leaderboard.earnings", "Earnings")}
-              </div>
-              <div className="col-span-3 text-right">
-                {t("globalStatistics.leaderboard.tasks", "Tasks")}
-              </div>
-            </div>
-
-            {/* Top 10 Users */}
-            {leaderboard.map((entry) => (
-              <div
-                key={entry.user_id}
-                className={`grid grid-cols-12 gap-2 py-3 px-4 
-                  ${
-                    userProfile && entry.user_id === userProfile.id
-                      ? "bg-blue-900/30 border-l-2 border-blue-500"
-                      : "hover:bg-slate-800/40"
-                  }`}
-              >
-                <div className="col-span-1 flex items-center">
-                  {getMedalIcon(entry.rank)}
+          <div className="overflow-x-auto">
+            <div className="min-w-[600px] space-y-0 max-h-[300px] overflow-y-auto overflow-hidden pr-2 custom-scrollbar bg-slate-900/60 rounded-lg border border-slate-800/50">
+              {/* Header row */}
+              <div className="grid grid-cols-12 gap-2 px-4 py-3 text-slate-400 text-sm border-b border-slate-800/50">
+                <div className="col-span-2 sm:col-span-1">
+                  {t("globalStatistics.leaderboard.rank", "Rank")}
                 </div>
-                <div className="col-span-5 font-medium truncate">
-                  {cleanUsername(entry.username)}
-                  {userProfile && entry.user_id === userProfile.id && (
-                    <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
-                      {t("globalStatistics.leaderboard.you", "You")}
-                    </span>
-                  )}
+                <div className="col-span-5">
+                  {t("globalStatistics.leaderboard.user", "User")}
                 </div>
-                <div className="col-span-3 text-right font-medium">
-                  {formatCurrency(entry.total_earnings)}
+                <div className="col-span-2 sm:col-span-3 text-right">
+                  {t("globalStatistics.leaderboard.earnings", "Earnings")}
                 </div>
-                <div className="col-span-3 text-right text-slate-300">
-                  {entry.task_count}
+                <div className="col-span-3 text-right">
+                  {t("globalStatistics.leaderboard.tasks", "Tasks")}
                 </div>
               </div>
-            ))}
-
-            {/* Current user outside top 10 */}
-            {currentUserRank &&
-              userProfile &&
-              !leaderboard.some(
-                (entry) => entry.user_id === userProfile.id
-              ) && (
-                <>
-                  <div className="flex justify-center py-2 border-t border-slate-800/50">
-                    <div className="text-slate-500 text-sm">. . .</div>
+      
+              {/* Top 10 Users */}
+              {leaderboard.map((entry) => (
+                <div
+                  key={entry.user_id}
+                  className={`grid grid-cols-12 gap-2 py-3 px-4 
+                    ${
+                      userProfile && entry.user_id === userProfile.id
+                        ? "bg-blue-900/30 border-l-2 border-blue-500"
+                        : "hover:bg-slate-800/40"
+                    }`}
+                >
+                  <div className="col-span-2 sm:col-span-1 flex items-center">
+                    {getMedalIcon(entry.rank)}
                   </div>
-                  <div className="grid grid-cols-12 gap-2 py-3 px-4 bg-blue-900/30 border-l-2 border-blue-500">
-                    <div className="col-span-1 flex items-center">
-                      <span className="w-4 h-4 flex items-center justify-center text-xs font-medium">
-                        {currentUserRank.rank}
-                      </span>
-                    </div>
-                    <div className="col-span-5 font-medium truncate">
-                      {cleanUsername(currentUserRank.username)}
+                  <div className="col-span-5 font-medium truncate">
+                    {cleanUsername(entry.username)}
+                    {userProfile && entry.user_id === userProfile.id && (
                       <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
                         {t("globalStatistics.leaderboard.you", "You")}
                       </span>
-                    </div>
-                    <div className="col-span-3 text-right font-medium">
-                      {formatCurrency(currentUserRank.total_earnings)}
-                    </div>
-                    <div className="col-span-3 text-right text-slate-300">
-                      {currentUserRank.task_count}
-                    </div>
+                    )}
                   </div>
-                </>
-              )}
+                  <div className="col-span-2 sm:col-span-3 text-right font-medium">
+                    {formatCurrency(entry.total_earnings)}
+                  </div>
+                  <div className="col-span-3 text-right text-slate-300">
+                    {entry.task_count}
+                  </div>
+                </div>
+              ))}
+      
+              {/* Current user outside top 10 */}
+              {currentUserRank &&
+                userProfile &&
+                !leaderboard.some((entry) => entry.user_id === userProfile.id) && (
+                  <>
+                    <div className="flex justify-center py-2 border-t border-slate-800/50">
+                      <div className="text-slate-500 text-sm">. . .</div>
+                    </div>
+                    <div className="grid grid-cols-12 gap-2 py-3 px-4 bg-blue-900/30 border-l-2 border-blue-500">
+                      <div className="col-span-2 sm:col-span-1 flex items-center">
+                        <span className="w-4 h-4 flex items-center justify-center text-xs font-medium">
+                          {currentUserRank.rank}
+                        </span>
+                      </div>
+                      <div className="col-span-5 font-medium truncate">
+                        {cleanUsername(currentUserRank.username)}
+                        <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
+                          {t("globalStatistics.leaderboard.you", "You")}
+                        </span>
+                      </div>
+                      <div className="col-span-2 sm:col-span-3 text-right font-medium">
+                        {formatCurrency(currentUserRank.total_earnings)}
+                      </div>
+                      <div className="col-span-3 text-right text-slate-300">
+                        {currentUserRank.task_count}
+                      </div>
+                    </div>
+                  </>
+                )}
+            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-slate-400">
