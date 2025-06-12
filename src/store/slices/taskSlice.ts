@@ -9,6 +9,7 @@ import {
 } from '@/services/taskService';
 import { logger } from '@/utils/logger';
 import { RootState } from '@/store'; // Fix import path for RootState
+import { TASK_PROCESSING_CONFIG } from '@/services/config';
 
 // Simple polling controller
 let pollingInterval: NodeJS.Timeout | null = null;
@@ -28,9 +29,21 @@ const taskProcessingLock = {
 
     acquire(taskId) {
         if (this.isLocked) {
-            // Check for stale locks (over 2 minutes)
-            if (Date.now() - this.lockTime > 120000) {
-                logger.warn(`Force releasing stale lock on task ${this.currentTaskId}`);
+            // Get the current task type and hardware tier to calculate appropriate timeout
+            const state = storeRef?.getState();
+            const rewardTier = state?.node?.rewardTier || 'cpu';
+            
+            // Calculate max processing time plus a 90s buffer for lock timeout
+            const maxProcessingTime = Math.max(
+                TASK_PROCESSING_CONFIG.PROCESSING_TIME.image * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier],
+                TASK_PROCESSING_CONFIG.PROCESSING_TIME.text * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier]
+            ) * 1000; // Convert to milliseconds
+            
+            const lockTimeout = maxProcessingTime + 90000; // 90s buffer
+            
+            // Check for stale locks based on calculated timeout
+            if (Date.now() - this.lockTime > lockTimeout) {
+                logger.warn(`Force releasing stale lock on task ${this.currentTaskId} after ${(Date.now() - this.lockTime) / 1000}s (max expected: ${lockTimeout / 1000}s)`);
                 this.release();
             } else {
                 return false;
@@ -127,16 +140,39 @@ export const taskSlice = createSlice({
             // Find tasks stuck in processing state
             const stuckTasks = state.assignedTasks.filter(task => task.status === 'processing');
 
-            // Mark them as failed
+            if (stuckTasks.length === 0) {
+                return state;
+            }
+            
+            logger.warn(`Attempting recovery of ${stuckTasks.length} potentially stuck tasks`);
+            
+            // Mark stuck tasks as needing retry rather than immediately failed
+            // This gives the task a chance to complete if it's just taking longer than expected
             stuckTasks.forEach(task => {
                 const index = state.assignedTasks.findIndex(t => t.id === task.id);
                 if (index !== -1) {
-                    state.assignedTasks[index].status = 'failed';
+                    // Instead of marking as failed, we're just updating processing state
+                    // The task will be retried in the processing loop
+                    logger.warn(`Task ${task.id} appears stuck (${task.type} task), will reset processing state`);
+                    state.assignedTasks[index].status = 'pending';
+                    state.assignedTasks[index].retry_count = (state.assignedTasks[index].retry_count || 0) + 1;
+                    
+                    // Add a note about the recovery
+                    if (!state.assignedTasks[index].notes) {
+                        state.assignedTasks[index].notes = '';
+                    }
+                    state.assignedTasks[index].notes += `Automatic recovery attempted at ${new Date().toISOString()}. `;
 
-                    // Also remove from global tasks list if it exists there
-                    const globalIndex = state.allTasks.findIndex(t => t.id === task.id);
-                    if (globalIndex !== -1) {
-                        state.allTasks[globalIndex].status = 'failed';
+                    // Only mark as failed if this is the second or third retry
+                    if (state.assignedTasks[index].retry_count > 2) {
+                        logger.error(`Task ${task.id} has failed ${state.assignedTasks[index].retry_count} recovery attempts, marking as failed`);
+                        state.assignedTasks[index].status = 'failed';
+                        
+                        // Also update in global tasks list if needed
+                        const globalIndex = state.allTasks.findIndex(t => t.id === task.id);
+                        if (globalIndex !== -1) {
+                            state.allTasks[globalIndex].status = 'failed';
+                        }
                     }
                 }
             });
@@ -152,10 +188,9 @@ export const taskSlice = createSlice({
             // Clear global task processing state
             isProcessingTask = false;
             currentProcessingTaskId = null;
+            taskProcessingLock.release();
 
-            if (stuckTasks.length > 0) {
-                console.log(`Recovered ${stuckTasks.length} stuck tasks`);
-            }
+            logger.log(`Processed recovery for ${stuckTasks.length} tasks`);
 
             return state;
         }
@@ -315,6 +350,14 @@ export const processNextTask = createAsyncThunk(
                     result: result.result
                 }));
                 logger.log(`Task ${taskToProcess.id} completed successfully`);
+            } else if (result.message === 'ALREADY_PROCESSING') {
+                // Don't mark as failed if it was just skipped due to another task processing
+                // Just leave it in pending state to try again later
+                dispatch(updateTaskStatus({
+                    taskId: taskToProcess.id,
+                    status: 'pending'
+                }));
+                logger.log(`Task ${taskToProcess.id} skipped (another task is processing)`);
             } else {
                 dispatch(updateTaskStatus({
                     taskId: taskToProcess.id,
@@ -418,9 +461,21 @@ export const startTaskProcessing = (dispatch, userId) => {
             }
 
             // Check for any tasks stuck in processing state
+            // Calculate max processing time based on task type and hardware tier
+            const rewardTier = state.node?.rewardTier || 'cpu';
+            
+            // Calculate the maximum time any task should take based on current hardware
+            const maxProcessingTime = Math.max(
+                TASK_PROCESSING_CONFIG.PROCESSING_TIME.image * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier],
+                TASK_PROCESSING_CONFIG.PROCESSING_TIME.text * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier]
+            ) * 1000; // Convert to milliseconds
+            
+            // Add a 60-second buffer to accommodate any delays
+            const stuckThreshold = maxProcessingTime + 60000;
+            
             const stuckTasks = state.tasks.assignedTasks.filter(
                 t => t.status === 'processing' &&
-                    Date.now() - new Date(t.updated_at || 0).getTime() > 60000 // Stuck for over 1 minute
+                    Date.now() - new Date(t.updated_at || 0).getTime() > stuckThreshold
             );
 
             if (stuckTasks.length > 0) {

@@ -237,7 +237,8 @@ export const NodeControlPanel = () => {
         stake_amount: 0,
         performance_score: 100,
         reward_tier: detectedHardware.rewardTier,
-        device_name: customName
+        device_name: customName,
+        device_type: detectedHardware.deviceType || 'desktop'
       };
 
       console.log("Final device data:", deviceData);
@@ -406,7 +407,7 @@ export const NodeControlPanel = () => {
           return {
             id: device.id,
             name: device.device_name || `Device ${device.id.substring(0, 6)}`,
-            type: 'desktop', // Default to desktop if not specified
+            type: device.device_type || 'desktop', // Use device_type from database
             brand: 'Generic',
             model: device.gpu_model.substring(0, 30), // Use first part of GPU model as device model
             rewardTier: device.reward_tier,
@@ -999,24 +1000,24 @@ export const NodeControlPanel = () => {
     <>
       {/* Uptime Limit Dialog */}
       <Dialog open={showUptimeLimitDialog} onOpenChange={setShowUptimeLimitDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md bg-[#0A1A2F] border-[#112544]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-white">
               <AlertTriangle className="h-5 w-5 text-yellow-500" />
               Subscription Tier Limit Reached
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-white/70">
               Your {subscriptionTier} tier uptime limit of {tierInfo?.maxUptime} seconds has been reached.
               You cannot start this node until your uptime is reset or you upgrade your subscription plan.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-4">
-            <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
+            <div className="flex items-center justify-between rounded-lg border border-[#112544] p-3 shadow-sm bg-[#112544]/30">
               <div className="flex flex-col">
-                <span className="text-sm font-medium">Current Plan</span>
-                <span className="text-xs text-muted-foreground">{subscriptionTier}</span>
+                <span className="text-sm font-medium text-white">Current Plan</span>
+                <span className="text-xs text-white/70">{subscriptionTier}</span>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setShowUptimeLimitDialog(false)}>
+              <Button variant="outline" size="sm" onClick={() => setShowUptimeLimitDialog(false)} className="border-[#112544] text-white hover:bg-[#112544]/30">
                 Close
               </Button>
             </div>
@@ -1031,6 +1032,7 @@ export const NodeControlPanel = () => {
                 // For now just show a toast
                 toast.info("Please upgrade your subscription plan to get more uptime");
               }}
+              className="bg-[#0066FF] hover:bg-[#0052CC] text-white"
             >
               Upgrade Plan
             </Button>
@@ -1283,30 +1285,29 @@ export const NodeControlPanel = () => {
 
       <Dialog open={showScanDialog} onOpenChange={setShowScanDialog}>
         <DialogContent
-          className="sm:max-w-md"
-          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+          className="sm:max-w-md bg-[#0A1A2F] border-[#112544]"
         >
           <DialogHeader>
-            <DialogTitle className="text-[#515194]">
+            <DialogTitle className="text-white">
               Scanning Device Hardware
             </DialogTitle>
-            <DialogDescription className="text-[#515194]/80">
+            <DialogDescription className="text-white/70">
               Analyzing your device capabilities to determine the optimal reward
               tier
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4">
-            <div className="mb-2 text-sm font-medium text-[#515194]">
+            <div className="mb-2 text-sm font-medium text-white">
               {scanStage}
             </div>
-            <div className="w-full bg-slate-800 rounded-full h-2.5">
+            <div className="w-full bg-[#112544] rounded-full h-2.5">
               <div
-                className="bg-gradient-to-r from-purple-500 to-blue-500 h-2.5 rounded-full transition-all duration-300 ease-in-out"
+                className="bg-[#0066FF] h-2.5 rounded-full transition-all duration-300 ease-in-out"
                 style={{ width: `${scanProgress}%` }}
               ></div>
             </div>
-            <div className="mt-4 text-sm text-[#515194]">
+            <div className="mt-4 text-sm text-white/70">
               {scanProgress < 100
                 ? "Please wait while we analyze your device. Do not close this window."
                 : "Scan completed successfully!"}
@@ -1316,17 +1317,17 @@ export const NodeControlPanel = () => {
       </Dialog>
 
       <Dialog open={showScanResultDialog} onOpenChange={setShowScanResultDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md bg-[#0A1A2F] border-[#112544]">
           <DialogHeader>
-            <DialogTitle>Hardware Scan Results</DialogTitle>
+            <DialogTitle className="text-white">Hardware Scan Results</DialogTitle>
           </DialogHeader>
           <div className="space-y-6 py-4">
             <div className="flex flex-col items-center gap-4 text-center">
-              <h3 className="text-xl font-semibold">
+              <h3 className="text-xl font-semibold text-white">
                 Your Device Tier:{" "}
-                <span className="text-primary">{detectedHardware?.rewardTier.toUpperCase()}</span>
+                <span className="text-[#0066FF]">{detectedHardware?.rewardTier.toUpperCase()}</span>
               </h3>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-white/70">
                 {getTierDescription(detectedHardware?.rewardTier)}
               </p>
 
@@ -1334,7 +1335,7 @@ export const NodeControlPanel = () => {
                 <Button
                   onClick={handleRegisterClick}
                   disabled={isRegistering}
-                  className="w-full"
+                  className="w-full bg-[#0066FF] hover:bg-[#0052CC] text-white"
                 >
                   Register Device
                 </Button>
@@ -1345,17 +1346,17 @@ export const NodeControlPanel = () => {
                     setShowScanResultDialog(false);
                     startScan();
                   }}
-                  className="w-full"
+                  className="w-full border-[#112544] text-white hover:bg-[#112544]/30"
                 >
                   Scan Again
                 </Button>
 
                 <div className="flex flex-col items-center gap-2">
-                  <p className="text-sm">Think this scan result is incorrect?</p>
+                  <p className="text-sm text-white/70">Think this scan result is incorrect?</p>
                   <Button
                     variant="ghost"
                     onClick={() => window.open('https://forms.gle/yourFormUrl', '_blank')}
-                    className="text-sm"
+                    className="text-sm text-[#0066FF] hover:text-[#0052CC] hover:bg-[#0066FF]/10"
                   >
                     Submit Device Validation Form
                   </Button>
@@ -1371,12 +1372,11 @@ export const NodeControlPanel = () => {
         onOpenChange={setShowDeleteConfirmDialog}
       >
         <DialogContent
-          className="sm:max-w-md"
-          style={{ backgroundColor: "rgba(9, 12, 24, 1)" }}
+          className="sm:max-w-md bg-[#0A1A2F] border-[#112544]"
         >
           <DialogHeader>
-            <DialogTitle className="text-[#515194]">Delete Node</DialogTitle>
-            <DialogDescription className="text-[#515194]/80">
+            <DialogTitle className="text-white">Delete Node</DialogTitle>
+            <DialogDescription className="text-white/70">
               Are you sure you want to delete this node? This action cannot be
               undone.
             </DialogDescription>
@@ -1384,11 +1384,11 @@ export const NodeControlPanel = () => {
 
           <div className="py-4">
             {selectedNode && (
-              <div className="flex items-center gap-3 p-3 bg-[#1D1D33] rounded-lg">
+              <div className="flex items-center gap-3 p-3 bg-[#112544] rounded-lg">
                 {getDeviceIcon(selectedNode.type)}
                 <div>
                   <p className="text-white font-medium">{selectedNode.name}</p>
-                  <p className="text-[#515194] text-sm truncate">
+                  <p className="text-white/70 text-sm truncate">
                     {extractGPUModel(selectedNode.gpuInfo)}
                   </p>
                 </div>
@@ -1401,6 +1401,7 @@ export const NodeControlPanel = () => {
               variant="outline"
               onClick={() => setShowDeleteConfirmDialog(false)}
               disabled={isDeletingNode}
+              className="border-[#112544] text-white hover:bg-[#112544]/30"
             >
               Cancel
             </Button>
@@ -1408,6 +1409,7 @@ export const NodeControlPanel = () => {
               variant="destructive"
               onClick={deleteNode}
               disabled={isDeletingNode}
+              className="bg-red-600 hover:bg-red-700 text-white"
             >
               {isDeletingNode ? (
                 <>
@@ -1423,10 +1425,10 @@ export const NodeControlPanel = () => {
       </Dialog>
 
       <Dialog open={showNameDialog} onOpenChange={setShowNameDialog}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[425px] bg-[#0A1A2F] border-[#112544]">
           <DialogHeader>
-            <DialogTitle>Name Your Device</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-white">Name Your Device</DialogTitle>
+            <DialogDescription className="text-white/70">
               Give your device a memorable name to help identify it in your dashboard.
             </DialogDescription>
           </DialogHeader>
@@ -1437,6 +1439,7 @@ export const NodeControlPanel = () => {
                 placeholder="My Mining Rig"
                 value={deviceName}
                 onChange={(e) => setDeviceName(e.target.value)}
+                className="bg-[#0A1A2F] border-[#112544] text-white"
               />
             </div>
           </div>
@@ -1444,12 +1447,14 @@ export const NodeControlPanel = () => {
             <Button
               variant="outline"
               onClick={() => setShowNameDialog(false)}
+              className="border-[#112544] text-white hover:bg-[#112544]/30"
             >
               Cancel
             </Button>
             <Button
               onClick={() => registerDevice(deviceName)}
               disabled={!deviceName.trim() || isRegistering}
+              className="bg-[#0066FF] hover:bg-[#0052CC] text-white"
             >
               {isRegistering ? "Registering..." : "Register"}
             </Button>
