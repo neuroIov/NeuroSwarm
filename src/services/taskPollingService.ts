@@ -5,6 +5,7 @@ import { taskCache } from './taskCacheService';
 import { AITask } from './types';
 import { getPendingUnassignedTasks } from './taskService';
 import { store } from '@/store';
+import { getSwarmSupabase } from '@/lib/supabase-client';
 import {
     fetchPendingTasks,
     fetchAndAssignTasks,
@@ -12,7 +13,8 @@ import {
     setStoreRef,
     startTaskPolling,
     startTaskProcessing,
-    recoverStuckTasks
+    recoverStuckTasks,
+    cleanupProcessingTasks
 } from '@/store/slices/taskSlice';
 
 // Initialize store reference for taskSlice
@@ -81,6 +83,13 @@ class TaskPollingService {
             return;
         }
 
+        // Check if node is active before polling
+        const state = store.getState();
+        if (!state.node?.isActive) {
+            logger.log('Node is inactive, skipping task poll');
+            return;
+        }
+
         // If we have a processing task, use longer intervals
         if (taskCache.isProcessingTask) {
             // If we're processing a task, only poll 1/3 of the time
@@ -127,6 +136,9 @@ class TaskPollingService {
 
         this.isPolling = false;
         logger.log('Stopped task polling service');
+        
+        // Clean up any processing tasks when stopping
+        store.dispatch(cleanupProcessingTasks());
     }
 
     /**
@@ -160,6 +172,13 @@ class TaskPollingService {
             return;
         }
 
+        // Check if node is active before polling
+        const state = store.getState();
+        if (!state.node?.isActive) {
+            logger.log('Node is inactive, skipping task poll');
+            return;
+        }
+
         // Check if we polled very recently
         const now = Date.now();
         const timeSinceLastPoll = now - this.lastPollTime;
@@ -187,6 +206,49 @@ class TaskPollingService {
                 return;
             }
 
+            // Check for stuck tasks in the user's own tasks
+            // This helps catch tasks that might be stuck due to browser crashes or app reloads
+            // 10% chance to check for orphaned tasks (tasks assigned to current user but not in local state)
+            if (Math.random() < 0.1) {
+                try {
+                    const userId = state.session?.userProfile?.id;
+                    if (userId) {
+                        // Check for tasks assigned to this user with status "processing"
+                        const client = getSwarmSupabase();
+                        const { data: orphanedTasks, error } = await client
+                            .from('tasks')
+                            .select('*')
+                            .eq('user_id', userId)
+                            .eq('status', 'processing');
+                            
+                        if (!error && orphanedTasks && orphanedTasks.length > 0) {
+                            logger.warn(`Found ${orphanedTasks.length} orphaned processing tasks in database. Releasing them back to the pool.`);
+                            
+                            // Release them back to the pool by setting status to pending and clearing user_id
+                            const taskIds = orphanedTasks.map(task => task.id);
+                            const { error: updateError } = await client
+                                .from('tasks')
+                                .update({
+                                    status: 'pending',
+                                    user_id: null,
+                                    node_id: null,
+                                    updated_at: new Date().toISOString()
+                                })
+                                .in('id', taskIds)
+                                .eq('user_id', userId);
+                                
+                            if (updateError) {
+                                logger.error('Error releasing orphaned tasks:', updateError);
+                            } else {
+                                logger.log(`Successfully released ${taskIds.length} orphaned tasks back to the pool`);
+                            }
+                        }
+                    }
+                } catch (orphanedError) {
+                    logger.error('Error checking for orphaned tasks:', orphanedError);
+                }
+            }
+
             // Check for stuck tasks and recover them (every 5 polls)
             if (Math.random() < 0.2) { // 20% chance to check for stuck tasks
                 // Get Redux state to check for stuck tasks
@@ -202,19 +264,37 @@ class TaskPollingService {
 
                     // Calculate max task processing time to determine if task is truly stuck
                     // Get max processing time based on task type and hardware tier
-                    const state = store.getState();
                     const rewardTier = state.node?.rewardTier || 'cpu';
-                    const maxProcessingTime = Math.max(
-                        TASK_PROCESSING_CONFIG.PROCESSING_TIME.image * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier],
-                        TASK_PROCESSING_CONFIG.PROCESSING_TIME.text * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier]
-                    ) * 1000; // Convert to milliseconds
                     
-                    // Add a larger 60 seconds buffer to accommodate any delays
-                    const stuckThreshold = maxProcessingTime + 60000;
+                    // Calculate max for each task type separately
+                    const maxImageProcessingTime = TASK_PROCESSING_CONFIG.PROCESSING_TIME.image * 
+                        TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier] * 1000; // Convert to ms
                     
-                    // Only recover tasks that have been processing longer than the max time + buffer
-                    if (now - oldestProcessingTime > stuckThreshold) {
-                        logger.warn(`Found stuck tasks in processing state (oldest: ${(now - oldestProcessingTime) / 1000}s, threshold: ${stuckThreshold / 1000}s), recovering...`);
+                    const maxTextProcessingTime = TASK_PROCESSING_CONFIG.PROCESSING_TIME.text * 
+                        TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier] * 1000; // Convert to ms
+                    
+                    // Use a more generous buffer for stuck detection
+                    const imageStuckThreshold = maxImageProcessingTime + 120000; // 2 minute buffer
+                    const textStuckThreshold = maxTextProcessingTime + 60000; // 1 minute buffer
+                    
+                    // Check each task with appropriate threshold based on its type
+                    const stuckTasks = processingTasks.filter(task => {
+                        const taskTime = now - new Date(task.updated_at || 0).getTime();
+                        const threshold = task.type === 'image' ? imageStuckThreshold : textStuckThreshold;
+                        return taskTime > threshold;
+                    });
+                    
+                    // Only recover if we found stuck tasks
+                    if (stuckTasks.length > 0) {
+                        const oldestStuckTask = stuckTasks.reduce((oldest, task) => {
+                            const taskTime = new Date(task.updated_at || 0).getTime();
+                            const oldestTime = new Date(oldest.updated_at || 0).getTime();
+                            return taskTime < oldestTime ? task : oldest;
+                        }, stuckTasks[0]);
+                        
+                        const stuckTime = now - new Date(oldestStuckTask.updated_at || 0).getTime();
+                        
+                        logger.warn(`Found stuck tasks in processing state (oldest ${oldestStuckTask.type} task: ${stuckTime/1000}s, threshold: ${oldestStuckTask.type === 'image' ? imageStuckThreshold/1000 : textStuckThreshold/1000}s), recovering...`);
                         store.dispatch(recoverStuckTasks());
                     }
                 }
@@ -342,6 +422,7 @@ export const initializeTaskServices = (userId: string, nodeId: string) => {
     // Start task processing pipeline (using Redux implementation)
     const stopProcessing = startTaskProcessing(store.dispatch, userId);
 
+    // Return stop functions so they can be called when node is stopped
     return {
         stopPolling,
         stopProcessing
@@ -354,6 +435,13 @@ export const initializeTaskServices = (userId: string, nodeId: string) => {
 export const manuallyAssignTasks = async (userId: string, nodeId: string, batchSize = 5) => {
     if (!userId) {
         logger.error('Cannot assign tasks: No user ID provided');
+        return [];
+    }
+
+    // Check if the node is active
+    const state = store.getState();
+    if (!state.node?.isActive) {
+        logger.log('Node is inactive, skipping task assignment');
         return [];
     }
 
@@ -380,6 +468,13 @@ export const manuallyAssignTasks = async (userId: string, nodeId: string, batchS
  * Process a single task from the queue
  */
 export const processSingleTask = async () => {
+    // Check if the node is active
+    const state = store.getState();
+    if (!state.node?.isActive) {
+        logger.log('Node is inactive, skipping task processing');
+        return { success: false, message: 'NODE_INACTIVE' };
+    }
+    
     try {
         // Signal that we're about to process a task
         taskPollingService.setActiveTaskProcessing(true);
