@@ -1414,7 +1414,7 @@ export const ReferralProgram = () => {
   }, [dataReady, referralRewards, pendingRewards, userProfile?.id]);
 
   return (
-    <div className="space-y-6 sm:space-y-8 p-3 sm:p-6 rounded-3xl">
+    <div className="space-y-6 sm:space-y-8 p-3 sm:p-6 rounded-3xl max-w-full overflow-x-hidden">
       {/* Dialogs */}
       <ThankYouDialog 
         isOpen={showThankYouDialog}
@@ -1524,31 +1524,32 @@ export const ReferralProgram = () => {
 
               <div className="space-y-4">
                 <div>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                        <LinkIcon className="h-4 w-4 text-blue-400/60" />
-                      </div>
-                      <Input
-                        value={referralCode}
-                        onChange={handleReferralInputChange}
-                        className="pl-10 py-6 bg-[#111827]/50 border-blue-500/20 focus:border-blue-400 text-white rounded-xl focus-visible:ring-blue-500/30 focus-visible:ring-offset-0"
-                        placeholder="Enter referral code or link"
-                      />
-                    </div>
-                    <Button
-                      onClick={handleVerifyReferralCode}
-                      className="bg-blue-600 hover:bg-blue-700 rounded-xl px-5"
-                      disabled={isVerifying || !referralCode.trim()}
-                    >
-                      {isVerifying ? (
-                        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                      ) : (
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                      )}
-                      <span>{isVerifying ? "Verifying..." : "Verify"}</span>
-                    </Button>
-                  </div>
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 w-full">
+  <div className="relative flex-1 w-full">
+    <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+      <LinkIcon className="h-4 w-4 text-blue-400/60" />
+    </div>
+    <Input
+      value={referralCode}
+      onChange={handleReferralInputChange}
+      className="pl-10 py-3 bg-[#111827]/50 border-blue-500/20 focus:border-blue-400 text-white rounded-xl focus-visible:ring-blue-500/30 focus-visible:ring-offset-0 w-full"
+      placeholder="Enter referral code or link"
+    />
+  </div>
+  <Button
+    onClick={handleVerifyReferralCode}
+    className="bg-blue-600 hover:bg-blue-700 rounded-xl px-5 py-3 flex items-center justify-center w-full sm:w-auto"
+    disabled={isVerifying || !referralCode.trim()}
+  >
+    {isVerifying ? (
+      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+    ) : (
+      <CheckCircle className="w-4 h-4 mr-2" />
+    )}
+    <span>{isVerifying ? "Verifying..." : "Verify"}</span>
+  </Button>
+</div>
+
                   {referralError && (
                     <p className="text-red-400 text-sm mt-2 flex items-center">
                       <AlertCircle className="w-3 h-3 mr-1" />
