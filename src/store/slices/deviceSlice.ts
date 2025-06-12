@@ -1,5 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { getSwarmSupabase } from '@/lib/supabase-client';
+import { cleanupProcessingTasks } from './taskSlice';
+import { logger } from '@/utils/logger';
 
 export interface Device {
     id: string;
@@ -22,6 +24,7 @@ interface DeviceState {
     devices: Device[];
     loading: boolean;
     error: string | null;
+    isActive: boolean; // Track if node is active
 }
 
 const initialState: DeviceState = {
@@ -29,6 +32,7 @@ const initialState: DeviceState = {
     devices: [],
     loading: false,
     error: null,
+    isActive: false, // Default to inactive
 };
 
 export const createDevice = createAsyncThunk(
@@ -77,6 +81,43 @@ export const fetchUserDevices = createAsyncThunk(
     }
 );
 
+// Async thunk to update device status in database
+export const updateDeviceStatus = createAsyncThunk(
+    'device/updateDeviceStatus',
+    async ({ deviceId, status, isActive = true }: { 
+        deviceId: string, 
+        status: 'offline' | 'online' | 'busy',
+        isActive?: boolean
+    }, { dispatch }) => {
+        try {
+            const client = getSwarmSupabase();
+            if (!deviceId) throw new Error('No device ID provided');
+    
+            // Update device status in database
+            const { error } = await client
+                .from('devices')
+                .update({ 
+                    status,
+                    last_seen: new Date().toISOString()
+                })
+                .eq('id', deviceId);
+    
+            if (error) throw error;
+            
+            // If device is being deactivated, clean up any processing tasks
+            if (!isActive) {
+                logger.log(`Device ${deviceId} is being deactivated, cleaning up tasks`);
+                dispatch(cleanupProcessingTasks());
+            }
+    
+            return { deviceId, status, isActive };
+        } catch (error) {
+            console.error('Error updating device status:', error);
+            throw error;
+        }
+    }
+);
+
 const deviceSlice = createSlice({
     name: 'device',
     initialState,
@@ -86,6 +127,10 @@ const deviceSlice = createSlice({
         },
         clearCurrentDevice: (state) => {
             state.currentDeviceId = null;
+        },
+        setNodeActive: (state, action) => {
+            state.isActive = action.payload;
+            logger.log(`Node active state set to: ${action.payload}`);
         },
     },
     extraReducers: (builder) => {
@@ -115,9 +160,27 @@ const deviceSlice = createSlice({
             .addCase(fetchUserDevices.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.error.message || 'Failed to fetch devices';
+            })
+            // Update device status
+            .addCase(updateDeviceStatus.fulfilled, (state, action) => {
+                state.isActive = action.payload.isActive;
+                
+                // Update the device status in the devices array
+                if (state.devices.length > 0) {
+                    const deviceIndex = state.devices.findIndex(
+                        device => device.id === action.payload.deviceId
+                    );
+                    
+                    if (deviceIndex !== -1) {
+                        state.devices[deviceIndex].status = action.payload.status;
+                        state.devices[deviceIndex].last_seen = new Date().toISOString();
+                    }
+                }
+                
+                logger.log(`Device status updated: ${action.payload.status}, isActive: ${action.payload.isActive}`);
             });
     },
 });
 
-export const { setCurrentDevice, clearCurrentDevice } = deviceSlice.actions;
+export const { setCurrentDevice, clearCurrentDevice, setNodeActive } = deviceSlice.actions;
 export default deviceSlice.reducer; 

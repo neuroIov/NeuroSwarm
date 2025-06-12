@@ -10,6 +10,7 @@ import {
 import { logger } from '@/utils/logger';
 import { RootState } from '@/store'; // Fix import path for RootState
 import { TASK_PROCESSING_CONFIG } from '@/services/config';
+import { getSwarmSupabase } from '@/lib/supabase-client';
 
 // Simple polling controller
 let pollingInterval: NodeJS.Timeout | null = null;
@@ -136,9 +137,71 @@ export const taskSlice = createSlice({
         setProcessingStatus: (state, action) => {
             state.isProcessing = action.payload;
         },
+        cleanupProcessingTasks: (state) => {
+            // Get user ID from the state to ensure we only reset our tasks
+            const rootState = storeRef?.getState();
+            const userId = rootState?.session?.userProfile?.id;
+            
+            if (!userId) {
+                logger.warn('Cannot cleanup tasks: Missing user ID');
+                return state;
+            }
+
+            // Find any tasks that are in processing state for this user
+            const processingTasks = state.assignedTasks.filter(task => 
+                task.status === 'processing' && task.user_id === userId
+            );
+            
+            if (processingTasks.length === 0) {
+                return state;
+            }
+            
+            logger.warn(`Node stopping: Cleaning up ${processingTasks.length} processing tasks for user ${userId}`);
+            
+            // Reset processing tasks to pending in local state
+            processingTasks.forEach(task => {
+                const index = state.assignedTasks.findIndex(t => t.id === task.id);
+                if (index !== -1) {
+                    logger.warn(`Resetting task ${task.id} (${task.type}) from processing to pending`);
+                    state.assignedTasks[index].status = 'pending';
+                    // Clear user and node assignment in local state too
+                    state.assignedTasks[index].user_id = null;
+                    state.assignedTasks[index].node_id = null;
+                }
+                
+                // Also update in database - reset to pending and release the task
+                updateTaskStatusInDatabase(task.id, 'pending', userId, true);
+            });
+            
+            // Clear current task and processing state
+            if (state.currentTask && processingTasks.some(task => task.id === state.currentTask?.id)) {
+                state.currentTask = null;
+            }
+            state.isProcessing = false;
+            
+            // Clear global task processing state
+            isProcessingTask = false;
+            currentProcessingTaskId = null;
+            taskProcessingLock.release();
+            
+            logger.log(`Successfully cleaned up ${processingTasks.length} processing tasks`);
+            
+            return state;
+        },
         recoverStuckTasks: (state) => {
-            // Find tasks stuck in processing state
-            const stuckTasks = state.assignedTasks.filter(task => task.status === 'processing');
+            // Get user ID from the state to ensure we only reset our tasks
+            const rootState = storeRef?.getState();
+            const userId = rootState?.session?.userProfile?.id;
+            
+            if (!userId) {
+                logger.warn('Cannot recover tasks: Missing user ID');
+                return state;
+            }
+
+            // Find tasks stuck in processing state for this user
+            const stuckTasks = state.assignedTasks.filter(task => 
+                task.status === 'processing' && task.user_id === userId
+            );
 
             if (stuckTasks.length === 0) {
                 return state;
@@ -156,12 +219,6 @@ export const taskSlice = createSlice({
                     logger.warn(`Task ${task.id} appears stuck (${task.type} task), will reset processing state`);
                     state.assignedTasks[index].status = 'pending';
                     state.assignedTasks[index].retry_count = (state.assignedTasks[index].retry_count || 0) + 1;
-                    
-                    // Add a note about the recovery
-                    if (!state.assignedTasks[index].notes) {
-                        state.assignedTasks[index].notes = '';
-                    }
-                    state.assignedTasks[index].notes += `Automatic recovery attempted at ${new Date().toISOString()}. `;
 
                     // Only mark as failed if this is the second or third retry
                     if (state.assignedTasks[index].retry_count > 2) {
@@ -174,11 +231,18 @@ export const taskSlice = createSlice({
                             state.allTasks[globalIndex].status = 'failed';
                         }
                     }
+                    
+                    // Update task in database to match our local state
+                    const updatedStatus = state.assignedTasks[index].status;
+                    // Release the task if it's going back to pending so others can pick it up
+                    const releaseTask = updatedStatus === 'pending';
+                    updateTaskStatusInDatabase(task.id, updatedStatus, userId, releaseTask);
                 }
             });
 
             // Reset processing state if current task was stuck
-            if (state.currentTask?.status === 'processing') {
+            if (state.currentTask?.status === 'processing' && 
+                stuckTasks.some(task => task.id === state.currentTask?.id)) {
                 // Look for next pending task
                 const nextTask = state.assignedTasks.find(t => t.status === 'pending');
                 state.currentTask = nextTask || null;
@@ -257,11 +321,70 @@ export const taskSlice = createSlice({
     }
 });
 
+/**
+ * Helper function to update task status directly in the database
+ * Used for cleanup operations when node is stopped
+ */
+const updateTaskStatusInDatabase = async (taskId: string, status: string, userId?: string, releaseTask = false) => {
+    try {
+        const supabase = getSwarmSupabase();
+        if (!supabase) {
+            logger.error('Supabase client not available for task status update');
+            return null;
+        }
+        
+        // Prepare update payload
+        const updateData: any = {
+            status,
+            updated_at: new Date().toISOString()
+        };
+        
+        // If releaseTask is true, set user_id and node_id to null
+        if (releaseTask) {
+            updateData.user_id = null;
+            updateData.node_id = null;
+        }
+        
+        // Build the update query
+        let query = supabase
+            .from('tasks')
+            .update(updateData)
+            .eq('id', taskId);
+            
+        // Add user_id filter if provided
+        if (userId) {
+            query = query.eq('user_id', userId);
+        }
+        
+        // Execute the update and return the data
+        const { data, error } = await query.select('id, status, type').single();
+            
+        if (error) {
+            logger.error(`Failed to update task ${taskId} status to ${status} in database:`, error);
+            return null;
+        } else {
+            const action = releaseTask ? "released back to pool" : "updated";
+            logger.log(`Task ${taskId} ${action} with status ${status} in database`);
+            return data;
+        }
+    } catch (err) {
+        logger.error(`Error updating task status in database:`, err);
+        return null;
+    }
+};
+
 // Async thunks
 export const fetchPendingTasks = createAsyncThunk(
     'tasks/fetchPendingTasks',
-    async (_, { rejectWithValue }) => {
+    async (_, { rejectWithValue, getState }) => {
         try {
+            // Check if node is active before fetching
+            const state = getState() as RootState;
+            if (!state.node?.isActive) {
+                logger.log('Node is inactive, skipping task fetch');
+                return [];
+            }
+            
             const tasks = await getPendingUnassignedTasks(20);
             return tasks;
         } catch (error) {
@@ -279,10 +402,17 @@ interface AssignTasksParams {
 
 export const fetchAndAssignTasks = createAsyncThunk(
     'tasks/fetchAndAssignTasks',
-    async ({ userId, nodeId, batchSize = 5 }: AssignTasksParams, { rejectWithValue }) => {
+    async ({ userId, nodeId, batchSize = 5 }: AssignTasksParams, { rejectWithValue, getState }) => {
         try {
             if (!userId) {
                 return rejectWithValue('No user ID provided');
+            }
+
+            // Check if node is active before assigning tasks
+            const state = getState() as RootState;
+            if (!state.node?.isActive) {
+                logger.log('Node is inactive, skipping task assignment');
+                return [];
             }
 
             // Avoid duplicate requests
@@ -309,6 +439,12 @@ export const processNextTask = createAsyncThunk(
             // Get current state
             const state = getState() as RootState;
             const userId = state.session?.userProfile?.id;
+            
+            // Check if node is active before processing
+            if (!state.node?.isActive) {
+                logger.log('Node is inactive, skipping task processing');
+                return rejectWithValue('NODE_INACTIVE');
+            }
 
             if (!userId) {
                 return rejectWithValue('No user ID available');
@@ -403,6 +539,15 @@ export const startTaskPolling = (dispatch, userId, nodeId) => {
 
     // Set up polling interval (every 20 seconds)
     pollingInterval = setInterval(() => {
+        // Skip polling if node is inactive
+        if (storeRef) {
+            const state = storeRef.getState();
+            if (!state.node?.isActive) {
+                logger.log('Node is inactive, skipping poll in interval');
+                return;
+            }
+        }
+        
         // Don't poll if we're actively processing a task
         if (isProcessingTask) {
             logger.log('Skipping poll while task is processing');
@@ -443,6 +588,15 @@ export const startTaskProcessing = (dispatch, userId) => {
             return;
         }
 
+        // Check if node is active
+        if (storeRef) {
+            const state = storeRef.getState();
+            if (!state.node?.isActive) {
+                // If node is not active, do not process tasks
+                return;
+            }
+        }
+        
         // Throttle processing attempts (not more than once every 3 seconds)
         const now = Date.now();
         if (now - lastProcessingAttempt < 3000) {
@@ -518,6 +672,9 @@ export const startTaskProcessing = (dispatch, userId) => {
             clearInterval(processingInterval);
             processingInterval = null;
         }
+        
+        // Clean up any processing tasks when stopping
+        dispatch(cleanupProcessingTasks());
     };
 };
 
@@ -526,6 +683,7 @@ export const {
     updateTaskStatus,
     clearAssignedTasks,
     setProcessingStatus,
-    recoverStuckTasks
+    recoverStuckTasks,
+    cleanupProcessingTasks
 } = taskSlice.actions;
 export default taskSlice.reducer;
