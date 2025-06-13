@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { logger } from "@/utils/logger";
 import { safeStorage } from "@/utils/storage";
 import { toast } from "sonner";
@@ -25,14 +24,10 @@ import { RootState, useAppDispatch } from "@/store";
 import { fetchPendingTasks } from "@/store/slices/taskSlice";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { formatUptime } from "@/utils/timeUtils";
-import { updateUptime } from "@/store/slices/nodeSlice";
 
-// Default refresh interval in milliseconds
-const AUTO_REFRESH_INTERVAL = 120000; // 120 seconds (2 minutes)
-const LEADERBOARD_REFRESH_INTERVAL = 60000; // 1 minute
+// Cache keys for localStorage
 const TASK_CACHE_KEY = "global_statistics_task_cache";
 const LAST_REFRESH_KEY = "global_statistics_last_refresh";
-const MIN_REFRESH_INTERVAL = 30000; // Minimum time between refreshes (30 seconds)
 
 // Interface for leaderboard entry
 interface LeaderboardEntry {
@@ -44,20 +39,15 @@ interface LeaderboardEntry {
 }
 
 export const GlobalStatistics = () => {
-  console.log("Hello World - checking if logging works");
-
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const client = getSwarmSupabase();
   // Get logged in user from Redux store's session state
   const { userProfile } = useSelector((state: RootState) => state.session);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   // Cache for storing tasks to reduce duplicate requests
   const [taskCache, setTaskCache] = useState<AITask[]>([]);
   const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
-  const [lastLeaderboardRefresh, setLastLeaderboardRefresh] = useState<number>(0);
-  const [forceUpdate, setForceUpdate] = useState(0);
   // Leaderboard state
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [currentUserRank, setCurrentUserRank] =
@@ -66,9 +56,6 @@ export const GlobalStatistics = () => {
 
   // Get tasks from Redux store
   const { allTasks } = useSelector((state: RootState) => state.tasks);
-  const { tasksCompleted, isActive } = useSelector(
-    (state: RootState) => state.node
-  );
 
   const [stats, setStats] = useState({
     totalTasks: 0,
@@ -78,19 +65,17 @@ export const GlobalStatistics = () => {
     networkLoad: 0,
   });
 
-  console.log("currentUserRank", currentUserRank);
-
-  // Track completed tasks to trigger refresh when needed
-  const [prevCompletedTasks, setPrevCompletedTasks] = useState(0);
-
   // Fetch total users from the database
   const fetchTotalUsers = async () => {
     try {
-      const { data, error } = await client.from("user_profiles").select("id");
+      // Get count of total user profiles
+      const { count, error } = await client
+        .from("user_profiles")
+        .select("*", { count: 'exact', head: true });
 
       if (error) throw error;
-
-      return data?.length || 0;
+      
+      return count || 0;
     } catch (error) {
       console.error("Error fetching total users:", error);
       return 0;
@@ -100,14 +85,15 @@ export const GlobalStatistics = () => {
   // Fetch active nodes from the devices table
   const fetchActiveNodes = async () => {
     try {
-      const { data, error } = await client
+      // Get count of devices where status is "busy"
+      const { count, error } = await client
         .from("devices")
-        .select("id")
+        .select("*", { count: 'exact', head: true })
         .eq("status", "busy");
 
       if (error) throw error;
-
-      return data?.length || 0;
+      
+      return count || 0;
     } catch (error) {
       console.error("Error fetching active nodes:", error);
       return 0;
@@ -281,22 +267,10 @@ export const GlobalStatistics = () => {
         );
 
         if (currentUserEntry) {
-          // Ensure rank is properly set before updating state
-          if (currentUserEntry.rank === 0) {
-            // Find the correct rank based on position in sorted array
-            const userIndex = leaderboardData.findIndex(
-              (entry) => entry.user_id === userProfile.id
-            );
-            if (userIndex !== -1) {
-              currentUserEntry.rank = userIndex + 1;
-            }
-          }
           setCurrentUserRank(currentUserEntry);
-          console.log("Setting current user rank:", currentUserEntry.rank);
         } else {
           // User not found in leaderboard data
           setCurrentUserRank(null);
-          console.log("User not found in leaderboard data");
         }
       }
 
@@ -361,89 +335,41 @@ export const GlobalStatistics = () => {
     [fetchDatabaseStats]
   );
 
-  // Memoized function to load tasks to prevent unnecessary re-renders
+  // Function to load tasks
   const loadTasks = useCallback(
-    async (showToast = true, forceRefresh = false) => {
+    async (showToast = true) => {
       try {
-        // Check if we're already refreshing
         if (isRefreshing) {
-          return;
-        }
-
-        // Check if it's too soon to refresh again
-        const now = Date.now();
-        const timeSinceLastRefresh = now - lastRefreshTime;
-        if (!forceRefresh && timeSinceLastRefresh < 60000) {
-          // Only log occasionally to reduce console spam
-          if (Math.random() < 0.1) {
-            console.log(
-              `Skipping refresh, last refresh was ${(
-                timeSinceLastRefresh / 1000
-              ).toFixed(1)}s ago`
-            );
-          }
           return;
         }
 
         setIsRefreshing(true);
 
-        // Check for available unassigned tasks, but only log success
+        // Check for available unassigned tasks
         let availableTaskCount = 0;
         try {
           const availableTasks = await getQueuedTasks(10);
           availableTaskCount = availableTasks.length;
-          if (availableTaskCount > 0) {
-            console.log(
-              `Found ${availableTaskCount} available unassigned tasks in the database`
-            );
-          }
         } catch (error) {
-          // Log error but continue with existing tasks
           console.error("Error checking available tasks:", error);
         }
 
-        // Only fetch tasks if we need them (no tasks or forced refresh)
-        if (allTasks.length === 0 || forceRefresh || availableTaskCount > 0) {
-          // Dispatch the fetchPendingTasks action to update Redux store
-          const tasks = await dispatch(fetchPendingTasks()).unwrap();
+        // Fetch tasks
+        const tasks = await dispatch(fetchPendingTasks()).unwrap();
+        console.log(`Fetched ${tasks.length} tasks total`);
 
-          // Only log if we get tasks or occasionally
-          if (tasks.length > 0 || Math.random() < 0.1) {
-            console.log(`Fetched ${tasks.length} tasks total`);
-          }
+        // Update last refresh time
+        const now = Date.now();
+        setLastRefreshTime(now);
+        safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
 
-          // Update last refresh time
-          setLastRefreshTime(now);
-          safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
-
-          // Calculate stats from the fetched tasks (not the Redux store)
-          if (tasks.length > 0) {
-            await calculateAndUpdateStats(tasks);
-          } else if (availableTaskCount > 0) {
-            // We found new tasks but didn't fetch them, try again
-            const moreTasks = await dispatch(fetchPendingTasks()).unwrap();
-
-            if (moreTasks.length > 0) {
-              await calculateAndUpdateStats(moreTasks);
-            }
-          }
-        } else {
-          // Only log occasionally
-          if (Math.random() < 0.1) {
-            console.log("Using existing tasks for stats");
-          }
-
-          if (allTasks.length > 0) {
-            await calculateAndUpdateStats(allTasks);
-          }
+        // Calculate stats from the fetched tasks
+        if (tasks.length > 0) {
+          await calculateAndUpdateStats(tasks);
         }
 
-        // Always fetch leaderboard on manual refresh, otherwise check time interval
-        const currentTime = Date.now();
-        if (forceRefresh || currentTime - lastLeaderboardRefresh >= 60000) {
-          await fetchLeaderboard();
-          setLastLeaderboardRefresh(currentTime);
-        }
+        // Fetch leaderboard data
+        await fetchLeaderboard();
 
         setIsRefreshing(false);
         if (showToast) {
@@ -457,244 +383,84 @@ export const GlobalStatistics = () => {
         }
       }
     },
-    [dispatch, allTasks, lastRefreshTime, calculateAndUpdateStats, isRefreshing]
+    [dispatch, calculateAndUpdateStats, isRefreshing, fetchLeaderboard, t]
   );
 
-  // Load initial tasks - using useEffect with empty dependency array runs only once
+  // Load initial tasks on component mount
   useEffect(() => {
-    // If we have cached tasks, use them first and then refresh in the background
-    if (taskCache.length > 0) {
-      // Only log once
-      console.log(
-        `Using ${taskCache.length} cached tasks from previous session`
-      );
-      calculateAndUpdateStats(taskCache);
-      // Refresh in the background without showing toast, with a small delay
-      setTimeout(() => loadTasks(false, false), 3000);
-    } else {
-      // No cached tasks, do a normal load
-      loadTasks(true, true);
-    }
-
-    // Set up auto-refresh with a random offset to prevent multiple components
-    // refreshing at exactly the same time
-    let interval: NodeJS.Timeout | null = null;
-    if (autoRefresh) {
-      // Add a random offset (between 0-15 seconds) to stagger refreshes
-      const randomOffset = Math.floor(Math.random() * 15000);
-      const refreshInterval = AUTO_REFRESH_INTERVAL + randomOffset;
-
-      interval = setInterval(() => {
-        // Only refresh if not already refreshing
-        if (!isRefreshing) {
-          loadTasks(false, false);
+    const initialLoad = async () => {
+      try {
+        // Load initial statistics from database
+        const dbStats = await fetchDatabaseStats();
+        if (dbStats) {
+          setStats(prev => ({
+            ...prev,
+            totalUsers: dbStats.totalUsers,
+            activeNodes: dbStats.activeNodes,
+            avgComputeTime: dbStats.avgComputeTime,
+            networkLoad: dbStats.networkLoad
+          }));
         }
-      }, refreshInterval);
-
-      // Log this only once during setup
-      console.log(
-        `Auto-refresh set up with interval: ${Math.round(
-          refreshInterval / 1000
-        )}s`
-      );
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [
-    autoRefresh,
-    loadTasks,
-    calculateAndUpdateStats,
-    taskCache,
-    isRefreshing,
-  ]);
-
-  // Watch for tasks completed count changes to refresh the global task list
-  useEffect(() => {
-    // Only proceed if tasks completed counter increased
-    if (tasksCompleted > prevCompletedTasks) {
-      // Update our tracking counter
-      setPrevCompletedTasks(tasksCompleted);
-
-      // If there are few visible tasks, refresh the list to show more pending tasks
-      // but only if we haven't refreshed recently
-      const now = Date.now();
-      const timeSinceLastRefresh = now - lastRefreshTime;
-
-      if (allTasks.length < 10 && timeSinceLastRefresh > MIN_REFRESH_INTERVAL) {
-        // Only log this occasionally
-        if (Math.random() < 0.3) {
-          console.log(
-            `Task completed and only ${allTasks.length} tasks visible, refreshing task list`
-          );
+        
+        // If we have cached tasks, use them first
+        if (taskCache.length > 0) {
+          calculateAndUpdateStats(taskCache);
+          // Then refresh in the background without showing toast
+          loadTasks(false);
+        } else {
+          // No cached tasks, do a normal load
+          loadTasks(true);
         }
-
-        // Add a small delay before refreshing to avoid multiple rapid refreshes
-        setTimeout(() => {
-          if (!isRefreshing) {
-            loadTasks(false, true);
-          }
-        }, 2000);
+        
+        // Also load the leaderboard on initial mount
+        await fetchLeaderboard();
+      } catch (error) {
+        console.error("Error during initial data load:", error);
+        toast.error(t("globalStatistics.toasts.initialLoadFailed"));
       }
-    }
-  }, [
-    tasksCompleted,
-    prevCompletedTasks,
-    allTasks.length,
-    loadTasks,
-    lastRefreshTime,
-    isRefreshing,
-  ]);
-
-  // Update stats when allTasks changes - using useMemo to avoid unnecessary calculations
-  useMemo(() => {
-    if (allTasks.length > 0) {
-      // Calculate stats from allTasks
-      calculateAndUpdateStats(allTasks);
-
-      console.log(
-        `Stats updated from allTasks: ${allTasks.length} tasks found`
-      );
-      console.log(
-        `Task types: Image=${
-          allTasks.filter((t) => t.type === "image").length
-        }, Text=${allTasks.filter((t) => t.type === "text").length}`
-      );
-    } else if (
-      allTasks.length === 0 &&
-      !isRefreshing &&
-      taskCache.length === 0
-    ) {
-      // If no tasks are visible, we're not refreshing, and have no cache, try to get more
-      console.log("No tasks visible in global view, triggering refresh");
-      loadTasks(false, true);
-    }
-  }, [
-    allTasks,
-    isRefreshing,
-    taskCache.length,
-    calculateAndUpdateStats,
-    loadTasks,
-  ]);
-
-  const handleRefresh = useCallback(() => {
-    loadTasks(true, true);
-  }, [loadTasks]);
-
-  const toggleAutoRefresh = useCallback((checked: boolean) => {
-    setAutoRefresh(checked);
-    toast(
-      checked
-        ? t("globalStatistics.toasts.autoRefreshEnabled")
-        : t("globalStatistics.toasts.autoRefreshDisabled")
-    );
-  }, []);
-
-  // Format timestamp to display time only
-  const formatTime = useCallback((dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  }, []);
-
-  // Get the appropriate color class based on task type - memoized for performance
-  const getTaskTypeColorClass = useCallback((type: string) => {
-    switch (type) {
-      case "text":
-        return "text-blue-400";
-      case "image":
-        return "text-green-400";
-      case "inference":
-        return "text-purple-400";
-      default:
-        return "text-slate-300";
-    }
-  }, []);
-
-  // Use the tasks from Redux or cache if Redux is empty
-  const displayTasks = useMemo(() => {
-    return allTasks.length > 0 ? allTasks : taskCache;
-  }, [allTasks, taskCache]);
-
-  // Memoize stats cards to prevent unnecessary re-renders
-  const statsCards = useMemo(
-    () => (
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center text-slate-400 mb-1">
-            <Activity className="w-4 h-4 mr-2" />{" "}
-            {t("globalStatistics.cards.totalTasks")}
-          </div>
-          <div className="text-2xl font-bold">{stats.totalTasks}</div>
-        </div>
-
-        <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center text-slate-400 mb-1">
-            <Clock className="w-4 h-4 mr-2" />{" "}
-            {t("globalStatistics.cards.avgUptime")}
-          </div>
-          <div className="text-2xl font-bold">
-            {formatUptime(stats.avgComputeTime)}
-          </div>
-        </div>
-
-        <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center text-slate-400 mb-1">
-            <Users className="w-4 h-4 mr-2" />{" "}
-            {t("globalStatistics.cards.totalUsers")}
-          </div>
-          <div className="text-2xl font-bold">{stats.totalUsers}</div>
-        </div>
-
-        <div className="flex flex-col p-3 bg-slate-800/30 rounded-lg">
-          <div className="flex items-center text-slate-400 mb-1">
-            <Server className="w-4 h-4 mr-2" />{" "}
-            {t("globalStatistics.cards.activeNodes")}
-          </div>
-          <div className="text-2xl font-bold">{stats.activeNodes}</div>
-        </div>
-      </div>
-    ),
-    [stats]
-  );
-
-  // Update real-time stats while node is active
-  useEffect(() => {
-    let uptimeInterval: NodeJS.Timeout | null = null;
-
-    if (isActive) {
-      // Force uptime updates and component re-render every second
-      uptimeInterval = setInterval(() => {
-        dispatch(updateUptime());
-        // Trigger re-render for uptime display
-        setForceUpdate((prev) => prev + 1);
-
-        // Only update database stats occasionally to reduce load
-        if (forceUpdate % 60 === 0) {
-          // Every 60 seconds (1 minute)
-          fetchDatabaseStats().then((dbStats) => {
-            if (dbStats) {
-              setStats((prev) => ({
-                ...prev,
-                totalUsers: dbStats.totalUsers,
-                activeNodes: dbStats.activeNodes,
-                avgComputeTime: dbStats.avgComputeTime,
-                networkLoad: dbStats.networkLoad,
-              }));
-            }
-          });
-        }
-      }, 1000);
-    }
-
-    return () => {
-      if (uptimeInterval) clearInterval(uptimeInterval);
     };
-  }, [isActive, dispatch, forceUpdate, fetchDatabaseStats]);
+    
+    // Execute the initial load
+    initialLoad();
+  // Remove all dependencies to ensure this only runs once on mount
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+      
+      // Fetch all data in parallel
+      const [dbStats, tasksResult, leaderboardResult] = await Promise.all([
+        fetchDatabaseStats(),
+        dispatch(fetchPendingTasks()).unwrap(),
+        fetchLeaderboard()
+      ]);
+      
+      // Update stats from database
+      if (dbStats) {
+        setStats(prev => ({
+          ...prev,
+          totalUsers: dbStats.totalUsers,
+          activeNodes: dbStats.activeNodes,
+          avgComputeTime: dbStats.avgComputeTime,
+          networkLoad: dbStats.networkLoad,
+          totalTasks: tasksResult.length || prev.totalTasks
+        }));
+      }
+      
+      // Update last refresh time
+      const now = Date.now();
+      setLastRefreshTime(now);
+      safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
+      
+      setIsRefreshing(false);
+      toast.success(t("globalStatistics.toasts.refreshSuccess"));
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+      setIsRefreshing(false);
+      toast.error(t("globalStatistics.toasts.refreshFailed"));
+    }
+  }, [dispatch, fetchDatabaseStats]);
 
   // Format currency for display
   const formatCurrency = (amount: number) => {
@@ -728,8 +494,8 @@ export const GlobalStatistics = () => {
   };
 
   return (
-    <div className="stat-card overflow-x-hidden px-4 md:px-0">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-4 w-full">
+    <div className="stat-card overflow-x-hidden">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-4">
         <div className="flex items-center gap-2">
           <h2 className="text-base sm:text-xl font-semibold">
             {t("globalStatistics.title")}
@@ -737,16 +503,6 @@ export const GlobalStatistics = () => {
           <InfoTooltip content={t("globalStatistics.tooltip")} />
         </div>
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
-          <div className="flex items-center gap-2">
-            <span className="text-xs sm:text-sm text-slate-400">
-              {t("globalStatistics.autoRefresh")}
-            </span>
-            <Switch
-              checked={autoRefresh}
-              onCheckedChange={toggleAutoRefresh}
-              className="border border-[#0361da] data-[state=checked]:bg-slate-700 data-[state=checked]:border-[#0361da] data-[state=checked]:ring-slate-700 data-[state=checked]:ring-offset-slate-700"
-            />
-          </div>
           <Button
             variant="outline"
             size="sm"
@@ -985,22 +741,10 @@ export const GlobalStatistics = () => {
 
       {/* Leaderboard - Replacing task list */}
       <div className="mb-6 w-full">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-base sm:text-lg font-medium flex items-center">
-            <TrendingUp className="w-5 h-5 mr-2 text-blue-400" />
-            {t("globalStatistics.leaderboard.title", "Leaderboard")}
-          </h3>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-1 text-xs"
-            onClick={() => loadTasks(true, true)}
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {t("globalStatistics.refresh", "Refresh")}
-          </Button>
-        </div>
+        <h3 className="text-base sm:text-lg font-medium mb-4 flex items-center">
+          <TrendingUp className="w-5 h-5 mr-2 text-blue-400" />
+          {t("globalStatistics.leaderboard.title", "Leaderboard")}
+        </h3>
 
         {isLeaderboardLoading ? (
           <div className="flex flex-col items-center justify-center py-8 text-slate-400">
@@ -1013,85 +757,85 @@ export const GlobalStatistics = () => {
             </p>
           </div>
         ) : leaderboard.length > 0 ? (
-          <div className="overflow-x-auto">
-            <div className="min-w-[600px] space-y-0 max-h-[300px] overflow-y-auto overflow-hidden pr-2 custom-scrollbar bg-slate-900/60 rounded-lg border border-slate-800/50">
-              {/* Header row */}
-              <div className="grid grid-cols-12 gap-2 px-4 py-3 text-slate-400 text-sm border-b border-slate-800/50">
-                <div className="col-span-2 sm:col-span-1">
-                  {t("globalStatistics.leaderboard.rank", "Rank")}
+          <div className="space-y-0 max-h-[300px] overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar bg-slate-900/60 rounded-lg border border-slate-800/50">
+            {/* Header row */}
+            <div className="grid grid-cols-12 gap-2 px-4 py-3 text-slate-400 text-sm border-b border-slate-800/50">
+              <div className="col-span-1">
+                {t("globalStatistics.leaderboard.rank", "Rank")}
+              </div>
+              <div className="col-span-5">
+                {t("globalStatistics.leaderboard.user", "User")}
+              </div>
+              <div className="col-span-3 text-right">
+                {t("globalStatistics.leaderboard.earnings", "Earnings")}
+              </div>
+              <div className="col-span-3 text-right">
+                {t("globalStatistics.leaderboard.tasks", "Tasks")}
+              </div>
+            </div>
+
+            {/* Top 10 Users */}
+            {leaderboard.map((entry) => (
+              <div
+                key={entry.user_id}
+                className={`grid grid-cols-12 gap-2 py-3 px-4 
+                  ${
+                    userProfile && entry.user_id === userProfile.id
+                      ? "bg-blue-900/30 border-l-2 border-blue-500"
+                      : "hover:bg-slate-800/40"
+                  }`}
+              >
+                <div className="col-span-1 flex items-center">
+                  {getMedalIcon(entry.rank)}
                 </div>
-                <div className="col-span-5">
-                  {t("globalStatistics.leaderboard.user", "User")}
+                <div className="col-span-5 font-medium truncate">
+                  {cleanUsername(entry.username)}
+                  {userProfile && entry.user_id === userProfile.id && (
+                    <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
+                      {t("globalStatistics.leaderboard.you", "You")}
+                    </span>
+                  )}
                 </div>
-                <div className="col-span-2 sm:col-span-3 text-right">
-                  {t("globalStatistics.leaderboard.earnings", "Earnings")}
+                <div className="col-span-3 text-right font-medium">
+                  {formatCurrency(entry.total_earnings)}
                 </div>
-                <div className="col-span-3 text-right">
-                  {t("globalStatistics.leaderboard.tasks", "Tasks")}
+                <div className="col-span-3 text-right text-slate-300">
+                  {entry.task_count}
                 </div>
               </div>
-      
-              {/* Top 10 Users */}
-              {leaderboard.map((entry) => (
-                <div
-                  key={entry.user_id}
-                  className={`grid grid-cols-12 gap-2 py-3 px-4 
-                    ${
-                      userProfile && entry.user_id === userProfile.id
-                        ? "bg-blue-900/30 border-l-2 border-blue-500"
-                        : "hover:bg-slate-800/40"
-                    }`}
-                >
-                  <div className="col-span-2 sm:col-span-1 flex items-center">
-                    {getMedalIcon(entry.rank)}
+            ))}
+
+            {/* Current user outside top 10 */}
+            {currentUserRank &&
+              userProfile &&
+              !leaderboard.some(
+                (entry) => entry.user_id === userProfile.id
+              ) && (
+                <>
+                  <div className="flex justify-center py-2 border-t border-slate-800/50">
+                    <div className="text-slate-500 text-sm">. . .</div>
                   </div>
-                  <div className="col-span-5 font-medium truncate">
-                    {cleanUsername(entry.username)}
-                    {userProfile && entry.user_id === userProfile.id && (
+                  <div className="grid grid-cols-12 gap-2 py-3 px-4 bg-blue-900/30 border-l-2 border-blue-500">
+                    <div className="col-span-1 flex items-center">
+                      <span className="w-4 h-4 flex items-center justify-center text-xs font-medium">
+                        {currentUserRank.rank}
+                      </span>
+                    </div>
+                    <div className="col-span-5 font-medium truncate">
+                      {cleanUsername(currentUserRank.username)}
                       <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
                         {t("globalStatistics.leaderboard.you", "You")}
                       </span>
-                    )}
-                  </div>
-                  <div className="col-span-2 sm:col-span-3 text-right font-medium">
-                    {formatCurrency(entry.total_earnings)}
-                  </div>
-                  <div className="col-span-3 text-right text-slate-300">
-                    {entry.task_count}
-                  </div>
-                </div>
-              ))}
-      
-              {/* Current user outside top 10 */}
-              {currentUserRank &&
-                userProfile &&
-                !leaderboard.some((entry) => entry.user_id === userProfile.id) && (
-                  <>
-                    <div className="flex justify-center py-2 border-t border-slate-800/50">
-                      <div className="text-slate-500 text-sm">. . .</div>
                     </div>
-                    <div className="grid grid-cols-12 gap-2 py-3 px-4 bg-blue-900/30 border-l-2 border-blue-500">
-                      <div className="col-span-2 sm:col-span-1 flex items-center">
-                        <span className="w-4 h-4 flex items-center justify-center text-xs font-medium">
-                          {currentUserRank.rank}
-                        </span>
-                      </div>
-                      <div className="col-span-5 font-medium truncate">
-                        {cleanUsername(currentUserRank.username)}
-                        <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
-                          {t("globalStatistics.leaderboard.you", "You")}
-                        </span>
-                      </div>
-                      <div className="col-span-2 sm:col-span-3 text-right font-medium">
-                        {formatCurrency(currentUserRank.total_earnings)}
-                      </div>
-                      <div className="col-span-3 text-right text-slate-300">
-                        {currentUserRank.task_count}
-                      </div>
+                    <div className="col-span-3 text-right font-medium">
+                      {formatCurrency(currentUserRank.total_earnings)}
                     </div>
-                  </>
-                )}
-            </div>
+                    <div className="col-span-3 text-right text-slate-300">
+                      {currentUserRank.task_count}
+                    </div>
+                  </div>
+                </>
+              )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-slate-400">

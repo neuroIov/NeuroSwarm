@@ -1040,7 +1040,7 @@ export const NodeControlPanel = () => {
         </DialogContent>
       </Dialog>
       
-      <div className="p-2.5 sm:p-4 md:p-6 rounded-2xl sm:rounded-3xl stat-card overflow-x-hidden">
+      <div className="node-control-panel p-2.5 sm:p-4 md:p-6 rounded-2xl sm:rounded-3xl stat-card overflow-x-hidden">
         <div className="flex flex-col">
           <div className="flex flex-row justify-between items-center gap-2 sm:gap-0 mb-3 sm:mb-6">
             <div className="flex items-center gap-1 sm:gap-2">
