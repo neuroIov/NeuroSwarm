@@ -606,9 +606,9 @@ export const EarningsDashboard = () => {
   }
 
   return (
-    <div className="flex flex-col stat-card">
-      <div className="flex justify-between items-center mb-8">
-        <h2 className="text-xl ">Earnings Dashboard</h2>
+    <div className="flex flex-col stat-card max-w-full overflow-x-hidden">
+      <div className="flex justify-between items-center mb-8 flex-wrap gap-2">
+        <h2 className="text-xl">Earnings Dashboard</h2>
         <div className="flex gap-2">
           <Select value={timeRange} onValueChange={handleTimeRangeChange}>
             <SelectTrigger className="w-[80px] h-8 m-0 bg-[#1D1D33] rounded-full ">

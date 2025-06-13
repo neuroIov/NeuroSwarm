@@ -23,7 +23,7 @@ export const ReferralStatCard: React.FC<ReferralStatCardProps> = ({
       <div
         className={`
           relative rounded-2xl overflow-hidden flex flex-col justify-center 
-          w-full min-w-[300px] h-[120px] px-6 
+          w-full min-w-[200px] sm:min-w-[300px] h-[120px] px-4 sm:px-6 
           transition-all duration-500 ease-out
           shadow-lg hover:shadow-blue-500/20 hover:shadow-2xl
           bg-gradient-to-r from-blue-600 to-blue-400
@@ -65,7 +65,7 @@ export const ReferralStatCard: React.FC<ReferralStatCardProps> = ({
     <div
       className={`
         group relative rounded-2xl overflow-hidden 
-        w-full min-w-[280px] h-[120px] 
+        w-full min-w-[200px] sm:min-w-[280px] h-[120px] 
         transition-all duration-500 ease-out
         shadow-lg hover:shadow-blue-500/20 hover:shadow-2xl
         bg-[#0A1B3D] hover:-translate-y-1
