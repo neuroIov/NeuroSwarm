@@ -189,6 +189,7 @@ export const Header = ({
             variant="outline"
             onClick={isLoggedIn ? handleLogout : handleEmailAuth}
             className={cn(
+              "login-button",
               "flex items-center gap-1 md:gap-2 font-medium rounded-full h-auto transition-all duration-300 min-w-[36px] sm:min-w-[40px]",
               isCollapsed || window.innerWidth < 640
                 ? "px-1.5 py-1.5 sm:px-2 sm:py-2 justify-center"

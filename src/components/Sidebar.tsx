@@ -227,7 +227,10 @@ export function Sidebar({
                       onSectionChange(item.id);
                     }
                   }}
-                  className={`flex w-full items-center rounded-full px-4 py-3 text-sm font-medium transition-all duration-200 ${
+                  className={`${item.id === "earnings" ? "sidebar-earnings" : 
+                             item.id === "referral" ? "sidebar-referral" : 
+                             item.id === "global-stats" ? "sidebar-global-stats" : ""} 
+                           flex w-full items-center rounded-full px-4 py-3 text-sm font-medium transition-all duration-200 ${
                     isActive
                       ? "bg-[#1E1E1E] text-white"
                       : "text-gray-400 hover:bg-[#1A1A1A]/70 hover:text-gray-200"

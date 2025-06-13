@@ -412,7 +412,7 @@ export const TaskPipeline = () => {
   };
 
   return (
-    <div className="p-2.5 sm:p-6 rounded-2xl sm:rounded-3xl stat-card relative">
+    <div className="task-pipeline p-2.5 sm:p-6 rounded-2xl sm:rounded-3xl stat-card relative">
       <div className="flex flex-row justify-between items-center gap-2 sm:gap-0 mb-3 sm:mb-6">
         <div className="flex items-center gap-1 sm:gap-2">
           <h2 className="text-sm sm:text-lg font-medium text-white/90">

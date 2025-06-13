@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import HelpCenter from "@/components/HelpCenter";
 import Settings from "@/components/Settings";
+import { OnboardingTour } from "@/components/OnboardingTour";
 
 // Function to extract referral code from URL or direct code
 const extractReferralCode = (code: string): string | null => {
@@ -59,6 +60,7 @@ const Index = () => {
   const [showReferralDialog, setShowReferralDialog] = useState(false);
   const [detectedRefCode, setDetectedRefCode] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [runTour, setRunTour] = useState(false);
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const dispatch = useAppDispatch();
@@ -75,6 +77,18 @@ const Index = () => {
     }, 300);
     return () => clearTimeout(timer);
   }, []);
+
+
+  useEffect(() => {
+
+    const hasVisitedBefore = localStorage.getItem('hasVisitedBefore');
+    if (!hasVisitedBefore && isLoaded) {
+      setTimeout(() => {
+        setRunTour(true);
+        localStorage.setItem('hasVisitedBefore', 'true');
+      }, 1000); 
+    }
+  }, [isLoaded]);
 
   // Check for referral code in URL and save to localStorage
   useEffect(() => {
@@ -95,15 +109,22 @@ const Index = () => {
     }
   }, [userProfile, userProfile?.id]);
 
-  // This is now just a callback to close the dialog since the actual operations are handled in the dialog
+
   const handleSaveUsername = (username: string) => {
-    // The dialog now handles both username and referral internally
+   
     setShowUsernameDialog(false);
   };
 
-  // Handler to close the referral code dialog
+
   const handleCloseReferralDialog = () => {
     setShowReferralDialog(false);
+  };
+
+
+  const handleTourComplete = () => {
+    setRunTour(false);
+    localStorage.setItem('hasVisitedBefore', 'true');
+    console.log('Tour completed or skipped');
   };
 
   return (
@@ -130,7 +151,7 @@ const Index = () => {
         onSectionChange={() => setSidebarOpen(false)}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        className={`fixed left-0 top-0 h-screen z-40 transition-transform duration-300 ease-in-out md:translate-x-0 ${
+        className={`fixed left-0 top-0 h-screen z-30 transition-transform duration-300 ease-in-out md:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       />
@@ -150,7 +171,7 @@ const Index = () => {
           >
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboard" element={<div className="welcome-step"><Dashboard /></div>} />
               <Route path="/earnings" element={<EarningsDashboard />} />
               <Route path="/referral" element={<ReferralProgram />} />
               <Route path="/global-stats" element={<GlobalStatistics />} />
@@ -177,6 +198,9 @@ const Index = () => {
         onClose={handleCloseReferralDialog}
         referralCode={detectedRefCode}
       />
+
+      {/* Onboarding Tour */}
+      <OnboardingTour run={runTour} onComplete={handleTourComplete} />
     </div>
   );
 };

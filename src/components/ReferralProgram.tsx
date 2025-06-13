@@ -785,6 +785,64 @@ export const ReferralProgram = () => {
       
       if (createReferralRelationship.fulfilled.match(resultAction)) {
         console.log("Successfully created referral relationship!");
+        
+        // Give 100 SP to the referrer (user A)
+        try {
+          const { referrerId } = verifyResult.payload as { isValid: boolean; referrerId: string };
+          if (referrerId) {
+            const client = getSwarmSupabase();
+            
+            // Create an earnings entry for the referral
+            await client.from("earnings").insert({
+              user_id: referrerId,
+              amount: 100,
+              earning_type: "referral",
+              task_id: null
+            });
+            
+            // Update earnings_history by fetching latest amount and adding to it
+            const { data: latestEarnings, error: fetchError } = await client
+              .from("earnings_history")
+              .select("*")
+              .eq("user_id", referrerId)
+              .order("timestamp", { ascending: false })
+              .limit(1)
+              .single();
+            
+            if (fetchError && fetchError.code !== "PGRST116") {
+              console.error("Error fetching latest earnings history:", fetchError);
+            }
+            
+            const currentAmount = latestEarnings ? parseFloat(latestEarnings.amount) : 0;
+            const newAmount = currentAmount + 100;
+            const currentTaskCount = latestEarnings ? latestEarnings.task_count : 0;
+            
+            // Insert or update earnings_history
+            if (latestEarnings) {
+              await client
+                .from("earnings_history")
+                .update({ 
+                  amount: newAmount,
+                  timestamp: new Date().toISOString()
+                })
+                .eq("id", latestEarnings.id);
+            } else {
+              await client
+                .from("earnings_history")
+                .insert({
+                  user_id: referrerId,
+                  amount: 100,
+                  task_count: currentTaskCount,
+                  payout_status: "pending"
+                });
+            }
+            
+            console.log("Added 100 SP reward to referrer:", referrerId);
+          }
+        } catch (err) {
+          console.error("Error adding referrer reward:", err);
+        }
+        
         // Show thank you dialog
         setShowThankYouDialog(true);
         // Show the reward dialog
@@ -1273,6 +1331,63 @@ export const ReferralProgram = () => {
 
       if (createReferralRelationship.fulfilled.match(resultAction)) {
         toast.success("Successfully joined referral program!");
+        
+        // Give 100 SP to the referrer (user A)
+        try {
+          if (referrerId) {
+            const client = getSwarmSupabase();
+            
+            // Create an earnings entry for the referral
+            await client.from("earnings").insert({
+              user_id: referrerId,
+              amount: 100,
+              earning_type: "referral",
+              task_id: null
+            });
+            
+            // Update earnings_history by fetching latest amount and adding to it
+            const { data: latestEarnings, error: fetchError } = await client
+              .from("earnings_history")
+              .select("*")
+              .eq("user_id", referrerId)
+              .order("timestamp", { ascending: false })
+              .limit(1)
+              .single();
+            
+            if (fetchError && fetchError.code !== "PGRST116") {
+              console.error("Error fetching latest earnings history:", fetchError);
+            }
+            
+            const currentAmount = latestEarnings ? parseFloat(latestEarnings.amount) : 0;
+            const newAmount = currentAmount + 100;
+            const currentTaskCount = latestEarnings ? latestEarnings.task_count : 0;
+            
+            // Insert or update earnings_history
+            if (latestEarnings) {
+              await client
+                .from("earnings_history")
+                .update({ 
+                  amount: newAmount,
+                  timestamp: new Date().toISOString()
+                })
+                .eq("id", latestEarnings.id);
+            } else {
+              await client
+                .from("earnings_history")
+                .insert({
+                  user_id: referrerId,
+                  amount: 100,
+                  task_count: currentTaskCount,
+                  payout_status: "pending"
+                });
+            }
+            
+            console.log("Added 100 SP reward to referrer:", referrerId);
+          }
+        } catch (err) {
+          console.error("Error adding referrer reward:", err);
+        }
+        
         setReferralCode("");
         setIsVerified(false);
         // Show the reward dialog
