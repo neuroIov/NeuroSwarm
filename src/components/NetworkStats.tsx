@@ -156,8 +156,8 @@ export const NetworkStats = () => {
 
         // Refresh active nodes more frequently when a node is active
         // But not on every tick to avoid excessive API calls
-        if (Date.now() - lastUpdate > 5000) {
-          // Every 5 seconds
+        if (Date.now() - lastUpdate > 20000) {
+          // Every 20 seconds
           getTotalActiveNodes();
           setLastUpdate(Date.now());
         }
