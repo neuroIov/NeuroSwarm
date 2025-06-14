@@ -252,7 +252,7 @@ export const NetworkStats = () => {
     // Set up polling for active nodes
     const activeNodesInterval = setInterval(() => {
       getTotalActiveNodes();
-    }, 10000); // Poll every 10 seconds
+    }, 30000); // Poll every 30 seconds
 
     return () => clearInterval(activeNodesInterval);
   }, [userProfile?.id]);
