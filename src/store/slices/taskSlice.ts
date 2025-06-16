@@ -528,6 +528,11 @@ export const startTaskPolling = (dispatch, userId, nodeId) => {
     if (pollingInterval) {
         clearInterval(pollingInterval);
     }
+    
+    // Track consecutive empty polls for backoff
+    let consecutiveEmptyPolls = 0;
+    let currentPollingInterval = 20000; // Start with 20 seconds
+    const MAX_POLLING_INTERVAL = 120000; // Max 2 minutes
 
     // First fetch immediately
     dispatch(fetchPendingTasks());
@@ -537,13 +542,12 @@ export const startTaskPolling = (dispatch, userId, nodeId) => {
         dispatch(fetchAndAssignTasks({ userId, nodeId }));
     }
 
-    // Set up polling interval (every 20 seconds)
-    pollingInterval = setInterval(() => {
+    const pollWithBackoff = () => {
         // Skip polling if node is inactive
         if (storeRef) {
             const state = storeRef.getState();
             if (!state.node?.isActive) {
-                logger.log('Node is inactive, skipping poll in interval');
+                logger.log('Node is inactive, skipping poll');
                 return;
             }
         }
@@ -554,18 +558,66 @@ export const startTaskPolling = (dispatch, userId, nodeId) => {
             return;
         }
 
-        dispatch(fetchPendingTasks());
+        dispatch(fetchPendingTasks())
+            .then((action) => {
+                // Check if we got any tasks
+                const fetchedTasks = action.payload || [];
+                
+                if (fetchedTasks.length === 0) {
+                    consecutiveEmptyPolls++;
+                    
+                    // Apply exponential backoff up to the maximum
+                    if (consecutiveEmptyPolls > 2) {
+                        // Increase interval with each empty poll, capped at MAX_POLLING_INTERVAL
+                        currentPollingInterval = Math.min(
+                            currentPollingInterval * 1.5, 
+                            MAX_POLLING_INTERVAL
+                        );
+                        
+                        logger.log(`Increasing polling interval to ${currentPollingInterval}ms after ${consecutiveEmptyPolls} empty polls`);
+                        
+                        // Reset the interval with the new timing
+                        if (pollingInterval) {
+                            clearInterval(pollingInterval);
+                            pollingInterval = setInterval(pollWithBackoff, currentPollingInterval);
+                        }
+                    }
+                } else {
+                    // Reset backoff if we found tasks
+                    if (consecutiveEmptyPolls > 0) {
+                        consecutiveEmptyPolls = 0;
+                        
+                        // If we were in backoff mode, reset to normal interval
+                        if (currentPollingInterval > 20000) {
+                            currentPollingInterval = 20000;
+                            logger.log('Resetting polling interval to 20000ms after finding tasks');
+                            
+                            // Reset the interval with the normal timing
+                            if (pollingInterval) {
+                                clearInterval(pollingInterval);
+                                pollingInterval = setInterval(pollWithBackoff, currentPollingInterval);
+                            }
+                        }
+                    }
+                }
+                
+                // If we have less than 3 pending tasks left, fetch more
+                if (storeRef) {
+                    const state = storeRef.getState();
+                    const pendingTaskCount = state.tasks.assignedTasks.filter(t => t.status === 'pending').length;
 
-        // If we have less than 3 pending tasks left, fetch more
-        if (storeRef) {
-            const state = storeRef.getState();
-            const pendingTaskCount = state.tasks.assignedTasks.filter(t => t.status === 'pending').length;
+                    if (pendingTaskCount < 3 && userId && !isProcessingTask) {
+                        dispatch(fetchAndAssignTasks({ userId, nodeId }));
+                    }
+                }
+            })
+            .catch(err => {
+                logger.error('Error during task polling:', err);
+            });
+    };
 
-            if (pendingTaskCount < 3 && userId && !isProcessingTask) {
-                dispatch(fetchAndAssignTasks({ userId, nodeId }));
-            }
-        }
-    }, 20000);
+    // Set up polling interval with the initial interval
+    pollingInterval = setInterval(pollWithBackoff, currentPollingInterval);
 
     // Return a function to stop polling
     return () => {
