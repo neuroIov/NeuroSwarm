@@ -65,61 +65,39 @@ export const GlobalStatistics = () => {
     networkLoad: 0,
   });
 
-  // Fetch total users from the database
-  const fetchTotalUsers = async () => {
+  // Fetch network statistics from the edge function
+  const fetchNetworkStats = async () => {
     try {
-      // Get count of total user profiles
-      const { count, error } = await client
-        .from("user_profiles")
-        .select("*", { count: 'exact', head: true });
-
-      if (error) throw error;
+      // Get the session token for authentication
+      const { data: { session } } = await client.auth.getSession();
+      const token = session?.access_token;
       
-      return count || 0;
-    } catch (error) {
-      console.error("Error fetching total users:", error);
-      return 0;
-    }
-  };
-
-  // Fetch active nodes from the devices table
-  const fetchActiveNodes = async () => {
-    try {
-      // Get count of devices where status is "busy"
-      const { count, error } = await client
-        .from("devices")
-        .select("*", { count: 'exact', head: true })
-        .eq("status", "busy");
-
-      if (error) throw error;
-      
-      return count || 0;
-    } catch (error) {
-      console.error("Error fetching active nodes:", error);
-      return 0;
-    }
-  };
-
-  // Calculate network load based on active nodes / total nodes
-  const calculateNetworkLoad = async (activeNodesCount: number) => {
-    try {
-      const { data, error } = await client.from("devices").select("id");
-
-      if (error) throw error;
-
-      const totalNodes = data?.length || 0;
-
-      if (totalNodes > 0) {
-        return Math.round((activeNodesCount / totalNodes) * 100);
+      if (!token) {
+        console.error("No authentication token available");
+        return null;
       }
-      return 0;
+      
+      const response = await fetch('https://zphiymepbkzgczxorqgz.supabase.co/functions/v1/luffy', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
     } catch (error) {
-      console.error("Error calculating network load:", error);
-      return 0;
+      console.error("Error fetching network stats:", error);
+      return null;
     }
   };
 
-  // Fetch average uptime from all devices
+  // Calculate average uptime from all devices - keep this separate as it's not included in edge function
   const fetchAverageUptime = async () => {
     try {
       const { data, error } = await client.from("devices").select("uptime");
@@ -141,38 +119,6 @@ export const GlobalStatistics = () => {
       return 0;
     }
   };
-
-  // Load any cached tasks from localStorage on initial load
-  useEffect(() => {
-    try {
-      const cachedTasks = safeStorage.getItem(TASK_CACHE_KEY);
-      if (cachedTasks) {
-        const parsedTasks = JSON.parse(cachedTasks) as AITask[];
-        if (parsedTasks.length > 0) {
-          setTaskCache(parsedTasks);
-        }
-      }
-
-      // Load the last refresh time from localStorage here inside useEffect
-      const savedLastRefreshTime = safeStorage.getItem(LAST_REFRESH_KEY);
-      if (savedLastRefreshTime) {
-        setLastRefreshTime(Number(savedLastRefreshTime));
-      }
-    } catch (error) {
-      console.error("Error loading task cache:", error);
-    }
-  }, []);
-
-  // Cache tasks whenever they change
-  useEffect(() => {
-    if (allTasks.length > 0) {
-      try {
-        safeStorage.setItem(TASK_CACHE_KEY, JSON.stringify(allTasks));
-      } catch (error) {
-        console.error("Error saving task cache:", error);
-      }
-    }
-  }, [allTasks]);
 
   // Fetch leaderboard data
   const fetchLeaderboard = async () => {
@@ -281,139 +227,102 @@ export const GlobalStatistics = () => {
     }
   };
 
-  // Fetch database statistics
-  const fetchDatabaseStats = useCallback(async () => {
+  // Update stats when refreshing or initial load
+  const updateStats = async () => {
+    setIsRefreshing(true);
     try {
-      const [totalUsersCount, activeNodesCount, averageUptimeSeconds] =
-        await Promise.all([
-          fetchTotalUsers(),
-          fetchActiveNodes(),
-          fetchAverageUptime(),
-        ]);
+      // Fetch all network stats with a single API call
+      const networkStats = await fetchNetworkStats();
+      
+      if (!networkStats) {
+        throw new Error("Failed to fetch network statistics");
+      }
+      
+      // Calculate network load from the returned counts
+      const networkLoad = networkStats.totalDevices > 0 
+        ? Math.round((networkStats.activeDevices / networkStats.totalDevices) * 100)
+        : 0;
+      
+      // Calculate average compute time
+      let avgTime = 0;
+      if (taskCache.length > 0) {
+        const totalTime = taskCache.reduce((sum, task) => {
+          const computeTime = task.compute_time_ms || 0;
+          return sum + computeTime;
+        }, 0);
+        avgTime = Math.round(totalTime / taskCache.length);
+      }
 
-      const networkLoadPercentage = await calculateNetworkLoad(
-        activeNodesCount
-      );
+      // Get average uptime (still needs separate call as it's not in edge function)
+      const avgUptime = await fetchAverageUptime();
+      
+      // Update stats with values from edge function and calculated stats
+      setStats({
+        totalTasks: taskCache.length || 0,
+        avgComputeTime: avgTime,
+        totalUsers: networkStats.totalUsers || 0,
+        activeNodes: networkStats.activeDevices || 0,
+        networkLoad,
+      });
 
-      return {
-        totalUsers: totalUsersCount,
-        activeNodes: activeNodesCount,
-        avgComputeTime: averageUptimeSeconds,
-        networkLoad: networkLoadPercentage,
-      };
+      // Set last refresh time
+      const now = Date.now();
+      setLastRefreshTime(now);
+      safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
     } catch (error) {
-      console.error("Error fetching database statistics:", error);
-      return null;
+      console.error("Error updating stats:", error);
+      toast.error("Failed to update statistics");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Load any cached tasks from localStorage on initial load
+  useEffect(() => {
+    try {
+      const cachedTasks = safeStorage.getItem(TASK_CACHE_KEY);
+      if (cachedTasks) {
+        const parsedTasks = JSON.parse(cachedTasks) as AITask[];
+        if (parsedTasks.length > 0) {
+          setTaskCache(parsedTasks);
+        }
+      }
+
+      // Load the last refresh time from localStorage here inside useEffect
+      const savedLastRefreshTime = safeStorage.getItem(LAST_REFRESH_KEY);
+      if (savedLastRefreshTime) {
+        setLastRefreshTime(Number(savedLastRefreshTime));
+      }
+    } catch (error) {
+      console.error("Error loading task cache:", error);
     }
   }, []);
 
-  // Helper function to calculate and update stats
-  const calculateAndUpdateStats = useCallback(
-    async (tasks: AITask[]) => {
-      // Get database statistics
-      const dbStats = await fetchDatabaseStats();
-
-      const computeTimes = tasks
-        .map((t) => t.compute_time || 0)
-        .filter((t) => t > 0);
-
-      const avgTime =
-        dbStats?.avgComputeTime ||
-        (computeTimes.length > 0
-          ? computeTimes.reduce((sum, time) => sum + time, 0) /
-            computeTimes.length
-          : 0);
-
-      setStats({
-        totalTasks: tasks.length,
-        avgComputeTime: avgTime,
-        totalUsers: dbStats?.totalUsers || 0,
-        activeNodes: dbStats?.activeNodes || 0,
-        networkLoad: dbStats?.networkLoad || 0,
-      });
-    },
-    [fetchDatabaseStats]
-  );
-
-  // Function to load tasks
-  const loadTasks = useCallback(
-    async (showToast = true) => {
+  // Cache tasks whenever they change
+  useEffect(() => {
+    if (allTasks.length > 0) {
       try {
-        if (isRefreshing) {
-          return;
-        }
-
-        setIsRefreshing(true);
-
-        // Check for available unassigned tasks
-        let availableTaskCount = 0;
-        try {
-          const availableTasks = await getQueuedTasks(10);
-          availableTaskCount = availableTasks.length;
-        } catch (error) {
-          console.error("Error checking available tasks:", error);
-        }
-
-        // Fetch tasks
-        const tasks = await dispatch(fetchPendingTasks()).unwrap();
-        console.log(`Fetched ${tasks.length} tasks total`);
-
-        // Update last refresh time
-        const now = Date.now();
-        setLastRefreshTime(now);
-        safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
-
-        // Calculate stats from the fetched tasks
-        if (tasks.length > 0) {
-          await calculateAndUpdateStats(tasks);
-        }
-
-        // Fetch leaderboard data
-        await fetchLeaderboard();
-
-        setIsRefreshing(false);
-        if (showToast) {
-          toast.success(t("globalStatistics.toasts.refreshSuccess"));
-        }
+        safeStorage.setItem(TASK_CACHE_KEY, JSON.stringify(allTasks));
       } catch (error) {
-        console.error("Error loading tasks:", error);
-        setIsRefreshing(false);
-        if (showToast) {
-          toast.error(t("globalStatistics.toasts.refreshFailed"));
-        }
+        console.error("Error saving task cache:", error);
       }
-    },
-    [dispatch, calculateAndUpdateStats, isRefreshing, fetchLeaderboard, t]
-  );
+    }
+  }, [allTasks]);
 
   // Load initial tasks on component mount
   useEffect(() => {
     const initialLoad = async () => {
       try {
-        // Load initial statistics from database
-        const dbStats = await fetchDatabaseStats();
-        if (dbStats) {
-          setStats(prev => ({
-            ...prev,
-            totalUsers: dbStats.totalUsers,
-            activeNodes: dbStats.activeNodes,
-            avgComputeTime: dbStats.avgComputeTime,
-            networkLoad: dbStats.networkLoad
-          }));
-        }
-        
         // If we have cached tasks, use them first
         if (taskCache.length > 0) {
-          calculateAndUpdateStats(taskCache);
+          await updateStats();
           // Then refresh in the background without showing toast
-          loadTasks(false);
+          await fetchLeaderboard();
         } else {
           // No cached tasks, do a normal load
-          loadTasks(true);
+          await updateStats();
+          await fetchLeaderboard();
         }
-        
-        // Also load the leaderboard on initial mount
-        await fetchLeaderboard();
       } catch (error) {
         console.error("Error during initial data load:", error);
         toast.error(t("globalStatistics.toasts.initialLoadFailed"));
@@ -430,28 +339,10 @@ export const GlobalStatistics = () => {
       setIsRefreshing(true);
       
       // Fetch all data in parallel
-      const [dbStats, tasksResult, leaderboardResult] = await Promise.all([
-        fetchDatabaseStats(),
-        dispatch(fetchPendingTasks()).unwrap(),
+      await Promise.all([
+        updateStats(),
         fetchLeaderboard()
       ]);
-      
-      // Update stats from database
-      if (dbStats) {
-        setStats(prev => ({
-          ...prev,
-          totalUsers: dbStats.totalUsers,
-          activeNodes: dbStats.activeNodes,
-          avgComputeTime: dbStats.avgComputeTime,
-          networkLoad: dbStats.networkLoad,
-          totalTasks: tasksResult.length || prev.totalTasks
-        }));
-      }
-      
-      // Update last refresh time
-      const now = Date.now();
-      setLastRefreshTime(now);
-      safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
       
       setIsRefreshing(false);
       toast.success(t("globalStatistics.toasts.refreshSuccess"));
@@ -460,7 +351,7 @@ export const GlobalStatistics = () => {
       setIsRefreshing(false);
       toast.error(t("globalStatistics.toasts.refreshFailed"));
     }
-  }, [dispatch, fetchDatabaseStats]);
+  }, [fetchLeaderboard]);
 
   // Format currency for display
   const formatCurrency = (amount: number) => {
