@@ -31,6 +31,7 @@ import { processTask } from "@/services/swarmTaskService";
 import { AITask, TaskStatus, TaskType } from "@/services/types";
 import { Button } from "@/components/ui/button";
 import { TASK_PROCESSING_CONFIG } from "@/services/config";
+import { getSwarmSupabase } from "@/lib/supabase-client";
 
 export const TaskPipeline = () => {
   const dispatch = useAppDispatch();
@@ -410,6 +411,55 @@ export const TaskPipeline = () => {
     if (task.status !== "processing") return 0;
     return task.type === "image" ? 30 : 15;
   };
+
+  // Function to refresh task list
+  const refreshTaskList = () => {
+    // If node is active, refresh assigned tasks
+    if (isActive) {
+      dispatch(fetchAndAssignTasks({ userId, nodeId }));
+    }
+  };
+
+  // Set up real-time subscription for task updates
+  useEffect(() => {
+    if (!userProfile?.id) return;
+    
+    const client = getSwarmSupabase();
+    
+    // Subscribe only to the user's own tasks
+    const tasksSubscription = client
+      .channel(`tasks-${userProfile.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tasks",
+          filter: `user_id=eq.${userProfile.id}`, // CRITICAL: Only listen for user's own tasks
+        },
+        (payload) => {
+          console.log("Task update received:", payload);
+          
+          // Only refresh if needed, don't reload everything
+          if (payload.eventType === "UPDATE" && payload.new && payload.old) {
+            // If status changed, refresh the task list
+            if (payload.new.status !== payload.old.status) {
+              console.log("Task status changed, refreshing task list");
+              refreshTaskList();
+            }
+          } else if (payload.eventType === "INSERT") {
+            // New task assigned to user, refresh list
+            console.log("New task assigned, refreshing task list");
+            refreshTaskList();
+          }
+        }
+      )
+      .subscribe();
+      
+    return () => {
+      client.removeChannel(tasksSubscription);
+    };
+  }, [userProfile?.id, dispatch]);
 
   return (
     <div className="task-pipeline p-2.5 sm:p-6 rounded-2xl sm:rounded-3xl stat-card relative">

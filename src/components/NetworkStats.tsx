@@ -7,6 +7,10 @@ import { RootState, useAppDispatch } from "@/store";
 import { formatUptime } from "@/utils/timeUtils";
 import { useSession } from "@/hooks/useSession";
 import { updateUptime, setUptimeFromDatabase } from "@/store/slices/nodeSlice";
+import axios from "axios"
+
+// Import the Supabase anon key
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_KEY;
 
 type StatCardProps = {
   title: string;
@@ -91,11 +95,90 @@ export const NetworkStats = () => {
   const [totalStoredUptime, setTotalStoredUptime] = useState(0);
   const [localUptime, setLocalUptime] = useState(0);
   const [lastUpdate, setLastUpdate] = useState(Date.now()); // Track last update time
+  const [previousNodeState, setPreviousNodeState] = useState<boolean | null>(null);
 
   // Get node status from redux store
   const { isActive, currentSessionUptime, totalUptime, nodeId } = useSelector(
     (state: RootState) => state.node
   );
+
+  // Update active nodes count locally when node status changes
+  useEffect(() => {
+    // Only run this after initial render and when isActive changes
+    if (previousNodeState !== null && previousNodeState !== isActive) {
+      if (isActive) {
+        // Node was activated - increment active nodes count
+        setTotalActiveNodes(prev => prev + 1);
+        console.log("Node activated: Incrementing active nodes count locally");
+      } else if (previousNodeState === true) {
+        // Node was deactivated - decrement active nodes count
+        setTotalActiveNodes(prev => Math.max(0, prev - 1));
+        console.log("Node deactivated: Decrementing active nodes count locally");
+      }
+      
+      // Recalculate network load
+      if (totalNodes > 0) {
+        const newActiveCount = isActive ? totalActiveNodes + 1 : Math.max(0, totalActiveNodes - 1);
+        const loadPercentage = Math.round((newActiveCount / totalNodes) * 100);
+        setNetworkLoad(loadPercentage);
+      }
+    }
+    
+    // Update previous state for next comparison
+    setPreviousNodeState(isActive);
+  }, [isActive, totalNodes]);
+
+  // Fetch global stats from edge function
+  const fetchGlobalStats = async () => {
+    try {
+      const response = await axios.get("https://zphiymepbkzgczxorqgz.supabase.co/functions/v1/luffy", {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+        }
+      });
+
+      const data = response.data;
+    
+
+      console.log("Global stats:", data);
+      
+      if (data) {
+        setTotalNodes(data?.totalDevices || 0);
+        setTotalActiveNodes(data?.activeDevices || 0);
+        
+        // Calculate network load
+        if (data.totalDevices > 0) {
+          const loadPercentage = Math.round(((data.activeDevices || 0) / data.totalDevices) * 100);
+          setNetworkLoad(loadPercentage);
+        }
+        
+        console.log("Global stats updated from API:", data);
+        
+        // Cache the result
+        localStorage.setItem("global_stats", JSON.stringify({
+          total_nodes: data.totalDevices || 0,
+          active_nodes: data.activeDevices || 0,
+          timestamp: Date.now()
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching global stats:", error);
+      
+      // Use cached data if available
+      const cachedData = localStorage.getItem("global_stats");
+      if (cachedData) {
+        const parsedData = JSON.parse(cachedData);
+        setTotalNodes(parsedData.total_nodes);
+        setTotalActiveNodes(parsedData.active_nodes);
+        
+        if (parsedData.total_nodes > 0) {
+          const loadPercentage = Math.round((parsedData.active_nodes / parsedData.total_nodes) * 100);
+          setNetworkLoad(loadPercentage);
+        }
+      }
+    }
+  };
 
   // Fetch uptime data from all user's devices from the database
   const fetchUserDevicesUptime = async () => {
@@ -153,14 +236,6 @@ export const NetworkStats = () => {
       interval = setInterval(() => {
         dispatch(updateUptime());
         setLocalUptime((prev) => prev + 1); // Force component re-render
-
-        // Refresh active nodes more frequently when a node is active
-        // But not on every tick to avoid excessive API calls
-        if (Date.now() - lastUpdate > 5000) {
-          // Every 5 seconds
-          getTotalActiveNodes();
-          setLastUpdate(Date.now());
-        }
       }, 1000);
     } else {
       // If not active, still fetch the latest uptime from database
@@ -170,7 +245,7 @@ export const NetworkStats = () => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isActive, dispatch, lastUpdate]);
+  }, [isActive, dispatch]);
 
   // Calculate displayed uptime based on current node selection and active status
   const calculatedDisplayUptime = useMemo(() => {
@@ -199,127 +274,34 @@ export const NetworkStats = () => {
     }
   }, [nodeId]);
 
-  const getTotalNodes = async () => {
-    try {
-      const { data, error } = await client.from("devices").select("id");
-      if (error) throw error;
-      setTotalNodes(data?.length || 0);
-      console.log("Total nodes updated:", data?.length || 0);
-    } catch (error) {
-      console.error("Error getting total nodes:", error);
-    }
-  };
-
-  const getTotalActiveNodes = async () => {
-    try {
-      const { data, error } = await client
-        .from("devices")
-        .select("id, status")
-        .eq("status", "busy");
-
-      if (error) throw error;
-
-      console.log("Active nodes data:", data);
-      setTotalActiveNodes(data?.length || 0);
-      console.log("Active nodes updated:", data?.length || 0);
-
-      // Calculate network load based on active nodes / total nodes
-      if (totalNodes > 0) {
-        const loadPercentage = Math.round(
-          ((data?.length || 0) / totalNodes) * 100
-        );
-        setNetworkLoad(loadPercentage);
-      }
-    } catch (error) {
-      console.error("Error getting total active nodes:", error);
-    }
-  };
-
   // Update active nodes count when a node's status changes in redux
   useEffect(() => {
-    // When node becomes active or inactive, immediately update the active nodes count
-    if (nodeId) {
-      getTotalActiveNodes();
-    }
+    // When node becomes active or inactive, we don't need to fetch global stats
+    // because we're updating the count locally
+    // We'll still fetch periodically via the polling mechanism
   }, [isActive, nodeId]);
 
-  // Fetch initial data
+  // Set up polling for global stats and user data
   useEffect(() => {
-    getTotalNodes();
-    getTotalActiveNodes();
+    // Fetch initial data
+    fetchGlobalStats();
     fetchUserDevicesUptime();
 
-    // Set up polling for active nodes
-    const activeNodesInterval = setInterval(() => {
-      getTotalActiveNodes();
-    }, 10000); // Poll every 10 seconds
+    // Poll for global stats every minute
+    const globalStatsInterval = setInterval(() => {
+      fetchGlobalStats();
+    }, 60000); // Every minute
 
-    return () => clearInterval(activeNodesInterval);
-  }, [userProfile?.id]);
-
-  // Refresh uptime from database periodically
-  useEffect(() => {
-    const uptimeRefreshInterval = setInterval(() => {
+    // Poll for user device data every minute
+    const userDataInterval = setInterval(() => {
       fetchUserDevicesUptime();
     }, 60000); // Every minute
 
-    return () => clearInterval(uptimeRefreshInterval);
-  }, [userProfile?.id]);
-
-  // Set up real-time subscription for both uptime and status updates
-  useEffect(() => {
-    // Set up subscription for device changes
-    const devicesSubscription = client
-      .channel("device-updates")
-      .on(
-        "postgres_changes",
-        {
-          event: "*", // Listen for all events (INSERT, UPDATE, DELETE)
-          schema: "public",
-          table: "devices",
-        },
-        (payload) => {
-          console.log("Device update received:", payload);
-
-          // For any device update, refresh both active nodes and uptime
-          getTotalActiveNodes();
-          getTotalNodes();
-
-          // If it's an uptime update, also refresh uptime data
-          if (
-            payload.eventType === "UPDATE" &&
-            payload.new &&
-            payload.old &&
-            payload.new.uptime !== payload.old.uptime
-          ) {
-            fetchUserDevicesUptime();
-          }
-
-          // If it's a status update, refresh active nodes
-          if (
-            payload.eventType === "UPDATE" &&
-            payload.new &&
-            payload.old &&
-            payload.new.status !== payload.old.status
-          ) {
-            console.log(
-              "Status change detected:",
-              payload.old.status,
-              "->",
-              payload.new.status
-            );
-            getTotalActiveNodes();
-          }
-        }
-      )
-      .subscribe((status) => {
-        console.log("Subscription status:", status);
-      });
-
     return () => {
-      devicesSubscription.unsubscribe();
+      clearInterval(globalStatsInterval);
+      clearInterval(userDataInterval);
     };
-  }, [client, userProfile?.id]);
+  }, [userProfile?.id]);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 md:mb-10 w-full">
