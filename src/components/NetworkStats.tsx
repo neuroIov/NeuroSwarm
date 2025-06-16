@@ -58,7 +58,7 @@ const StatCard = ({
       </div>
       <div className="flex flex-col relative z-10">
         <div
-          className={`text-lg sm:text-2xl font-bold flex items-baseline gap-1 ${getColor()}`}
+          className={text-lg sm:text-2xl font-bold flex items-baseline gap-1 ${getColor()}}
         >
           {isUptime ? (
             <div className="flex items-center">
@@ -134,7 +134,7 @@ export const NetworkStats = () => {
       const response = await axios.get("https://zphiymepbkzgczxorqgz.supabase.co/functions/v1/luffy", {
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+          "Authorization": Bearer ${SUPABASE_ANON_KEY}
         }
       });
 
@@ -213,7 +213,7 @@ export const NetworkStats = () => {
         const currentDevice = data.find((device) => device.id === nodeId);
         if (currentDevice) {
           console.log(
-            `Found device uptime for current node ${currentDevice.device_name} (${nodeId}): ${currentDevice.uptime} seconds`
+            Found device uptime for current node ${currentDevice.device_name} (${nodeId}): ${currentDevice.uptime} seconds
           );
           
           // Only update Redux if the node is not active (to avoid overwriting active session tracking)
