@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useSession } from "@/hooks/useSession";
 import { WalletConnectionModal } from "./WalletConnectionModal";
+import { ForgotPasswordModal } from "./forgotpassword";
 
 const formSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -28,6 +29,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   const { loginWithEmail, session } = useSession();
   const [isLoading, setIsLoading] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [showForgotModal, setShowForgotModal] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -42,14 +44,12 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     try {
       await loginWithEmail(values.email, values.password);
 
-      // If login successful and user doesn't have a wallet connected yet, show wallet modal
       if (!session.walletAddress) {
         setShowWalletModal(true);
       } else {
         onSuccess();
       }
     } catch (error) {
-      console.error("Login failed:", error);
       form.setError("root", {
         message: "Invalid email or password",
       });
@@ -58,9 +58,9 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     }
   }
 
-  const handleWalletModalClose = () => {
-    setShowWalletModal(false);
-    onSuccess(); // Close the auth modal when wallet modal is closed
+  // Close login and open forgot password modal
+  const handleForgotClick = () => {
+    setShowForgotModal(true);
   };
 
   return (
@@ -107,6 +107,16 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               {form.formState.errors.root.message}
             </div>
           )}
+          <div className="flex justify-end">
+            <Button
+              variant="link"
+              type="button"
+              className="text-sm text-blue-400 hover:underline"
+              onClick={handleForgotClick}
+            >
+              Forgot Password?
+            </Button>
+          </div>
           <Button
             type="submit"
             className="w-full bg-[#0066FF] hover:bg-[#0052CC] text-white"
@@ -119,7 +129,15 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
 
       <WalletConnectionModal
         isOpen={showWalletModal}
-        onClose={handleWalletModalClose}
+        onClose={() => {
+          setShowWalletModal(false);
+          onSuccess();
+        }}
+      />
+
+      <ForgotPasswordModal
+        isOpen={showForgotModal}
+        onClose={() => setShowForgotModal(false)}
       />
     </>
   );

@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   Activity,
@@ -71,10 +77,10 @@ export const GlobalStatistics = () => {
       // Get count of total user profiles
       const { count, error } = await client
         .from("user_profiles")
-        .select("*", { count: 'exact', head: true });
+        .select("*", { count: "exact", head: true });
 
       if (error) throw error;
-      
+
       return count || 0;
     } catch (error) {
       console.error("Error fetching total users:", error);
@@ -88,11 +94,11 @@ export const GlobalStatistics = () => {
       // Get count of devices where status is "busy"
       const { count, error } = await client
         .from("devices")
-        .select("*", { count: 'exact', head: true })
+        .select("*", { count: "exact", head: true })
         .eq("status", "busy");
 
       if (error) throw error;
-      
+
       return count || 0;
     } catch (error) {
       console.error("Error fetching active nodes:", error);
@@ -393,15 +399,15 @@ export const GlobalStatistics = () => {
         // Load initial statistics from database
         const dbStats = await fetchDatabaseStats();
         if (dbStats) {
-          setStats(prev => ({
+          setStats((prev) => ({
             ...prev,
             totalUsers: dbStats.totalUsers,
             activeNodes: dbStats.activeNodes,
             avgComputeTime: dbStats.avgComputeTime,
-            networkLoad: dbStats.networkLoad
+            networkLoad: dbStats.networkLoad,
           }));
         }
-        
+
         // If we have cached tasks, use them first
         if (taskCache.length > 0) {
           calculateAndUpdateStats(taskCache);
@@ -411,7 +417,7 @@ export const GlobalStatistics = () => {
           // No cached tasks, do a normal load
           loadTasks(true);
         }
-        
+
         // Also load the leaderboard on initial mount
         await fetchLeaderboard();
       } catch (error) {
@@ -419,40 +425,40 @@ export const GlobalStatistics = () => {
         toast.error(t("globalStatistics.toasts.initialLoadFailed"));
       }
     };
-    
+
     // Execute the initial load
     initialLoad();
-  // Remove all dependencies to ensure this only runs once on mount
+    // Remove all dependencies to ensure this only runs once on mount
   }, []);
 
   const handleRefresh = useCallback(async () => {
     try {
       setIsRefreshing(true);
-      
+
       // Fetch all data in parallel
       const [dbStats, tasksResult, leaderboardResult] = await Promise.all([
         fetchDatabaseStats(),
         dispatch(fetchPendingTasks()).unwrap(),
-        fetchLeaderboard()
+        fetchLeaderboard(),
       ]);
-      
+
       // Update stats from database
       if (dbStats) {
-        setStats(prev => ({
+        setStats((prev) => ({
           ...prev,
           totalUsers: dbStats.totalUsers,
           activeNodes: dbStats.activeNodes,
           avgComputeTime: dbStats.avgComputeTime,
           networkLoad: dbStats.networkLoad,
-          totalTasks: tasksResult.length || prev.totalTasks
+          totalTasks: tasksResult.length || prev.totalTasks,
         }));
       }
-      
+
       // Update last refresh time
       const now = Date.now();
       setLastRefreshTime(now);
       safeStorage.setItem(LAST_REFRESH_KEY, now.toString());
-      
+
       setIsRefreshing(false);
       toast.success(t("globalStatistics.toasts.refreshSuccess"));
     } catch (error) {
@@ -493,6 +499,26 @@ export const GlobalStatistics = () => {
     }
   };
 
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+
+    // Container width fixed 1170px
+    const containerWidth = 1170;
+
+    // Viewport width (scroll container width)
+    const viewportWidth = scrollEl.clientWidth;
+
+    // Calculate scrollLeft to center the container horizontally in viewport
+    const scrollLeft = (containerWidth - viewportWidth) / 1.6;
+
+    if (scrollLeft > 0) {
+      scrollEl.scrollLeft = scrollLeft;
+    }
+  }, []);
+
   return (
     <div className="stat-card overflow-x-hidden">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 mb-4">
@@ -519,106 +545,113 @@ export const GlobalStatistics = () => {
       </div>
 
       {/* Global Map Visualization */}
-      <div className="global-map w-full h-[250px] sm:h-[330px] mb-6 border border-blue-900/30 relative">
-        <div className="absolute inset-0 bg-grid opacity-[0.15] z-0"></div>
-        <img
-          src="/images/map.png"
-          alt={t("globalStatistics.map.alt")}
-          className="absolute inset-0 w-full h-full object-contain z-10"
-          onError={(e) => {
-            e.currentTarget.src =
-              "https://raw.githubusercontent.com/Neurolov/NeuroSwarm/main/public/images/map.png";
-          }}
-        />
-        <div className="absolute inset-0 z-30 pointer-events-none cursor-pointer"></div>
-        {/* Hardcoded Node Indicators (yellow dots) - Responsive positions */}
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "20%", left: "30%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "30%", left: "58%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "40%", left: "63%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "53%", left: "59%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "65%", left: "50%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "70%", left: "40%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "20%", left: "65%" }}
-        />
+      <div
+        ref={scrollRef}
+        className="overflow-auto rounded-md"
+        style={{ scrollBehavior: "smooth" }}
+      >
+        <div className="global-map w-[1170px] h-[330px] mb-6 border border-blue-900/30 relative  ">
+          <div className="absolute inset-0 bg-grid opacity-[0.15] z-0"></div>
+          <img
+            src="/images/map.png"
+            alt={t("globalStatistics.map.alt")}
+            className="absolute top-0 left-0 w-full h-[330px] object-contain z-10"
+            onError={(e) => {
+              e.currentTarget.src =
+                "https://raw.githubusercontent.com/Neurolov/NeuroSwarm/main/public/images/map.png";
+            }}
+          />
 
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "30%", left: "35%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "10%", left: "42%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "61%", left: "40%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "50%", left: "48%" }}
-        />
+          <div className="absolute inset-0 z-30 pointer-events-none cursor-pointer"></div>
+          {/* Hardcoded Node Indicators (yellow dots) - Responsive positions */}
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "20%", left: "30%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "30%", left: "58%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "40%", left: "63%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "53%", left: "59%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "65%", left: "50%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "70%", left: "40%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "20%", left: "65%" }}
+          />
 
-        {/* -------------- l--25 to 74% and t --5 to 90  */}
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "12%", left: "35%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "15%", left: "45%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "40%", left: "59%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "44%", left: "66%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "57%", left: "52%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "39%", left: "33%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "79%", left: "39%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "80%", left: "69%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "28%", left: "52%" }}
-        />
-        <div
-          className="node-indicator absolute z-20"
-          style={{ top: "17%", left: "60%" }}
-        />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "30%", left: "35%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "10%", left: "42%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "61%", left: "40%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "50%", left: "48%" }}
+          />
+
+          {/* -------------- l--25 to 74% and t --5 to 90  */}
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "12%", left: "35%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "15%", left: "45%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "40%", left: "59%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "44%", left: "66%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "57%", left: "52%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "39%", left: "33%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "79%", left: "39%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "80%", left: "69%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "28%", left: "52%" }}
+          />
+          <div
+            className="node-indicator absolute z-20"
+            style={{ top: "17%", left: "60%" }}
+          />
+        </div>
       </div>
 
       {/* Stats Cards Row */}
@@ -739,7 +772,7 @@ export const GlobalStatistics = () => {
         </div>
       </div>
 
-      {/* Leaderboard - Replacing task list */}
+      {/* Leaderboard - Mobile Compatible */}
       <div className="mb-6 w-full">
         <h3 className="text-base sm:text-lg font-medium mb-4 flex items-center">
           <TrendingUp className="w-5 h-5 mr-2 text-blue-400" />
@@ -757,90 +790,140 @@ export const GlobalStatistics = () => {
             </p>
           </div>
         ) : leaderboard.length > 0 ? (
-          <div className="space-y-0 max-h-[300px] overflow-y-auto overflow-x-hidden pr-2 custom-scrollbar bg-slate-900/60 rounded-lg border border-slate-800/50">
-            {/* Header row */}
-            <div className="grid grid-cols-12 gap-2 px-4 py-3 text-slate-400 text-sm border-b border-slate-800/50">
-              <div className="col-span-1">
-                {t("globalStatistics.leaderboard.rank", "Rank")}
-              </div>
-              <div className="col-span-5">
-                {t("globalStatistics.leaderboard.user", "User")}
-              </div>
-              <div className="col-span-3 text-right">
-                {t("globalStatistics.leaderboard.earnings", "Earnings")}
-              </div>
-              <div className="col-span-3 text-right">
-                {t("globalStatistics.leaderboard.tasks", "Tasks")}
-              </div>
-            </div>
-
-            {/* Top 10 Users */}
-            {leaderboard.map((entry) => (
-              <div
-                key={entry.user_id}
-                className={`grid grid-cols-12 gap-2 py-3 px-4 
+          <div className="bg-slate-900/60 rounded-lg border border-slate-800/50 overflow-hidden">
+            {/* Scrollable container */}
+            <div className="max-h-[400px] overflow-y-auto overflow-x-auto custom-scrollbar">
+              <div className="min-w-[500px]">
+                {" "}
+                {/* Minimum width for proper column layout */}
+                {/* Header row - Sticky */}
+                <div className="sticky top-0 bg-slate-800/80 backdrop-blur-sm border-b border-slate-700/50 z-10">
+                  <div className="grid grid-cols-12 gap-2 px-3 sm:px-4 py-3 text-slate-300 text-xs sm:text-sm font-medium">
+                    <div className="col-span-1 flex items-center justify-center">
+                      {t("globalStatistics.leaderboard.rank", "Rank")}
+                    </div>
+                    <div className="col-span-5 sm:col-span-6">
+                      {t("globalStatistics.leaderboard.user", "User")}
+                    </div>
+                    <div className="col-span-3 text-right">
+                      {t("globalStatistics.leaderboard.earnings", "Earnings")}
+                    </div>
+                    <div className="col-span-3 sm:col-span-2 text-right">
+                      {t("globalStatistics.leaderboard.tasks", "Tasks")}
+                    </div>
+                  </div>
+                </div>
+                {/* Leaderboard entries */}
+                <div className="divide-y divide-slate-800/30">
+                  {/* Top 10 Users */}
+                  {leaderboard.map((entry, index) => (
+                    <div
+                      key={entry.user_id}
+                      className={`grid grid-cols-12 gap-2 py-3 px-3 sm:px-4 transition-colors duration-200
                   ${
                     userProfile && entry.user_id === userProfile.id
                       ? "bg-blue-900/30 border-l-2 border-blue-500"
                       : "hover:bg-slate-800/40"
                   }`}
-              >
-                <div className="col-span-1 flex items-center">
-                  {getMedalIcon(entry.rank)}
-                </div>
-                <div className="col-span-5 font-medium truncate">
-                  {cleanUsername(entry.username)}
-                  {userProfile && entry.user_id === userProfile.id && (
-                    <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
-                      {t("globalStatistics.leaderboard.you", "You")}
-                    </span>
-                  )}
-                </div>
-                <div className="col-span-3 text-right font-medium">
-                  {formatCurrency(entry.total_earnings)}
-                </div>
-                <div className="col-span-3 text-right text-slate-300">
-                  {entry.task_count}
+                    >
+                      {/* Rank column */}
+                      <div className="col-span-1 flex items-center justify-center">
+                        <div className="flex items-center justify-center w-6 h-6">
+                          {getMedalIcon(entry.rank)}
+                        </div>
+                      </div>
+
+                      {/* User column */}
+                      <div className="col-span-5 sm:col-span-6 flex items-center min-w-0">
+                        <div className="truncate">
+                          <span className="font-medium text-sm sm:text-base">
+                            {cleanUsername(entry.username)}
+                          </span>
+                          {userProfile && entry.user_id === userProfile.id && (
+                            <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              {t("globalStatistics.leaderboard.you", "You")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Earnings column */}
+                      <div className="col-span-3 flex items-center justify-end">
+                        <span className="font-medium text-sm sm:text-base text-green-400">
+                          {formatCurrency(entry.total_earnings)}
+                        </span>
+                      </div>
+
+                      {/* Tasks column */}
+                      <div className="col-span-3 sm:col-span-2 flex items-center justify-end">
+                        <span className="text-slate-300 text-sm sm:text-base">
+                          {entry.task_count}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Current user outside top 10 */}
+                  {currentUserRank &&
+                    userProfile &&
+                    !leaderboard.some(
+                      (entry) => entry.user_id === userProfile.id
+                    ) && (
+                      <>
+                        {/* Separator */}
+                        <div className="flex justify-center py-3 bg-slate-900/40">
+                          <div className="text-slate-500 text-sm font-medium">
+                            • • •
+                          </div>
+                        </div>
+
+                        {/* Current user row */}
+                        <div className="grid grid-cols-12 gap-2 py-3 px-3 sm:px-4 bg-blue-900/30 border-l-2 border-blue-500">
+                          {/* Rank column */}
+                          <div className="col-span-1 flex items-center justify-center">
+                            <div className="flex items-center justify-center w-6 h-6">
+                              <span className="text-xs sm:text-sm font-medium">
+                                {currentUserRank.rank}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* User column */}
+                          <div className="col-span-5 sm:col-span-6 flex items-center min-w-0">
+                            <div className="truncate">
+                              <span className="font-medium text-sm sm:text-base">
+                                {cleanUsername(currentUserRank.username)}
+                              </span>
+                              <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                {t("globalStatistics.leaderboard.you", "You")}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Earnings column */}
+                          <div className="col-span-3 flex items-center justify-end">
+                            <span className="font-medium text-sm sm:text-base text-green-400">
+                              {formatCurrency(currentUserRank.total_earnings)}
+                            </span>
+                          </div>
+
+                          {/* Tasks column */}
+                          <div className="col-span-3 sm:col-span-2 flex items-center justify-end">
+                            <span className="text-slate-300 text-sm sm:text-base">
+                              {currentUserRank.task_count}
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )}
                 </div>
               </div>
-            ))}
-
-            {/* Current user outside top 10 */}
-            {currentUserRank &&
-              userProfile &&
-              !leaderboard.some(
-                (entry) => entry.user_id === userProfile.id
-              ) && (
-                <>
-                  <div className="flex justify-center py-2 border-t border-slate-800/50">
-                    <div className="text-slate-500 text-sm">. . .</div>
-                  </div>
-                  <div className="grid grid-cols-12 gap-2 py-3 px-4 bg-blue-900/30 border-l-2 border-blue-500">
-                    <div className="col-span-1 flex items-center">
-                      <span className="w-4 h-4 flex items-center justify-center text-xs font-medium">
-                        {currentUserRank.rank}
-                      </span>
-                    </div>
-                    <div className="col-span-5 font-medium truncate">
-                      {cleanUsername(currentUserRank.username)}
-                      <span className="ml-2 text-xs bg-blue-900/40 text-blue-300 px-2 py-0.5 rounded-full">
-                        {t("globalStatistics.leaderboard.you", "You")}
-                      </span>
-                    </div>
-                    <div className="col-span-3 text-right font-medium">
-                      {formatCurrency(currentUserRank.total_earnings)}
-                    </div>
-                    <div className="col-span-3 text-right text-slate-300">
-                      {currentUserRank.task_count}
-                    </div>
-                  </div>
-                </>
-              )}
+            </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+          <div className="flex flex-col items-center justify-center py-8 text-slate-400 bg-slate-900/60 rounded-lg border border-slate-800/50">
             <TrendingUp className="w-10 h-10 mb-2 text-slate-600" />
-            <p>
+            <p className="text-sm sm:text-base text-center px-4">
               {t(
                 "globalStatistics.leaderboard.noData",
                 "No leaderboard data available yet"

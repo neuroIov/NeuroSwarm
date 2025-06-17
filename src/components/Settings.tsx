@@ -195,7 +195,7 @@ const Settings: React.FC = () => {
     // In a real app, you would dispatch an action to update the currency in the store
   };
 
-  // Handle reset password
+  // Handle reset password - Updated to send reset link
   const handleResetPassword = async () => {
     if (!email.trim()) {
       toast.error("Please enter your email address");
@@ -206,6 +206,7 @@ const Settings: React.FC = () => {
       setIsResetPasswordLoading(true);
       const supabase = getSwarmSupabase();
 
+      // Send password reset link with proper redirect URL
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
@@ -214,7 +215,9 @@ const Settings: React.FC = () => {
         throw error;
       }
 
-      toast.success("Password reset link sent to your email");
+      toast.success(
+        "Password reset link sent to your email. Please check your inbox and click the link to reset your password."
+      );
       setEmail("");
     } catch (error) {
       console.error("Password reset error:", error);
@@ -369,7 +372,8 @@ const Settings: React.FC = () => {
         >
           <div className="space-y-4">
             <p className="text-sm text-gray-400">
-              {t("reset_password_description")}
+              {t("reset_password_description")} A secure link will be sent to
+              your email.
             </p>
             <div className="flex flex-col space-y-2">
               <label htmlFor="reset-email" className="text-sm text-white">
@@ -395,7 +399,7 @@ const Settings: React.FC = () => {
                       {t("sending")}
                     </>
                   ) : (
-                    t("send_link")
+                    "Send Reset Link"
                   )}
                 </Button>
               </div>

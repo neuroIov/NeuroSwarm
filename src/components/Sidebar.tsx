@@ -72,6 +72,7 @@ export function Sidebar({
   const dispatch = useAppDispatch();
   const { userProfile } = useAppSelector((state) => state.session);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   // Helper function to extract wallet type from username
   const extractWalletType = (username: string | null): string | null => {
@@ -99,6 +100,17 @@ export function Sidebar({
     referralCode: userProfile?.referral_code,
     referralCount: 0,
   };
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // md breakpoint
+    };
+
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // Log session data for debugging
   useEffect(() => {
@@ -215,9 +227,48 @@ export function Sidebar({
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 space-y-2 ">
+          <nav className="flex-1 space-y-2">
             {sidebarItems.map((item) => {
               const isActive = activeSection === item.id;
+              const className = `${
+                item.id === "earnings"
+                  ? "sidebar-earnings"
+                  : item.id === "referral"
+                  ? "sidebar-referral"
+                  : item.id === "global-stats"
+                  ? "sidebar-global-stats"
+                  : ""
+              } 
+                         flex w-full items-center rounded-full px-4 py-3 text-sm font-medium transition-all duration-200 ${
+                           isActive
+                             ? "bg-[#1E1E1E] text-white"
+                             : "text-gray-400 hover:bg-[#1A1A1A]/70 hover:text-gray-200"
+                         }`;
+
+              // Conditional rendering for global-stats on mobile
+              if (item.id === "global-stats" && isMobile) {
+                return (
+                  <a
+                    key={item.id}
+                    href={item.path}
+                    className={className}
+                    onClick={() => {
+                      if (onSectionChange) {
+                        onSectionChange(item.id);
+                      }
+                    }}
+                  >
+                    <item.icon
+                      className={`mr-3 h-5 w-5 transition-colors ${
+                        isActive ? "text-white" : "text-gray-500"
+                      }`}
+                    />
+                    {item.title}
+                  </a>
+                );
+              }
+
+              // Default Link component for all other items and desktop
               return (
                 <Link
                   key={item.id}
@@ -227,14 +278,7 @@ export function Sidebar({
                       onSectionChange(item.id);
                     }
                   }}
-                  className={`${item.id === "earnings" ? "sidebar-earnings" : 
-                             item.id === "referral" ? "sidebar-referral" : 
-                             item.id === "global-stats" ? "sidebar-global-stats" : ""} 
-                           flex w-full items-center rounded-full px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                    isActive
-                      ? "bg-[#1E1E1E] text-white"
-                      : "text-gray-400 hover:bg-[#1A1A1A]/70 hover:text-gray-200"
-                  }`}
+                  className={className}
                 >
                   <item.icon
                     className={`mr-3 h-5 w-5 transition-colors ${

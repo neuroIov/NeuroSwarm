@@ -885,21 +885,27 @@ export const EarningsDashboard = () => {
             </div>
 
             <Button
-              className="gradient-button w-full mt-6 rounded-full"
+              className="gradient-button w-full mt-6 rounded-full py-3 px-4 flex items-center justify-center gap-2 disabled:opacity-50"
               disabled={true}
               onClick={handleWithdraw}
             >
-              <div className="icon-container">
-                <img
-                  src="/images/withdraw.png"
-                  alt="NLOV"
-                  className="w-5 h-5 relative z-10"
-                />
+              <div className="flex items-center gap-2">
+                <div className="icon-container">
+                  <img
+                    src="/images/withdraw.png"
+                    alt="Withdraw Icon"
+                    className="w-5 h-5 relative z-10"
+                  />
+                </div>
+                <div className="text-container flex flex-col items-start leading-tight">
+                  <span className="text-white text-sm font-medium">
+                    Withdraw Earnings
+                  </span>
+                  <span className="text-white text-[11px] font-thin leading-none">
+                    / Coming Soon
+                  </span>
+                </div>
               </div>
-              Withdraw Earnings{" "}
-              <span className="text-white text-[12px] font-thin">
-                / Coming Soon
-              </span>
             </Button>
           </div>
         </div>
@@ -907,7 +913,7 @@ export const EarningsDashboard = () => {
 
       {/* Daily Rewards */}
       <div className="w-full p-4 bg-[#161628] rounded-lg data-panel mt-6">
-        <div className="flex justify-between items-center mb-6">
+        <div className="md:flex justify-between items-center mb-6">
           <div className="flex gap-2 items-center">
             <div className="icon-container">
               <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
