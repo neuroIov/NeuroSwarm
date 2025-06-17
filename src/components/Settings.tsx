@@ -362,8 +362,6 @@ const Settings: React.FC = () => {
       setIsResetPasswordLoading(true);
       const supabase = getSwarmSupabase();
 
-      console.log("email", supabase);
-
       const { error } = await supabase.auth.resetPasswordForEmail(email);
 
       if (error) {
