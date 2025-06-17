@@ -22,7 +22,7 @@ import { CheckCircle, AlertCircle, User, Link } from "lucide-react";
 interface UsernameDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (username: string, referralCode?: string) => void;
+  onSave: (username: string) => void;
   initialUsername?: string | null;
 }
 
@@ -52,107 +52,16 @@ export function UsernameDialog({
 }: UsernameDialogProps) {
   const [username, setUsername] = useState(initialUsername || "");
   const [referralCode, setReferralCode] = useState("");
-  const [savedReferralCode, setSavedReferralCode] = useState<string | null>(
-    null
-  );
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
-  const [verifiedReferrerId, setVerifiedReferrerId] = useState<string | null>(
-    null
-  );
+  const [verifiedReferrerId, setVerifiedReferrerId] = useState<string | null>(null);
   const [usernameError, setUsernameError] = useState("");
   const [referralError, setReferralError] = useState("");
   const [isReferralSubmitting, setIsReferralSubmitting] = useState(false);
   const [referralSuccess, setReferralSuccess] = useState(false);
-  const [automaticProcessAttempted, setAutomaticProcessAttempted] =
-    useState(false);
-  const [autoProcessError, setAutoProcessError] = useState<string | null>(null);
 
   const dispatch = useAppDispatch();
   const { userProfile, loading } = useAppSelector((state) => state.session);
-
-  // Load referral code from localStorage when component mounts
-  useEffect(() => {
-    if (!isOpen || !userProfile?.id || automaticProcessAttempted) return;
-
-    const storedCode = localStorage.getItem("ref_code");
-    if (storedCode) {
-      setSavedReferralCode(storedCode);
-      setReferralCode(storedCode);
-
-      // Automatically attempt to process the referral code
-      automaticallyProcessReferralCode(storedCode);
-    }
-  }, [isOpen, userProfile?.id, automaticProcessAttempted]);
-
-  // Automatically process the referral code from localStorage
-  const automaticallyProcessReferralCode = async (code: string) => {
-    if (!code || !userProfile?.id) return;
-
-    setAutomaticProcessAttempted(true);
-    setIsVerifying(true);
-
-    try {
-      // Extract and verify the code
-      const extractedCode = extractReferralCode(code);
-
-      // Verify the referral code
-      const verifyResult = await dispatch(verifyReferralCode(extractedCode));
-
-      if (verifyReferralCode.fulfilled.match(verifyResult)) {
-        const { isValid, referrerId } = verifyResult.payload as {
-          isValid: boolean;
-          referrerId: string;
-        };
-
-        if (isValid && referrerId !== userProfile.id) {
-          // Code is valid and not the user's own code
-          setIsVerified(true);
-          setVerifiedReferrerId(referrerId);
-
-          // Automatically create the referral relationship
-          const createResult = await dispatch(
-            createReferralRelationship({
-              referrerCode: extractedCode,
-              referredId: userProfile.id,
-            })
-          );
-
-          if (createReferralRelationship.fulfilled.match(createResult)) {
-            // Success - automatically processed
-            setReferralSuccess(true);
-            localStorage.removeItem("ref_code");
-            toast.success("You've been added to a referral program!");
-          } else {
-            // Failed to create relationship - probably already exists
-            setAutoProcessError(
-              "This referral has already been processed or is invalid"
-            );
-            setReferralError(
-              "This referral has already been processed or is invalid"
-            );
-          }
-        } else if (referrerId === userProfile.id) {
-          // Can't use own code
-          setAutoProcessError("You cannot use your own referral code");
-          setReferralError("You cannot use your own referral code");
-        } else {
-          // Invalid code
-          setAutoProcessError("Invalid referral code");
-          setReferralError("Invalid referral code");
-        }
-      } else {
-        setAutoProcessError("Could not verify referral code");
-        setReferralError("Could not verify referral code");
-      }
-    } catch (err) {
-      console.error("Error automatically processing referral:", err);
-      setAutoProcessError("Error processing referral");
-      setReferralError("Error processing referral");
-    } finally {
-      setIsVerifying(false);
-    }
-  };
 
   const verifyReferralCodeHandler = async (code: string) => {
     if (!code) return;
@@ -225,8 +134,6 @@ export function UsernameDialog({
 
       if (createReferralRelationship.fulfilled.match(resultAction)) {
         setReferralSuccess(true);
-        // Clear referral code from localStorage after successful processing
-        localStorage.removeItem("ref_code");
         toast.success("Successfully joined referral program!");
       } else {
         const errorPayload = resultAction.payload as string;
@@ -298,12 +205,6 @@ export function UsernameDialog({
           <DialogDescription className="text-gray-400">
             Choose a username and optionally join a referral program for bonus
             rewards.
-            {savedReferralCode && (
-              <span className="block mt-1 text-green-500">
-                A referral code was detected!{" "}
-                {referralSuccess ? "Successfully processed!" : "Verifying..."}
-              </span>
-            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -358,40 +259,13 @@ export function UsernameDialog({
               </h3>
             </div>
 
-            {/* Show automatic processing result if attempted */}
-            {automaticProcessAttempted && (
-              <div
-                className={`mb-3 p-2 rounded ${
-                  referralSuccess ? "bg-green-900/20" : "bg-amber-900/20"
-                }`}
-              >
-                {referralSuccess ? (
-                  <div className="flex items-center text-green-500">
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    <span>
-                      Referral code automatically processed successfully!
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center text-amber-500">
-                    <AlertCircle className="w-4 h-4 mr-2" />
-                    <span>
-                      {autoProcessError ||
-                        "Could not automatically process referral code."}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Don't show manual entry if already successful */}
             {!referralSuccess && (
               <div>
                 <Label
                   htmlFor="referral"
                   className="block text-sm font-medium mb-2"
                 >
-                  Referral Code {savedReferralCode ? "(Detected from URL)" : ""}
+                  Referral Code
                 </Label>
                 <div className="flex space-x-2">
                   <Input
