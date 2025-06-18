@@ -124,7 +124,57 @@ export const GlobalStatistics = () => {
   const fetchLeaderboard = async () => {
     try {
       setIsLeaderboardLoading(true);
+      
+      // Get the current user ID for targeting in the leaderboard API
+      const userId = userProfile?.id || null;
+      
+      try {
+        // Call the RPC function to get top 10 and user rank in one call
+        const { data, error } = await client
+          .rpc('get_top10_with_user_rank', {
+            target_user_id: userId
+          });
+          
+        if (error) {
+          console.error('Leaderboard API error:', error);
+          throw error;
+        }
+        
+        if (data && data.success) {
+          // Map the API response to our existing interface structure
+          const topTenLeaderboard = data.top_10_leaderboard.map(entry => ({
+            user_id: entry.user_id || `rank-${entry.rank}`, // Use rank as fallback ID
+            username: entry.user_name,
+            total_earnings: entry.total_earnings,
+            rank: entry.rank,
+            task_count: entry.total_tasks
+          }));
+          
+          setLeaderboard(topTenLeaderboard);
+          
+          // Set current user rank if available
+          if (data.target_user && userId) {
+            setCurrentUserRank({
+              user_id: data.target_user.user_id,
+              username: data.target_user.user_name,
+              total_earnings: data.target_user.total_earnings,
+              rank: data.target_user.rank,
+              task_count: data.target_user.total_tasks
+            });
+          } else {
+            setCurrentUserRank(null);
+          }
+          
+          setIsLeaderboardLoading(false);
+          return;
+        }
+      } catch (apiError) {
+        console.error("Error calling leaderboard API:", apiError);
+        // Fall back to the existing method if the API call fails
+      }
 
+      // Fallback to original implementation if RPC call fails
+      
       // First get user profiles to have usernames ready
       const { data: userProfiles } = await client
         .from("user_profiles")
@@ -247,7 +297,7 @@ export const GlobalStatistics = () => {
       let avgTime = 0;
       if (taskCache.length > 0) {
         const totalTime = taskCache.reduce((sum, task) => {
-          const computeTime = task.compute_time_ms || 0;
+          const computeTime = task.compute_time || 0;
           return sum + computeTime;
         }, 0);
         avgTime = Math.round(totalTime / taskCache.length);
@@ -351,7 +401,7 @@ export const GlobalStatistics = () => {
       setIsRefreshing(false);
       toast.error(t("globalStatistics.toasts.refreshFailed"));
     }
-  }, [fetchLeaderboard]);
+  }, [t]);
 
   // Format currency for display
   const formatCurrency = (amount: number) => {
