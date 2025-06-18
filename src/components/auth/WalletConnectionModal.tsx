@@ -301,9 +301,9 @@ export function WalletConnectionModal({
                 disabled={isConnecting}
               >
                 <img
-                  src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiByeD0iNjQiIGZpbGw9IiM4QTQ1RkYiLz4KPHBhdGggZD0iTTkzLjgxNDkgNTIuMjgwMUw2OS4zNjggOTcuMDQ0MUg1OC4zNzgyTDQwLjEyMTEgNjIuMzkwNUg1My41NzA3TDYyLjk1MTIgODIuMzg1M0w3Ny44MDY3IDUyLjI4MDFIOTMuODE0OVoiIGZpbGw9IndoaXRlIi8+Cjwvc3ZnPgo="
+                  src="/images/phantom.jpg"
                   alt="Phantom"
-                  className="w-12 h-12 mb-2"
+                  className="w-12 h-12 mb-2 rounded-full object-cover border-2 border-purple-500"
                 />
                 <span className="text-white font-medium">Phantom</span>
                 <span className="text-xs text-gray-400">Solana Wallet</span>
@@ -315,9 +315,9 @@ export function WalletConnectionModal({
                 disabled={isConnecting}
               >
                 <img
-                  src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgdmlld0JveD0iMCAwIDEyOCAxMjgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiByeD0iNjQiIGZpbGw9IiNFMTc3MjYiLz4KPHBhdGggZD0iTTkzLjY1MTUgNDIuNjkzOEw2OS4xMDc0IDYwLjg5OTRMNzIuODU4OSA1MC4wODM1TDkzLjY1MTUgNDIuNjkzOFoiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik0zNC4zNDg1IDQyLjY5MzhMNTguNjc0MSA2MS4wNzY5TDU1LjE0MTEgNTAuMDgzNUwzNC4zNDg1IDQyLjY5MzhaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNODIuODcwMSA4MC41OTM4TDc0LjcwMDIgOTEuMDU4M0w5MS4wMjA1IDk1LjY2NjdMOTUuNjI4OSA4MC43NzEzTDgyLjg3MDEgODAuNTkzOFoiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik0zMi4zODg5IDgwLjc3MTNMMzYuOTc5NCA5NS42NjY3TDUzLjI5OTcgOTEuMDU4M0w0NS4xMjk4IDgwLjU5MzhMMzIuMzg4OSA4MC43NzEzWiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTUyLjY2MjMgNjUuODU0MUw0OS40ODg4IDc0LjE4MTZMNjUuNjc0IDc0LjcxMTlMNjQuOTY2MiA1Ny40NTk2TDUyLjY2MjMgNjUuODU0MVoiIGZpbGw9IndoaXRlIi8+CjxwYXRoIGQ9Ik03NS4zMzc3IDY1Ljg1NDFMNjIuOTUxNyA1Ny4yODIxTDYyLjMyNiA3NC43MTE5TDc4LjUxMTIgNzQuMTgxNkw3NS4zMzc3IDY1Ljg1NDFaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNNTMuMjk5NyA5MS4wNTgzTDY0LjYxMTMgODUuNzMxOUw1NC44NTcxIDgwLjg4NjRMNTMuMjk5NyA5MS4wNTgzWiIgZmlsbD0id2hpdGUiLz4KPHBhdGggZD0iTTYzLjM4ODcgODUuNzMxOUw3NC43MDAyIDkxLjA1ODNMNzMuMTQyOCA4MC44ODY0TDYzLjM4ODcgODUuNzMxOVoiIGZpbGw9IndoaXRlIi8+Cjwvc3ZnPgo="
+                  src="/images/metamask.jpg"
                   alt="MetaMask"
-                  className="w-12 h-12 mb-2"
+                  className="w-12 h-12 mb-2 rounded-full object-cover border-2 border-orange-500"
                 />
                 <span className="text-white font-medium">MetaMask</span>
                 <span className="text-xs text-gray-400">Ethereum Wallet</span>
