@@ -1134,7 +1134,7 @@ export const ReferralProgram = () => {
             // Create an earnings entry for the referral
             await client.from("earnings").insert({
               user_id: referrerId,
-              amount: 100,
+              amount: 250,
               earning_type: "referral",
               task_id: null
             });
