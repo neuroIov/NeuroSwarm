@@ -18,8 +18,8 @@ export const TASK_PROCESSING_CONFIG = {
 
     
     EARNINGS_NLOVE: {
-        image: 2,
-        text: 1,
+        image: 4,
+        text: 2,
     },
 
     

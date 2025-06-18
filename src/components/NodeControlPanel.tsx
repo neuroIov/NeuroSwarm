@@ -625,6 +625,25 @@ export const NodeControlPanel = () => {
         if (updateError) throw updateError;
 
         console.log(`Node "${data?.device_name}" status updated in database: ${JSON.stringify(data)}`);
+        
+        // Reset all pending and processing tasks for this user/node to pending with null user_id and node_id
+        const { error: taskResetError } = await client
+          .from("tasks")
+          .update({
+            status: "pending",
+            user_id: null,
+            node_id: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq("user_id", userProfile?.id)
+          .eq("node_id", selectedNodeId)
+          .in("status", ["pending", "processing"]);
+          
+        if (taskResetError) {
+          console.error("Error resetting tasks:", taskResetError);
+        } else {
+          console.log("Successfully reset pending and processing tasks for this node");
+        }
 
         // Stop the node in Redux
         dispatch(stopNode());
