@@ -6,7 +6,7 @@ import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "@/store";
 import { formatUptime } from "@/utils/timeUtils";
 import { useSession } from "@/hooks/useSession";
-import { updateUptime, setUptimeFromDatabase } from "@/store/slices/nodeSlice";
+import { updateUptime, setUptimeFromDatabase, syncUptime } from "@/store/slices/nodeSlice";
 
 type StatCardProps = {
   title: string;
@@ -26,15 +26,14 @@ const StatCard = ({
   isUptime = false,
 }: StatCardProps) => {
   let isPlan = title === "Your Plan";
-
-
+  
   const getColor = () => {
     if (isPlan) {
       if (value === "Basic") {
         return "text-white";
       } else if (value === "Ultimate") {
         return "text-yellow-400";
-      } else if (value === "Enterprice") {
+      } else if (value === "Enterprise") {
         return "text-green-400";
       } else {
         return "text-white";
@@ -89,11 +88,11 @@ export const NetworkStats = () => {
   const [networkLoad, setNetworkLoad] = useState(0);
   const [nodesUptimeMap, setNodesUptimeMap] = useState<Record<string, number>>({});
   const [totalStoredUptime, setTotalStoredUptime] = useState(0);
-  const [localUptime, setLocalUptime] = useState(0);
-  const [lastUpdate, setLastUpdate] = useState(Date.now()); // Track last update time
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [lastSyncTime, setLastSyncTime] = useState(Date.now());
 
   // Get node status from redux store
-  const { isActive, currentSessionUptime, totalUptime, nodeId } = useSelector(
+  const { isActive, currentSessionUptime, totalUptime, nodeId, remainingFreeTierTime } = useSelector(
     (state: RootState) => state.node
   );
 
@@ -147,21 +146,40 @@ export const NetworkStats = () => {
   // Update uptime in real-time when active
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
+    let syncInterval: NodeJS.Timeout | null = null;
 
     if (isActive) {
       // Update uptime in redux store every second
-      interval = setInterval(() => {
-        dispatch(updateUptime());
-        setLocalUptime((prev) => prev + 1); // Force component re-render
-
-        // Refresh active nodes more frequently when a node is active
-        // But not on every tick to avoid excessive API calls
-        if (Date.now() - lastUpdate > 5000) {
-          // Every 5 seconds
-          getTotalActiveNodes();
-          setLastUpdate(Date.now());
+      // Update uptime in redux store every second using requestAnimationFrame
+      let lastFrameTime = 0;
+      const updateFrame = (timestamp: number) => {
+        if (timestamp - lastFrameTime >= 1000) { // Only update every second
+          dispatch(updateUptime());
+          lastFrameTime = timestamp;
         }
-      }, 1000);
+        frameId = requestAnimationFrame(updateFrame);
+      };
+      let frameId = requestAnimationFrame(updateFrame);
+
+      // Sync uptime to database with exponential backoff (starting at 5 minutes)
+      let syncDelay = 5 * 60 * 1000; // Start with 5 minutes
+      const maxSyncDelay = 15 * 60 * 1000; // Max 15 minutes
+
+      syncInterval = setInterval(() => {
+        console.log(`Sync interval triggered (current delay: ${syncDelay/1000}s)`);
+        dispatch(syncUptime());
+        setLastSyncTime(Date.now());
+        
+        // Increase delay for next sync (with max limit)
+        syncDelay = Math.min(syncDelay * 1.5, maxSyncDelay);
+        clearInterval(syncInterval);
+        syncInterval = setInterval(syncInterval?.callback || (() => {}), syncDelay);
+      }, syncDelay);
+
+      return () => {
+        if (frameId) cancelAnimationFrame(frameId);
+        if (syncInterval) clearInterval(syncInterval);
+      };
     } else {
       // If not active, still fetch the latest uptime from database
       fetchUserDevicesUptime();
@@ -169,8 +187,9 @@ export const NetworkStats = () => {
 
     return () => {
       if (interval) clearInterval(interval);
+      if (syncInterval) clearInterval(syncInterval);
     };
-  }, [isActive, dispatch, lastUpdate]);
+  }, [isActive, dispatch, lastUpdate, lastSyncTime]);
 
   // Calculate displayed uptime based on current node selection and active status
   const calculatedDisplayUptime = useMemo(() => {
@@ -249,10 +268,10 @@ export const NetworkStats = () => {
     getTotalActiveNodes();
     fetchUserDevicesUptime();
 
-    // Set up polling for active nodes
+    // Set up polling for active nodes with longer interval
     const activeNodesInterval = setInterval(() => {
       getTotalActiveNodes();
-    }, 10000); // Poll every 10 seconds
+    }, 30000); // Poll every 30 seconds instead of 10
 
     return () => clearInterval(activeNodesInterval);
   }, [userProfile?.id]);
@@ -266,50 +285,70 @@ export const NetworkStats = () => {
     return () => clearInterval(uptimeRefreshInterval);
   }, [userProfile?.id]);
 
-  // Set up real-time subscription for both uptime and status updates
+  // Set up real-time subscription for device updates with debounced API calls
   useEffect(() => {
-    // Set up subscription for device changes
+    let updateTimeout: NodeJS.Timeout | null = null;
+    let pendingUpdates = {
+      status: false,
+      uptime: false,
+      total: false
+    };
+
+    const processPendingUpdates = () => {
+      if (pendingUpdates.status) {
+        getTotalActiveNodes();
+      }
+      if (pendingUpdates.total) {
+        getTotalNodes();
+      }
+      if (pendingUpdates.uptime) {
+        fetchUserDevicesUptime();
+      }
+      // Reset pending updates
+      pendingUpdates = { status: false, uptime: false, total: false };
+    };
+
+    const debouncedUpdate = () => {
+      if (updateTimeout) {
+        clearTimeout(updateTimeout);
+      }
+      updateTimeout = setTimeout(processPendingUpdates, 1000); // Debounce for 1 second
+    };
+
     const devicesSubscription = client
       .channel("device-updates")
       .on(
         "postgres_changes",
         {
-          event: "*", // Listen for all events (INSERT, UPDATE, DELETE)
+          event: "*",
           schema: "public",
           table: "devices",
         },
         (payload) => {
           console.log("Device update received:", payload);
 
-          // For any device update, refresh both active nodes and uptime
-          getTotalActiveNodes();
-          getTotalNodes();
-
-          // If it's an uptime update, also refresh uptime data
-          if (
-            payload.eventType === "UPDATE" &&
-            payload.new &&
-            payload.old &&
-            payload.new.uptime !== payload.old.uptime
-          ) {
-            fetchUserDevicesUptime();
+          if (payload.eventType === "INSERT" || payload.eventType === "DELETE") {
+            pendingUpdates.total = true;
+            if (payload.new?.status === "busy" || payload.old?.status === "busy") {
+              pendingUpdates.status = true;
+            }
+          } else if (payload.eventType === "UPDATE" && payload.new && payload.old) {
+            // Only update what changed
+            if (payload.new.status !== payload.old.status) {
+              console.log(
+                "Status change detected:",
+                payload.old.status,
+                "->",
+                payload.new.status
+              );
+              pendingUpdates.status = true;
+            }
+            if (payload.new.uptime !== payload.old.uptime) {
+              pendingUpdates.uptime = true;
+            }
           }
 
-          // If it's a status update, refresh active nodes
-          if (
-            payload.eventType === "UPDATE" &&
-            payload.new &&
-            payload.old &&
-            payload.new.status !== payload.old.status
-          ) {
-            console.log(
-              "Status change detected:",
-              payload.old.status,
-              "->",
-              payload.new.status
-            );
-            getTotalActiveNodes();
-          }
+          debouncedUpdate();
         }
       )
       .subscribe((status) => {
@@ -317,9 +356,20 @@ export const NetworkStats = () => {
       });
 
     return () => {
+      if (updateTimeout) {
+        clearTimeout(updateTimeout);
+      }
       devicesSubscription.unsubscribe();
     };
   }, [client, userProfile?.id]);
+
+  // Check if node should be stopped due to time limit
+  useEffect(() => {
+    if (isActive && remainingFreeTierTime <= 0) {
+      console.log("Node stopped due to time limit reached");
+      // The node will be automatically stopped by the updateUptime action
+    }
+  }, [isActive, remainingFreeTierTime]);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 md:mb-10 w-full">

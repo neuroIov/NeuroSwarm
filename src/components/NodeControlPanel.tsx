@@ -111,8 +111,8 @@ interface NodeInfo {
 export const NodeControlPanel = () => {
   const dispatch = useAppDispatch();
   const client = getSwarmSupabase();
-  const { session } = useSession();
-  const userProfile = session.userProfile;
+  const { session, subscriptionTier } = useSession();
+  const userProfile = session?.userProfile;
 
   const {
     isActive,
@@ -138,9 +138,6 @@ export const NodeControlPanel = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalEarnings, setTotalEarnings] = useState(0);
-  const { subscriptionTier } = useSession();
-
-
   const tierInfo = getTierByName(subscriptionTier);
   const [isRegistering, setIsRegistering] = useState(false);
 
@@ -321,7 +318,7 @@ export const NodeControlPanel = () => {
       try {
         const { data, error } = await client
           .from("devices")
-          .select("uptime, device_name, reward_tier")
+          .select("uptime, device_name, reward_tier, device_type")
           .eq("id", selectedNodeId)
           .single();
 
@@ -339,9 +336,10 @@ export const NodeControlPanel = () => {
             dispatch(switchCurrentNode({
               nodeId: selectedNodeId,
               nodeName: data.device_name || `Device ${selectedNodeId.substring(0, 6)}`,
-              nodeType: 'desktop', // Default to desktop since we don't have this info in the DB
+              nodeType: data.device_type || 'desktop',
               rewardTier: data.reward_tier || 'cpu',
-              uptime: data.uptime || 0
+              uptime: data.uptime || 0,
+              maxUptime: tierInfo?.maxUptime || 4 * 60 * 60 // Add the missing maxUptime property
             }));
           }
         }
@@ -351,7 +349,7 @@ export const NodeControlPanel = () => {
     };
 
     fetchNodeUptime();
-  }, [selectedNodeId, userProfile?.id, isActive, nodeId, dispatch]);
+  }, [selectedNodeId, userProfile?.id, isActive, nodeId, dispatch, tierInfo?.maxUptime]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -581,7 +579,7 @@ export const NodeControlPanel = () => {
       try {
         const { data, error } = await client
           .from("devices")
-          .select("uptime, device_name, reward_tier")
+          .select("uptime, device_name, reward_tier, device_type")
           .eq("id", selectedNodeId)
           .single();
 
@@ -596,9 +594,10 @@ export const NodeControlPanel = () => {
           dispatch(switchCurrentNode({
             nodeId: selectedNodeId,
             nodeName: data.device_name || `Device ${selectedNodeId.substring(0, 6)}`,
-            nodeType: 'desktop', // Default to desktop since we don't have this info in the DB
+            nodeType: data.device_type || 'desktop',
             rewardTier: data.reward_tier || 'cpu',
-            uptime: data.uptime || 0
+            uptime: data.uptime || 0,
+            maxUptime: tierInfo?.maxUptime || 4 * 60 * 60 // Add the missing maxUptime property
           }));
         }
       } catch (error) {
@@ -695,7 +694,7 @@ export const NodeControlPanel = () => {
                 nodeName: selectedNode.name,
                 nodeType: selectedNode.type,
                 rewardTier: selectedNode.rewardTier,
-                maxUptime: tierInfo.maxUptime,
+                maxUptime: tierInfo?.maxUptime || 4 * 60 * 60,
                 storedUptime: databaseUptime, // Pass the uptime from database
               })
             );
@@ -1464,4 +1463,5 @@ export const NodeControlPanel = () => {
     </div>
     </>
   );
+  
 };

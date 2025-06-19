@@ -1,8 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { getSwarmSupabase } from '@/lib/supabase-client';
 
-// --- Removed: FREE_TIER_LIMIT_SECONDS ---
-
 export interface NodeState {
     isActive: boolean;
     nodeId: string | null;
@@ -18,15 +16,17 @@ export interface NodeState {
     currentSessionUptime: number;
     totalUptime: number;
     remainingFreeTierTime: number;
-    maxUptime: number; // ✅ Added for tier logic
+    maxUptime: number;
+    lastSyncTime: number | null; // Track when we last synced to database
 }
 
-// Updated: load from storage helper (no longer relies on constant)
+// Load from storage helper
 const loadUptimeFromStorage = (nodeId: string | null): {
     totalUptime: number,
-    remainingFreeTierTime: number
+    remainingFreeTierTime: number,
+    lastSyncTime: number | null
 } => {
-    if (!nodeId) return { totalUptime: 0, remainingFreeTierTime: 0 };
+    if (!nodeId) return { totalUptime: 0, remainingFreeTierTime: 0, lastSyncTime: null };
 
     try {
         const storedData = localStorage.getItem(`node-uptime-${nodeId}`);
@@ -34,14 +34,15 @@ const loadUptimeFromStorage = (nodeId: string | null): {
             const parsedData = JSON.parse(storedData);
             return {
                 totalUptime: parsedData.totalUptime || 0,
-                remainingFreeTierTime: parsedData.remainingFreeTierTime ?? 0
+                remainingFreeTierTime: parsedData.remainingFreeTierTime ?? 0,
+                lastSyncTime: parsedData.lastSyncTime || null
             };
         }
     } catch (e) {
         console.error('Error loading uptime from storage:', e);
     }
 
-    return { totalUptime: 0, remainingFreeTierTime: 0 };
+    return { totalUptime: 0, remainingFreeTierTime: 0, lastSyncTime: null };
 };
 
 const initialState: NodeState = {
@@ -60,32 +61,40 @@ const initialState: NodeState = {
     totalUptime: 0,
     remainingFreeTierTime: 0,
     maxUptime: 4 * 60 * 60, // fallback default 4 hours
+    lastSyncTime: null,
 };
 
-// Sync helper
-export const syncUptimeToDatabase = async (nodeId: string, totalUptimeSeconds: number) => {
-    if (!nodeId) return;
+// Enhanced sync helper with retry logic
+export const syncUptimeToDatabase = async (nodeId: string, totalUptimeSeconds: number): Promise<boolean> => {
+    if (!nodeId) return false;
 
     try {
         const client = getSwarmSupabase();
         console.log(`Syncing uptime to database for nodeId ${nodeId}: ${totalUptimeSeconds} seconds`);
+        
         const { data, error } = await client
             .from('devices')
-            .update({ uptime: totalUptimeSeconds, last_seen: new Date().toISOString() })
+            .update({ 
+                uptime: totalUptimeSeconds, 
+                last_seen: new Date().toISOString() 
+            })
             .eq('id', nodeId)
             .select('uptime');
 
         if (error) {
             console.error('Error syncing uptime to database:', error);
+            return false;
         } else {
             console.log('Successfully updated uptime in database:', data);
+            return true;
         }
     } catch (error) {
         console.error('Error syncing uptime to database:', error);
+        return false;
     }
 };
 
-// Load uptime directly from the database instead of local storage
+// Load uptime directly from the database
 export const loadUptimeFromDatabase = async (nodeId: string): Promise<number> => {
     if (!nodeId) return 0;
 
@@ -110,9 +119,8 @@ export const loadUptimeFromDatabase = async (nodeId: string): Promise<number> =>
     }
 };
 
-// Function to check for and process any pending sync operations
+// Enhanced function to check for and process any pending sync operations
 export const checkPendingSyncOperations = async () => {
-    // Check for any pending sync operations in localStorage
     const pendingSyncKeys = Object.keys(localStorage).filter(key => 
         key.startsWith('node-uptime-sync-pending-')
     );
@@ -129,12 +137,16 @@ export const checkPendingSyncOperations = async () => {
             if (pendingData.totalUptime && nodeId) {
                 console.log(`Processing pending sync for node ${nodeId}: ${pendingData.totalUptime} seconds`);
                 
-                // Sync to database
-                await syncUptimeToDatabase(nodeId, pendingData.totalUptime);
+                // Try to sync to database
+                const success = await syncUptimeToDatabase(nodeId, pendingData.totalUptime);
                 
-                // Remove the pending sync entry
-                localStorage.removeItem(key);
-                console.log(`Successfully processed pending sync for node ${nodeId}`);
+                if (success) {
+                    // Remove the pending sync entry only if successful
+                    localStorage.removeItem(key);
+                    console.log(`Successfully processed pending sync for node ${nodeId}`);
+                } else {
+                    console.log(`Failed to process pending sync for node ${nodeId}, will retry later`);
+                }
             }
         } catch (error) {
             console.error(`Error processing pending sync operation for key ${key}:`, error);
@@ -162,6 +174,19 @@ export const saveLastActiveNodeId = (nodeId: string): void => {
     }
 };
 
+// Helper function to save uptime data to localStorage
+const saveUptimeToStorage = (nodeId: string, totalUptime: number, remainingFreeTierTime: number, lastSyncTime: number | null = null) => {
+    try {
+        localStorage.setItem(`node-uptime-${nodeId}`, JSON.stringify({
+            totalUptime,
+            remainingFreeTierTime,
+            lastSyncTime: lastSyncTime || Date.now()
+        }));
+    } catch (error) {
+        console.error('Error saving uptime to storage:', error);
+    }
+};
+
 export const nodeSlice = createSlice({
     name: 'node',
     initialState,
@@ -171,7 +196,7 @@ export const nodeSlice = createSlice({
             nodeName: string,
             nodeType: 'desktop' | 'laptop' | 'tablet' | 'mobile',
             rewardTier: 'webgpu' | 'wasm' | 'webgl' | 'cpu',
-            maxUptime: number, // ✅ Required input from session
+            maxUptime: number,
             storedUptime?: number
         }>) => {
             const { nodeId, nodeName, nodeType, rewardTier, maxUptime, storedUptime } = action.payload;
@@ -180,6 +205,12 @@ export const nodeSlice = createSlice({
             const savedData = loadUptimeFromStorage(nodeId);
             const totalUptime = storedUptime !== undefined ? storedUptime : savedData.totalUptime;
             const remainingFreeTierTime = Math.max(0, maxUptime - totalUptime);
+
+            // Don't start if no time remaining
+            if (remainingFreeTierTime <= 0) {
+                console.warn(`Cannot start node ${nodeId}: No remaining time (${remainingFreeTierTime} seconds)`);
+                return;
+            }
 
             state.isActive = true;
             state.nodeId = nodeId;
@@ -191,47 +222,41 @@ export const nodeSlice = createSlice({
             state.totalUptime = totalUptime;
             state.remainingFreeTierTime = remainingFreeTierTime;
             state.maxUptime = maxUptime;
+            state.lastSyncTime = savedData.lastSyncTime;
 
-            // Store in both localStorage and database
-            localStorage.setItem(`node-uptime-${nodeId}`, JSON.stringify({
-                totalUptime,
-                remainingFreeTierTime
-            }));
+            // Store in localStorage
+            saveUptimeToStorage(nodeId, totalUptime, remainingFreeTierTime, state.lastSyncTime);
             
             // Save as last active node
             saveLastActiveNodeId(nodeId);
 
-            // Also sync to database to ensure consistency
+            // Sync to database to ensure consistency
             syncUptimeToDatabase(nodeId, totalUptime);
+
+            console.log(`Started node ${nodeName} (${nodeId}) with ${remainingFreeTierTime} seconds remaining`);
         },
+        
         stopNode: (state) => {
             if (state.startTime && state.nodeId) {
                 const sessionUptime = Math.floor((Date.now() - state.startTime) / 1000);
                 const newTotalUptime = state.totalUptime + sessionUptime;
                 const newRemainingFreeTierTime = Math.max(0, state.maxUptime - newTotalUptime);
 
-                // Store in both localStorage and database
-                localStorage.setItem(`node-uptime-${state.nodeId}`, JSON.stringify({
-                    totalUptime: newTotalUptime,
-                    remainingFreeTierTime: newRemainingFreeTierTime
-                }));
+                // Store in localStorage
+                saveUptimeToStorage(state.nodeId, newTotalUptime, newRemainingFreeTierTime);
 
-                // Log before syncing to database
                 console.log(`Stopping node ${state.nodeId} with total uptime: ${newTotalUptime} seconds`);
                 
-                // Use a try-catch to ensure database sync happens
-                try {
-                    // Sync the final uptime to database
-                    syncUptimeToDatabase(state.nodeId, newTotalUptime);
-                } catch (error) {
-                    console.error('Error syncing uptime during node stop:', error);
-                    
-                    // Store the failed sync attempt in localStorage to retry later
-                    localStorage.setItem(`node-uptime-sync-pending-${state.nodeId}`, JSON.stringify({
-                        totalUptime: newTotalUptime,
-                        timestamp: Date.now()
-                    }));
-                }
+                // Try to sync to database
+                syncUptimeToDatabase(state.nodeId, newTotalUptime).then(success => {
+                    if (!success) {
+                        // Store the failed sync attempt in localStorage to retry later
+                        localStorage.setItem(`node-uptime-sync-pending-${state.nodeId}`, JSON.stringify({
+                            totalUptime: newTotalUptime,
+                            timestamp: Date.now()
+                        }));
+                    }
+                });
 
                 state.totalUptime = newTotalUptime;
                 state.remainingFreeTierTime = newRemainingFreeTierTime;
@@ -244,6 +269,7 @@ export const nodeSlice = createSlice({
             state.memoryUsage = 0;
             state.networkUsage = 0;
         },
+        
         updateNodeMetrics: (state, action: PayloadAction<{
             cpuUsage?: number;
             memoryUsage?: number;
@@ -259,12 +285,15 @@ export const nodeSlice = createSlice({
                 state.networkUsage = action.payload.networkUsage;
             }
         },
+        
         incrementTasksCompleted: (state) => {
             state.tasksCompleted += 1;
         },
+        
         updateSuccessRate: (state, action: PayloadAction<number>) => {
             state.successRate = action.payload;
         },
+        
         updateUptime: (state) => {
             if (state.isActive && state.startTime) {
                 const currentTime = Date.now();
@@ -291,19 +320,26 @@ export const nodeSlice = createSlice({
                     // Sync the final uptime to database
                     if (state.nodeId) {
                         console.log(`Time limit reached for node ${state.nodeId}. Final uptime: ${finalUptime} seconds`);
-                        syncUptimeToDatabase(state.nodeId, finalUptime);
+                        
+                        syncUptimeToDatabase(state.nodeId, finalUptime).then(success => {
+                            if (!success) {
+                                // Store pending sync if failed
+                                localStorage.setItem(`node-uptime-sync-pending-${state.nodeId}`, JSON.stringify({
+                                    totalUptime: finalUptime,
+                                    timestamp: Date.now()
+                                }));
+                            }
+                        });
                         
                         // Update localStorage
-                        localStorage.setItem(`node-uptime-${state.nodeId}`, JSON.stringify({
-                            totalUptime: finalUptime,
-                            remainingFreeTierTime: 0
-                        }));
+                        saveUptimeToStorage(state.nodeId, finalUptime, 0);
                     }
                 } else {
                     state.remainingFreeTierTime = Math.max(0, state.maxUptime - totalUsed);
                 }
             }
         },
+        
         syncUptime: (state) => {
             if (state.isActive && state.startTime && state.nodeId) {
                 const currentSessionUptime = Math.floor((Date.now() - state.startTime) / 1000);
@@ -312,45 +348,49 @@ export const nodeSlice = createSlice({
                 // Update the state with the new total uptime
                 state.totalUptime = newTotalUptime;
                 state.remainingFreeTierTime = Math.max(0, state.maxUptime - newTotalUptime);
+                state.lastSyncTime = Date.now();
                 
                 // Reset the session timer to avoid double-counting
                 state.startTime = Date.now();
                 state.currentSessionUptime = 0;
                 
                 // Update localStorage
-                localStorage.setItem(`node-uptime-${state.nodeId}`, JSON.stringify({
-                    totalUptime: newTotalUptime,
-                    remainingFreeTierTime: state.remainingFreeTierTime
-                }));
+                saveUptimeToStorage(state.nodeId, newTotalUptime, state.remainingFreeTierTime, state.lastSyncTime);
                 
                 // Sync to database
-                syncUptimeToDatabase(state.nodeId, newTotalUptime);
+                syncUptimeToDatabase(state.nodeId, newTotalUptime).then(success => {
+                    if (!success) {
+                        // Store pending sync if failed
+                        localStorage.setItem(`node-uptime-sync-pending-${state.nodeId}`, JSON.stringify({
+                            totalUptime: newTotalUptime,
+                            timestamp: Date.now()
+                        }));
+                    }
+                });
                 
-                console.log(`Synced uptime for node ${state.nodeId}. New total: ${newTotalUptime} seconds`);
+                console.log(`Synced uptime for node ${state.nodeId}. New total: ${newTotalUptime} seconds, Remaining: ${state.remainingFreeTierTime} seconds`);
             }
         },
+        
         resetFreeTime: (state) => {
             state.remainingFreeTierTime = state.maxUptime;
+            state.totalUptime = 0;
             if (state.nodeId) {
-                localStorage.setItem(`node-uptime-${state.nodeId}`, JSON.stringify({
-                    totalUptime: state.totalUptime,
-                    remainingFreeTierTime: state.maxUptime
-                }));
+                saveUptimeToStorage(state.nodeId, 0, state.maxUptime);
+                // Also sync the reset to database
+                syncUptimeToDatabase(state.nodeId, 0);
             }
         },
+        
         setUptimeFromDatabase: (state, action: PayloadAction<number>) => {
             // Only update the uptime in the Redux store if the node is not currently active
-            // This prevents overriding the real-time tracking when a node is running
             if (!state.isActive) {
                 state.totalUptime = action.payload;
                 state.remainingFreeTierTime = Math.max(0, state.maxUptime - action.payload);
 
                 // Update localStorage if we have a nodeId
                 if (state.nodeId) {
-                    localStorage.setItem(`node-uptime-${state.nodeId}`, JSON.stringify({
-                        totalUptime: state.totalUptime,
-                        remainingFreeTierTime: state.remainingFreeTierTime
-                    }));
+                    saveUptimeToStorage(state.nodeId, state.totalUptime, state.remainingFreeTierTime);
                 }
                 
                 console.log(`Updated uptime in Redux store for node ${state.nodeId}: ${action.payload} seconds`);
@@ -358,19 +398,20 @@ export const nodeSlice = createSlice({
                 console.log(`Node ${state.nodeId} is active - not updating uptime from database`);
             }
         },
-        // Add a new action to switch the current node without starting it
+        
         switchCurrentNode: (state, action: PayloadAction<{
             nodeId: string,
             nodeName: string,
             nodeType: 'desktop' | 'laptop' | 'tablet' | 'mobile',
             rewardTier: 'webgpu' | 'wasm' | 'webgl' | 'cpu',
-            uptime: number
+            uptime: number,
+            maxUptime: number
         }>) => {
-            const { nodeId, nodeName, nodeType, rewardTier, uptime } = action.payload;
+            const { nodeId, nodeName, nodeType, rewardTier, uptime, maxUptime } = action.payload;
             
             // Only allow switching if the node is not active
             if (!state.isActive) {
-                // Reset all node-related state first to avoid carrying over data from previous node
+                // Reset all node-related state first
                 state.nodeId = null;
                 state.nodeName = null;
                 state.nodeType = null;
@@ -384,12 +425,13 @@ export const nodeSlice = createSlice({
                 state.nodeType = nodeType;
                 state.rewardTier = rewardTier;
                 state.totalUptime = uptime;
-                state.remainingFreeTierTime = Math.max(0, state.maxUptime - uptime);
+                state.maxUptime = maxUptime;
+                state.remainingFreeTierTime = Math.max(0, maxUptime - uptime);
                 
                 // Save as last selected node
                 saveLastActiveNodeId(nodeId);
                 
-                console.log(`Switched to node ${nodeName} (${nodeId}) with uptime: ${uptime} seconds`);
+                console.log(`Switched to node ${nodeName} (${nodeId}) with uptime: ${uptime} seconds, remaining: ${state.remainingFreeTierTime} seconds`);
             } else {
                 console.warn(`Cannot switch nodes while node ${state.nodeName} (${state.nodeId}) is active`);
             }
