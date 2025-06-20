@@ -610,17 +610,28 @@ export const EarningsDashboard = () => {
       <div className="flex justify-between items-center mb-8 flex-wrap gap-2">
         <h2 className="text-xl">Earnings Dashboard</h2>
         <div className="flex gap-2">
-          <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-            <SelectTrigger className="w-[80px] h-8 m-0 bg-[#1D1D33] rounded-full ">
-              <SelectValue placeholder="Time Range" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="daily">Daily</SelectItem>
-              <SelectItem value="weekly">Weekly</SelectItem>
-              <SelectItem value="monthly">Monthly</SelectItem>
-              <SelectItem value="all-time">All Time</SelectItem>
-            </SelectContent>
-          </Select>
+{
+
+  false && <>          <Select value={timeRange} onValueChange={handleTimeRangeChange}>
+  <SelectTrigger className="w-[80px] h-8 m-0 bg-[#1D1D33] rounded-full ">
+    <SelectValue placeholder="Time Range" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="daily">Daily</SelectItem>
+    <SelectItem value="weekly">Weekly</SelectItem>
+    <SelectItem value="monthly">Monthly</SelectItem>
+    <SelectItem value="all-time">All Time</SelectItem>
+  </SelectContent>
+</Select>
+<Button
+  variant="outline"
+  className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
+  size="sm"
+  onClick={toggleDebugMode}
+>
+  <Bug className="h-4 w-4" />
+</Button></>
+}
           <Button
             variant="outline"
             className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
@@ -630,14 +641,7 @@ export const EarningsDashboard = () => {
           >
             Refresh
           </Button>
-          <Button
-            variant="outline"
-            className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
-            size="sm"
-            onClick={toggleDebugMode}
-          >
-            <Bug className="h-4 w-4" />
-          </Button>
+
         </div>
       </div>
 
@@ -881,7 +885,7 @@ export const EarningsDashboard = () => {
               <div className="text-sm text-[#515194] mb-1">
                 Next Payout Date
               </div>
-              <div className="font-medium text-white">30/04/2025</div>
+              <div className="font-medium text-white">Coming Soon</div>
             </div>
 
             <Button
