@@ -5,18 +5,18 @@ export const TASK_TABLES = ['img_gen_messages', 'freedomai_messages',]
 export const TASK_PROCESSING_CONFIG = {
     // Processing time in seconds for different task types
     PROCESSING_TIME: {
-        image: 300,
-        text: 150
+        image: 150,
+        text: 80,
     },
     // Hardware-specific time multipliers - lower means faster processing
     HARDWARE_MULTIPLIERS: {
-        webgpu: 0.5, //2x
-        wasm: 0.65, //1.6x
-        webgl: 0.85, //1.3x
-        cpu: 1.0 //1x
+        webgpu: 0.65,
+        wasm: 0.775,
+        webgl: 0.8875,
+        cpu: 1.0
     },
 
-    
+    // Earnings per task for different task types
     EARNINGS_NLOVE: {
         image: 4,
         text: 2,
