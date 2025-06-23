@@ -118,7 +118,8 @@
       "processingTime": "प्रोसेसिंग समय",
       "avgUptime": "औसत अपटाइम",
       "totalUsers": "कुल उपयोगकर्ता",
-      "activeNodes": "सक्रिय नोड्स"
+      "activeNodes": "कुल कंप्यूट उपयोग",
+      "totalEarnings": "कुल कमाई"
     },
     "tasks": {
       "title": "हाल के वैश्विक कार्य",

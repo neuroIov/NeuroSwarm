@@ -118,7 +118,8 @@
       "processingTime": "Tiempo de Procesamiento",
       "avgUptime": "Tiempo Activo Promedio",
       "totalUsers": "Usuarios Totales",
-      "activeNodes": "Nodos Activos"
+      "activeNodes": "Uso Total de Cómputo",
+      "totalEarnings": "Ganancias Totales"
     },
     "tasks": {
       "title": "Tareas Globales Recientes",
@@ -128,7 +129,7 @@
       "status": {
         "completed": "Completada",
         "processing": "Procesando",
-        "pending": "Pendiente",
+        "pending": "Pendiente", 
         "failed": "Fallida"
       }
     },

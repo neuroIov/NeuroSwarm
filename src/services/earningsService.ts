@@ -584,7 +584,7 @@ export const createTestEarning = async (userId) => {
 /**
  * Handle daily check-in for a user
  * @param {string} userId - User ID from profile
- * @returns {Promise<{status: "checked_in" | "already_checked_in" | "rewarded" | "error", streak?: number, amount?: number, error?: string}>}
+ * @returns {Promise<{status: "checked_in" | "already_checked_in" | "error", streak?: number, amount?: number, error?: string}>}
  */
 export const handleDailyCheckIn = async (userId: string) => {
     try {
@@ -616,93 +616,158 @@ export const handleDailyCheckIn = async (userId: string) => {
         }
 
         let streakCount = 1;
+        
+        // Calculate reward amount based on streak day
+        const getRewardForDay = (day: number): number => {
+            const rewards = [10, 20, 30, 40, 50, 60, 70];
+            return rewards[Math.min(day - 1, 6)]; // Cap at day 7 (index 6)
+        };
+
+        // Helper function to add earnings and update history
+        const recordReward = async (amount: number): Promise<boolean> => {
+            try {
+                // 1. Insert into earnings table
+                const { error: earningError } = await client
+                    .from("earnings")
+                    .insert({
+                        user_id: userId,
+                        amount: amount,
+                        earning_type: "other",
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                    });
+
+                if (earningError) {
+                    logger.error("Error recording daily check-in reward:", earningError);
+                    return false;
+                }
+
+                // 2. Update earnings history
+                const { data: latestHistory, error: historyError } = await client
+                    .from("earnings_history")
+                    .select("*")
+                    .eq("user_id", userId)
+                    .eq("payout_status", "pending")
+                    .order("timestamp", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (historyError) {
+                    logger.error("Error fetching earnings history:", historyError);
+                    // Continue execution despite this error
+                } else if (latestHistory) {
+                    // Update existing record
+                    const { error: updateError } = await client
+                        .from("earnings_history")
+                        .update({
+                            amount: Number(latestHistory.amount) + amount,
+                            timestamp: new Date().toISOString()
+                        })
+                        .eq("id", latestHistory.id);
+                    
+                    if (updateError) {
+                        logger.error("Error updating earnings history:", updateError);
+                        // Continue execution despite this error
+                    }
+                } else {
+                    // Create new history record
+                    const { error: insertError } = await client
+                        .from("earnings_history")
+                        .insert({
+                            user_id: userId,
+                            amount: amount,
+                            task_count: 0,
+                            timestamp: new Date().toISOString(),
+                            payout_status: "pending"
+                        });
+                    
+                    if (insertError) {
+                        logger.error("Error creating earnings history:", insertError);
+                        // Continue execution despite this error
+                    }
+                }
+
+                return true;
+            } catch (error) {
+                logger.error("Error in recordReward:", error);
+                return false;
+            }
+        };
 
         if (row) {
             if (row.last_checkin_date === todayStr) {
                 return { status: "already_checked_in" as const, streak: row.streak_count }; // Already checked in today
             }
 
-            // 2. Continue streak if last check-in was yesterday
+            // 2. Continue streak if last check-in was yesterday, otherwise reset
             if (row.last_checkin_date === yesterdayStr) {
                 streakCount = row.streak_count + 1;
             } else {
                 streakCount = 1; // Missed a day, reset
             }
+            
+            // Calculate reward amount for today's check-in
+            const rewardAmount = getRewardForDay(streakCount);
 
-            // 3. If streak reaches 7 and not already rewarded
-            if (streakCount === 7 && row.last_rewarded_streak < 7) {
-                const totalReward = 10 + 20 + 30 + 40 + 50 + 60 + 70; // Sum of all 7 days
-
-                // Insert to `earnings` table
-                const { error: earningError } = await client.from("earnings").insert({
-                    user_id: userId,
-                    amount: totalReward,
-                    earning_type: "other",
-                });
-
-                if (earningError) {
-                    logger.error("Error creating streak reward earning:", earningError);
-                    return { status: "error" as const, error: earningError.message };
-                }
-
-                // Update or create `earnings_history`
-                const { data: latestHistory, error: historyError } = await client
-                    .from("earnings_history")
-                    .select("*")
-                    .eq("user_id", userId)
-                    .order("timestamp", { ascending: false })
-                    .limit(1)
-                    .single();
-
-                if (historyError && historyError.code !== "PGRST116") {
-                    logger.error("Error fetching earnings history:", historyError);
-                }
-
-                if (latestHistory) {
-                    await client
-                        .from("earnings_history")
-                        .update({
-                            amount: Number(latestHistory.amount) + totalReward,
-                            task_count: latestHistory.task_count + 1,
-                            timestamp: new Date().toISOString(),
-                        })
-                        .eq("id", latestHistory.id);
-                } else {
-                    await client.from("earnings_history").insert({
-                        user_id: userId,
-                        amount: totalReward,
-                        task_count: 1,
-                        timestamp: new Date().toISOString(),
-                    });
-                }
-
-                // Update streak state & reset after reward
-                await client.from("daily_checkins").update({
-                    streak_count: 0,
-                    last_checkin_date: todayStr,
-                    last_rewarded_streak: 7,
-                }).eq("user_id", userId);
-
-                return { status: "rewarded" as const, streak: 7, amount: totalReward };
+            // Record the reward in earnings table and update earnings history
+            const rewardRecorded = await recordReward(rewardAmount);
+            
+            if (!rewardRecorded) {
+                logger.error("Failed to record reward for check-in");
+                // We'll still update the streak but note the issue
             }
 
-            // 4. Normal streak update (no reward)
-            await client.from("daily_checkins").update({
-                streak_count: streakCount,
-                last_checkin_date: todayStr,
-            }).eq("user_id", userId);
+            // Update check-in record regardless of reward recording status
+            const { error: updateError } = await client
+                .from("daily_checkins")
+                .update({
+                    streak_count: streakCount,
+                    last_checkin_date: todayStr,
+                })
+                .eq("user_id", userId);
 
-            return { status: "checked_in" as const, streak: streakCount };
+            if (updateError) {
+                logger.error("Error updating daily check-in record:", updateError);
+                return { status: "error" as const, error: updateError.message };
+            }
+
+            return { 
+                status: "checked_in" as const, 
+                streak: streakCount,
+                amount: rewardAmount
+            };
         } else {
-            // 5. First time check-in
-            await client.from("daily_checkins").insert({
-                user_id: userId,
-                last_checkin_date: todayStr,
-                streak_count: 1,
-                last_rewarded_streak: 0,
-            });
+            // 5. First time check-in (Day 1 reward)
+            const firstDayReward = getRewardForDay(1);
+            
+            // Insert first check-in record
+            const { error: insertError } = await client
+                .from("daily_checkins")
+                .insert({
+                    user_id: userId,
+                    last_checkin_date: todayStr,
+                    streak_count: 1,
+                    last_rewarded_streak: 0,
+                });
 
-            return { status: "checked_in" as const, streak: 1 };
+            if (insertError) {
+                logger.error("Error creating first daily check-in record:", insertError);
+                return { status: "error" as const, error: insertError.message };
+            }
+            
+            // Record the reward in earnings table and update earnings history
+            const rewardRecorded = await recordReward(firstDayReward);
+            
+            if (!rewardRecorded) {
+                logger.error("Failed to record reward for first check-in");
+                // Check-in was successful but reward failed
+            }
+
+            return { 
+                status: "checked_in" as const, 
+                streak: 1,
+                amount: firstDayReward
+            };
         }
     } catch (err) {
         logger.error("Check-in error:", err);
