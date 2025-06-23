@@ -53,6 +53,7 @@ export const GlobalStatistics = () => {
   const [currentUserRank, setCurrentUserRank] =
     useState<LeaderboardEntry | null>(null);
   const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
+  const [totalEarnings, setTotalEarnings] = useState(0);
 
   // Get tasks from Redux store
   const { allTasks } = useSelector((state: RootState) => state.tasks);
@@ -151,6 +152,7 @@ export const GlobalStatistics = () => {
           }));
           
           setLeaderboard(topTenLeaderboard);
+          setTotalEarnings(data.total_earnings);
           
           // Set current user rank if available
           if (data.target_user && userId) {
@@ -311,7 +313,7 @@ export const GlobalStatistics = () => {
         totalTasks: taskCache.length || 0,
         avgComputeTime: avgTime,
         totalUsers: networkStats.totalUsers || 0,
-        activeNodes: networkStats.activeDevices || 0,
+        activeNodes: networkStats.totalComputeUsage || 0,
         networkLoad,
       });
 
@@ -598,7 +600,7 @@ export const GlobalStatistics = () => {
             <div className="icon-bg icon-container flex items-center justify-center rounded-md p-1 sm:p-2">
               <img
                 src="/images/computing.png"
-                alt="Processing Time"
+                alt="Total Earnings"
                 className="w-6 h-6 sm:w-7 sm:h-7 relative z-10"
                 onError={(e) => {
                   e.currentTarget.src =
@@ -608,24 +610,10 @@ export const GlobalStatistics = () => {
             </div>
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">
-                {t("globalStatistics.cards.processingTime")}
+                {t("globalStatistics.cards.totalEarnings")}
               </span>
               <span className="text-xl font-bold text-white">
-                {(() => {
-                  const seconds = stats.avgComputeTime || 0;
-                  if (seconds < 1) {
-                    return `${(seconds * 1000).toFixed(0)}ms`;
-                  }
-                  if (seconds < 60) {
-                    return `${seconds.toFixed(1)}s`;
-                  }
-                  if (seconds < 3600) {
-                    const minutes = Math.floor(seconds / 60);
-                    return `${minutes}m`;
-                  }
-                  const hours = Math.floor(seconds / 3600);
-                  return `${hours}h`;
-                })()}
+                {formatCurrency(totalEarnings)}
               </span>
             </div>
           </div>
@@ -660,7 +648,7 @@ export const GlobalStatistics = () => {
             <div className="icon-bg icon-container flex items-center justify-center rounded-md p-1 sm:p-2">
               <img
                 src="/images/active_nodes.png"
-                alt="Active Nodes"
+                alt="Total Compute Usage"
                 className="w-6 h-6 sm:w-7 sm:h-7 relative z-10"
                 onError={(e) => {
                   e.currentTarget.src =
@@ -673,7 +661,7 @@ export const GlobalStatistics = () => {
                 {t("globalStatistics.cards.activeNodes")}
               </span>
               <span className="text-xl font-bold text-white">
-                {stats.activeNodes}
+                {stats.activeNodes.toLocaleString(undefined, { maximumFractionDigits: 2 })} TFLOPs
               </span>
             </div>
           </div>

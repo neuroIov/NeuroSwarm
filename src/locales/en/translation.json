@@ -118,7 +118,8 @@
       "processingTime": "Processing Time",
       "avgUptime": "Avg. Uptime",
       "totalUsers": "Total Users",
-      "activeNodes": "Active Nodes"
+      "activeNodes": "Total Compute Usage",
+      "totalEarnings": "Total Earnings"
     },
     "tasks": {
       "title": "Recent Global Tasks",
