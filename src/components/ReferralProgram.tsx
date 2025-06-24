@@ -1381,21 +1381,67 @@ export const ReferralProgram = () => {
       {/* Share and Tweet Buttons - Only show if user is logged in */}
       {userProfile?.id ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
-          <button
-            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
+          <motion.button
+            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2 relative overflow-hidden"
             onClick={() => setIsShareModalOpen(true)}
+            initial="initial"
+            whileHover="hover"
           >
             <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-sm sm:text-base">Share Referral</span>
-          </button>
+            <div className="relative w-36 text-center">
+              <motion.span 
+                className="text-sm sm:text-base absolute left-0 right-0 whitespace-nowrap"
+                variants={{
+                  initial: { opacity: 1 },
+                  hover: { opacity: 0 }
+                }}
+                transition={{ duration: 0.3 }}
+              >
+                Promotional Period
+              </motion.span>
+              <motion.span 
+                className="text-sm sm:text-base whitespace-nowrap"
+                variants={{
+                  initial: { opacity: 0 },
+                  hover: { opacity: 1 }
+                }}
+                transition={{ duration: 0.3 }}
+              >
+                Share Referral
+              </motion.span>
+            </div>
+          </motion.button>
 
-          <button
-            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
+          <motion.button
+            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2 relative overflow-hidden"
             onClick={() => openSocialShare(getShareMessage("Twitter"))}
+            initial="initial"
+            whileHover="hover"
           >
             <FaSquareXTwitter className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-sm sm:text-base">Tweet Referral</span>
-          </button>
+            <div className="relative w-36 text-center">
+              <motion.span 
+                className="text-sm sm:text-base absolute left-0 right-0 whitespace-nowrap"
+                variants={{
+                  initial: { opacity: 1 },
+                  hover: { opacity: 0 }
+                }}
+                transition={{ duration: 0.3 }}
+              >
+                Promotional Period
+              </motion.span>
+              <motion.span 
+                className="text-sm sm:text-base whitespace-nowrap"
+                variants={{
+                  initial: { opacity: 0 },
+                  hover: { opacity: 1 }
+                }}
+                transition={{ duration: 0.3 }}
+              >
+                Tweet Referral
+              </motion.span>
+            </div>
+          </motion.button>
         </div>
       ) : (
         <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 p-5 rounded-xl border border-blue-500/20 text-center">

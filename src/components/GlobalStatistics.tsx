@@ -598,9 +598,9 @@ export const GlobalStatistics = () => {
         <div className="flex flex-col p-4 earning-cards rounded-lg">
           <div className="flex gap-3 items-center">
             <div className="icon-bg icon-container flex items-center justify-center rounded-md p-1 sm:p-2">
-              <img
+                              <img
                 src="/images/computing.png"
-                alt="Total Earnings"
+                alt="Global SPs"
                 className="w-6 h-6 sm:w-7 sm:h-7 relative z-10"
                 onError={(e) => {
                   e.currentTarget.src =
@@ -610,7 +610,7 @@ export const GlobalStatistics = () => {
             </div>
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">
-                {t("globalStatistics.cards.totalEarnings")}
+                Global SPs
               </span>
               <span className="text-xl font-bold text-white">
                 {formatCurrency(totalEarnings)}
@@ -646,9 +646,9 @@ export const GlobalStatistics = () => {
         <div className="flex flex-col p-4 earning-cards rounded-lg">
           <div className="flex gap-3 items-center">
             <div className="icon-bg icon-container flex items-center justify-center rounded-md p-1 sm:p-2">
-              <img
+                              <img
                 src="/images/active_nodes.png"
-                alt="Total Compute Usage"
+                alt="Global Compute Generated"
                 className="w-6 h-6 sm:w-7 sm:h-7 relative z-10"
                 onError={(e) => {
                   e.currentTarget.src =
@@ -658,7 +658,7 @@ export const GlobalStatistics = () => {
             </div>
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">
-                {t("globalStatistics.cards.activeNodes")}
+                Global Compute Generated
               </span>
               <span className="text-xl font-bold text-white">
                 {stats.activeNodes.toLocaleString(undefined, { maximumFractionDigits: 2 })} TFLOPs
