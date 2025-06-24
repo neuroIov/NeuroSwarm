@@ -90,7 +90,7 @@ export const NetworkStats = () => {
   const [totalActiveNodes, setTotalActiveNodes] = useState(0);
   const [networkLoad, setNetworkLoad] = useState(0);
   const [previousNodeState, setPreviousNodeState] = useState<boolean | null>(null);
-
+  const [userComputeUsage, setUserComputeUsage] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
 
   // Get node status from redux store
@@ -127,22 +127,30 @@ export const NetworkStats = () => {
   // Fetch global stats from edge function
   const fetchGlobalStats = async () => {
     try {
+      // Include user_id as a parameter if the user is logged in
+      const params = userProfile?.id ? { user_id: userProfile.id } : {};
+      
       const response = await axios.get("https://zphiymepbkzgczxorqgz.supabase.co/functions/v1/luffy", {
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
-        }
+        },
+        params: params
       });
 
       const data = response.data;
     
-
       console.log("Global stats:", data);
     
       if (data) {
         setTotalNodes(data?.totalUsers || 0);
         setTotalActiveNodes(data?.activeDevices || 0);
         setTotalTasks(data?.completedTasks || 0);
+        // Set user compute usage if available
+        if (data.userComputeUsage !== null) {
+          setUserComputeUsage(data.userComputeUsage);
+        }
+        
         // Calculate network load
         if (data.totalUsers > 0) {
           const loadPercentage = Math.round(((data.activeDevices || 0) / data.totalUsers) * 100);
@@ -156,6 +164,7 @@ export const NetworkStats = () => {
           total_nodes: data.totalUsers || 0,
           active_nodes: data.activeDevices || 0,
           total_tasks: data.completedTasks || 0,
+          user_compute_usage: data.userComputeUsage || 0,
           timestamp: Date.now()
         }));
       }
@@ -169,6 +178,7 @@ export const NetworkStats = () => {
         setTotalNodes(parsedData.total_nodes);
         setTotalActiveNodes(parsedData.active_nodes);
         setTotalTasks(parsedData.total_tasks);
+        setUserComputeUsage(parsedData.user_compute_usage || 0);
         if (parsedData.total_nodes > 0) {
           const loadPercentage = Math.round((parsedData.active_nodes / parsedData.total_nodes) * 100);
           setNetworkLoad(loadPercentage);
@@ -202,18 +212,18 @@ export const NetworkStats = () => {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 md:mb-10 w-full">
       <StatCard
-        title="Total Users"
+        title="Active Users"
         value={totalNodes}
         unit="users"
         changePercentage={5.8}
         info="Total number of registered users across the Swarm network"
       />
-      <StatCard
-        title="Active Nodes"
-        value={totalActiveNodes}
-        unit="nodes"
-        changePercentage={0.8}
-        info="Currently active nodes processing tasks on the network"
+              <StatCard
+        title="Compute Usage"
+        value={(userComputeUsage || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        unit="TFLOPs"
+        changePercentage={2.3}
+        info="Your compute usage contribution to the network"
       />
       <StatCard
         title="Your Plan"
