@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Copy,
   Users,
@@ -347,6 +347,25 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
                 Share Referral
               </h2>
             </div>
+            {/* How Referrals Work Section */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/20 rounded-xl mt-4">
+              <p className="text-blue-300 text-sm font-medium mb-2">How Referrals Work:</p>
+              <ul className="text-gray-300 text-xs space-y-2">
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>You get <span className="text-green-400 font-medium">250 SP</span> for each successful referral</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>Your friend gets <span className="text-green-400 font-medium">500 SP</span> when they join with your link</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>Limited-time promotional period - invite now!</span>
+                </li>
+              </ul>
+            </div>
+
 
             {/* Larger, more prominent referral link */}
             <div className="mb-6 p-4 bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl">
@@ -616,6 +635,8 @@ export const ReferralProgram = () => {
   const [totalReferralEarnings, setTotalReferralEarnings] = useState(0);
   const [claimedRewards, setClaimedRewards] = useState(0);
   const [pendingRewards, setPendingRewards] = useState(0);
+  // Add state for automatic fading animation
+  const [fadeAnimation, setFadeAnimation] = useState(false);
   const [isLoadingEarnings, setIsLoadingEarnings] = useState(false);
   const [dataReady, setDataReady] = useState(false);
 

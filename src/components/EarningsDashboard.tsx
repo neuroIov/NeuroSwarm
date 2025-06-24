@@ -270,12 +270,14 @@ export const EarningsDashboard = () => {
     }
   };
 
-  // Calculate daily average based on completed tasks and time range
-  const calculateDailyAverage = () => {
+  // Calculate monthly expected earnings based on recent performance
+  const calculateMonthlyExpectedEarnings = () => {
     if (earnings.completedTasks <= 0) return 0;
 
-    // Simple daily average calculation
-    return earnings.totalEarnings / 30; // Simplified: total earnings divided by a month
+    // Calculate average daily earnings from recent history
+    const dailyAverage = earnings.totalEarnings / 30;
+    // Project to monthly (30 days)
+    return dailyAverage * 30;
   };
 
   // Get total balance directly from earnings.pendingEarnings (from earnings_history)
@@ -694,9 +696,12 @@ export const EarningsDashboard = () => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">Daily Average</span>
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-[#515194]">Monthly Expected</span>
+                <InfoTooltip content="Projected monthly earnings based on your recent performance" />
+              </div>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : calculateDailyAverage().toFixed(2)} SP
+                {loading ? "..." : calculateMonthlyExpectedEarnings().toFixed(2)} SP
               </span>
             </div>
           </div>

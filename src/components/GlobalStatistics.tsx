@@ -610,7 +610,7 @@ export const GlobalStatistics = () => {
             </div>
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">
-                Global SPs
+                Global SP
               </span>
               <span className="text-xl font-bold text-white">
                 {formatCurrency(totalEarnings)}

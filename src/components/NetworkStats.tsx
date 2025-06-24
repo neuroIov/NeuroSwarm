@@ -212,7 +212,7 @@ export const NetworkStats = () => {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 md:mb-10 w-full">
       <StatCard
-        title="Active Users"
+        title="Active Nodes"
         value={totalNodes}
         unit="users"
         changePercentage={5.8}
@@ -226,6 +226,13 @@ export const NetworkStats = () => {
         info="Your compute usage contribution to the network"
       />
       <StatCard
+        title="Total AI Content Generated"
+        value={totalTasks}
+        unit="tasks"
+        changePercentage={7.2}
+        info="Total number of tasks processed by the network"
+      />
+      <StatCard
         title="Your Plan"
         value={
           subscriptionTier
@@ -235,13 +242,6 @@ export const NetworkStats = () => {
         }
         unit=""
         info="Current utilization of the network's total processing capacity"
-      />
-      <StatCard
-        title="Total Tasks"
-        value={totalTasks}
-        unit="tasks"
-        changePercentage={7.2}
-        info="Total number of tasks processed by the network"
       />
     </div>
   );

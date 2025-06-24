@@ -8,7 +8,10 @@ import {
   Settings,
   HelpCircle,
   Edit2,
+  Send,
 } from "lucide-react";
+import { FaXTwitter } from "react-icons/fa6";
+import "@/styles/SocialMedia.css";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAppDispatch, useAppSelector } from "@/store";
@@ -245,6 +248,19 @@ export function Sidebar({
                 </Link>
               );
             })}
+
+            {/* Social Media Links */}
+            <div className="social-links">
+              <p className="social-text">For more updates follow us on Twitter and Telegram</p>
+              <div className="social-icons">
+                <a href="https://x.com/neurolov" target="_blank" rel="noopener noreferrer">
+                  <FaXTwitter id="twitter" className="icons-social-media" />
+                </a>
+                <a href="https://t.me/neurolovcommunity" target="_blank" rel="noopener noreferrer">
+                  <Send id="telegram" className="icons-social-media" />
+                </a>
+              </div>
+            </div>
           </nav>
 
           {/* Footer buttons */}
@@ -263,6 +279,8 @@ export function Sidebar({
               <HelpCircle className="mr-3 h-5 w-5 text-gray-500" />
               Help Center
             </Link>
+
+
           </div>
         </div>
       </aside>
