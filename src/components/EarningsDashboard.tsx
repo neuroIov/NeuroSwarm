@@ -43,6 +43,7 @@ import {
   createTestEarning,
 } from "../services/earningsService";
 import { useDailyCheckIn } from "../hooks/useDailyCheckIn";
+import { QuestSystem } from "./QuestSystem";
 
 type TimeRange = "daily" | "weekly" | "monthly" | "all-time";
 
@@ -1218,6 +1219,7 @@ export const EarningsDashboard = () => {
           </div>
         </div>
       )}
+      <QuestSystem />
     </div>
   );
 };
