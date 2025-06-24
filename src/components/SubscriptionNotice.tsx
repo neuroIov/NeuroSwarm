@@ -9,11 +9,11 @@ export const SubscriptionNotice = () => {
   useEffect(() => {
     if (!subscriptionTier) return;
 
-    toast({
-      title: `🎉 Subscription: ${subscriptionTier}`,
-      description: getDescription(subscriptionTier),
-      duration: 6000,
-    });
+    // toast({
+    //   title: `🎉 Subscription: ${subscriptionTier}`,
+    //   description: getDescription(subscriptionTier),
+    //   duration: 6000,
+    // });
   }, [subscriptionTier]);
 
   const getDescription = (tier: string) => {
