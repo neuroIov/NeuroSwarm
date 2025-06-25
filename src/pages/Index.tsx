@@ -18,7 +18,6 @@ import { Sidebar } from "@/components/Sidebar";
 import { useAppDispatch, useAppSelector } from "@/store";
 import {
   updateUsername,
-  createReferralRelationship,
 } from "@/store/slices/sessionSlice";
 import { UsernameDialog } from "@/components/UsernameDialog";
 import { ReferralCodeDialog } from "@/components/ReferralCodeDialog";
@@ -27,22 +26,6 @@ import { Button } from "@/components/ui/button";
 import HelpCenter from "@/components/HelpCenter";
 import Settings from "@/components/Settings";
 import { OnboardingTour } from "@/components/OnboardingTour";
-
-// Function to extract referral code from URL or direct code
-const extractReferralCode = (code: string): string | null => {
-  // Check if it's a URL
-  if (code.startsWith("http")) {
-    try {
-      const url = new URL(code);
-      return url.searchParams.get("ref");
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // Return the code itself (assuming it's directly a referral code)
-  return code;
-};
 
 const Dashboard = () => (
   <div className="flex flex-col gap-6">
@@ -78,9 +61,7 @@ const Index = () => {
     return () => clearTimeout(timer);
   }, []);
 
-
   useEffect(() => {
-
     const hasVisitedBefore = localStorage.getItem('hasVisitedBefore');
     if (!hasVisitedBefore && isLoaded) {
       setTimeout(() => {
@@ -90,14 +71,13 @@ const Index = () => {
     }
   }, [isLoaded]);
 
-  // Check for referral code in URL and save to localStorage
+  // Check for referral code in URL and show modal
   useEffect(() => {
     const refCode = searchParams.get("ref");
     if (refCode) {
-      localStorage.setItem("ref_code", refCode);
       setDetectedRefCode(refCode);
       setShowReferralDialog(true);
-      console.log(`Referral code saved: ${refCode}`);
+      console.log(`Referral code detected: ${refCode}`);
     }
   }, [searchParams]);
 
@@ -109,17 +89,13 @@ const Index = () => {
     }
   }, [userProfile, userProfile?.id]);
 
-
   const handleSaveUsername = (username: string) => {
-   
     setShowUsernameDialog(false);
   };
-
 
   const handleCloseReferralDialog = () => {
     setShowReferralDialog(false);
   };
-
 
   const handleTourComplete = () => {
     setRunTour(false);
@@ -184,7 +160,7 @@ const Index = () => {
         <HowItWorks />
       </div>
 
-      {/* Username dialog for new users - now handles both username and referral */}
+      {/* Username dialog for new users */}
       <UsernameDialog
         isOpen={showUsernameDialog}
         onClose={() => setShowUsernameDialog(false)}

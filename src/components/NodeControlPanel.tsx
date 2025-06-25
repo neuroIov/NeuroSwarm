@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { getTierByName, getMaxUptimeByTier } from "@/lib/subscriptionTiers";
+import { formatUptime } from "@/utils/timeUtils";
 
 import {
   Cpu,
@@ -52,7 +53,8 @@ import {
   loadUptimeFromDatabase,
   setUptimeFromDatabase,
   syncUptime,
-  switchCurrentNode
+  switchCurrentNode,
+  updateUptime
 } from "@/store/slices/nodeSlice";
 import {
   fetchAndAssignTasks,
@@ -125,6 +127,8 @@ export const NodeControlPanel = () => {
     networkUsage,
     tasksCompleted,
     successRate,
+    currentSessionUptime,
+    totalUptime,
   } = useSelector((state: RootState) => state.node);
 
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
@@ -152,6 +156,28 @@ export const NodeControlPanel = () => {
   const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [showUptimeLimitDialog, setShowUptimeLimitDialog] = useState(false);
+  const [nodesUptimeMap, setNodesUptimeMap] = useState<Record<string, number>>({});
+  const [totalStoredUptime, setTotalStoredUptime] = useState(0);
+  const [localUptime, setLocalUptime] = useState(0);
+
+  // Calculate displayed uptime based on current node selection and active status
+  const calculatedDisplayUptime = useMemo(() => {
+    // If a node is selected (either active or not)
+    if (nodeId) {
+      // If the node is active, add current session uptime to its stored uptime
+      if (isActive) {
+        const baseNodeUptime = nodesUptimeMap[nodeId] || 0;
+        return baseNodeUptime + currentSessionUptime;
+      } 
+      // If node is selected but not active, just show its stored uptime
+      else {
+        return nodesUptimeMap[nodeId] || 0;
+      }
+    }
+    
+    // If no node is selected, show total uptime across all nodes
+    return totalStoredUptime;
+  }, [isActive, nodeId, currentSessionUptime, nodesUptimeMap, totalStoredUptime]);
 
   // Add useEffect for refreshing total earnings every 30 seconds
   useEffect(() => {
@@ -302,6 +328,53 @@ export const NodeControlPanel = () => {
       if (!silent) setLoading(false);
     }
   };
+  
+  // Fetch uptime data from all user's devices from the database
+  const fetchUserDevicesUptime = async () => {
+    if (!userProfile?.id) return;
+
+    try {
+      const { data, error } = await client
+        .from("devices")
+        .select("uptime, id, device_name")
+        .eq("owner", userProfile.id);
+
+      if (error) throw error;
+
+      // Create a map of node ID to uptime
+      const uptimeMap: Record<string, number> = {};
+      data.forEach(device => {
+        uptimeMap[device.id] = device.uptime || 0;
+      });
+      
+      // Store the map for individual node tracking
+      setNodesUptimeMap(uptimeMap);
+
+      // Calculate total uptime across all user's devices
+      const totalUserUptime = data.reduce(
+        (sum, device) => sum + (device.uptime || 0),
+        0
+      );
+      setTotalStoredUptime(totalUserUptime);
+
+      // If the current node is in the devices, update its local uptime
+      if (nodeId) {
+        const currentDevice = data.find((device) => device.id === nodeId);
+        if (currentDevice) {
+          console.log(
+            `Found device uptime for current node ${currentDevice.device_name} (${nodeId}): ${currentDevice.uptime} seconds`
+          );
+          
+          // Only update Redux if the node is not active (to avoid overwriting active session tracking)
+          if (!isActive) {
+            dispatch(setUptimeFromDatabase(currentDevice.uptime || 0));
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user devices uptime:", error);
+    }
+  };
 
   // Update selectedNodeId when nodeId from redux changes
   useEffect(() => {
@@ -309,6 +382,61 @@ export const NodeControlPanel = () => {
       setSelectedNodeId(nodeId);
     }
   }, [nodeId]);
+  
+  // Update uptime in real-time when active
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    if (isActive) {
+      // Update uptime in redux store every second
+      interval = setInterval(() => {
+        dispatch(updateUptime());
+        setLocalUptime((prev) => prev + 1); // Force component re-render
+      }, 1000);
+    } else {
+      // If not active, still fetch the latest uptime from database
+      fetchUserDevicesUptime();
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isActive, dispatch]);
+
+  // Listen for node changes to update the displayed uptime
+  useEffect(() => {
+    if (nodeId) {
+      // When node ID changes, fetch the latest uptime for all devices
+      fetchUserDevicesUptime();
+    }
+  }, [nodeId]);
+  
+  // Set up polling for user uptime data
+  useEffect(() => {
+    // Fetch initial data
+    fetchUserDevicesUptime();
+
+    // Poll for user device data every minute
+    const userDataInterval = setInterval(() => {
+      fetchUserDevicesUptime();
+    }, 30000); // Every 30 seconds for more responsive updates
+
+    return () => {
+      clearInterval(userDataInterval);
+    };
+  }, [userProfile?.id]);
+  
+  // Listen for Redux uptime sync events to update local state
+  useEffect(() => {
+    // When totalUptime changes in Redux, refresh our local uptime map
+    if (nodeId && totalUptime > 0 && !isActive) {
+      // After a sync or node stop, update the local map with the latest value
+      setNodesUptimeMap(prev => ({
+        ...prev,
+        [nodeId]: totalUptime
+      }));
+    }
+  }, [nodeId, totalUptime, isActive]);
 
   // Fetch node uptime when selected node changes
   useEffect(() => {
@@ -328,6 +456,12 @@ export const NodeControlPanel = () => {
           console.log(
             `Fetched uptime for node "${data.device_name}" (${selectedNodeId}): ${data.uptime} seconds`
           );
+          
+          // Update the local uptime map immediately
+          setNodesUptimeMap(prev => ({
+            ...prev,
+            [selectedNodeId]: data.uptime || 0
+          }));
           
           // If the node is currently active, we don't want to override the current uptime
           // as it's being tracked in real-time
@@ -349,7 +483,18 @@ export const NodeControlPanel = () => {
     };
 
     fetchNodeUptime();
+<<<<<<< HEAD
   }, [selectedNodeId, userProfile?.id, isActive, nodeId, dispatch, tierInfo?.maxUptime]);
+=======
+    
+    // Create a polling interval specific to the selected node
+    const selectedNodeInterval = setInterval(fetchNodeUptime, 5000); // Check every 5 seconds
+    
+    return () => {
+      clearInterval(selectedNodeInterval);
+    };
+  }, [selectedNodeId, userProfile?.id, isActive, nodeId, dispatch, client]);
+>>>>>>> 51a38408e5e08deaa17f1d6c16a869bf16310816
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -474,7 +619,7 @@ export const NodeControlPanel = () => {
     fetchUserDevices();
   }, [userProfile?.id, client, isActive, nodeId]);
 
-  const handleNodeSelect = (value: string) => {
+  const handleNodeSelect = async (value: string) => {
     // Prevent changing nodes while a node is active
     if (isActive) {
       toast.error("Please stop the current node before switching to another node");
@@ -484,8 +629,39 @@ export const NodeControlPanel = () => {
     // Set the selected node ID in the local state
     setSelectedNodeId(value);
     
-    // The fetchNodeUptime effect will be triggered by the selectedNodeId change
-    // This will fetch the uptime and update Redux with the switchCurrentNode action
+    // Immediately fetch the latest uptime data for the selected node
+    try {
+      const { data, error } = await client
+        .from("devices")
+        .select("uptime, device_name, reward_tier")
+        .eq("id", value)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        console.log(
+          `Fetched uptime for node "${data.device_name}" (${value}): ${data.uptime} seconds`
+        );
+        
+        // Update the local uptime map
+        setNodesUptimeMap(prev => ({
+          ...prev,
+          [value]: data.uptime || 0
+        }));
+        
+        // Update Redux store with the selected node's info
+        dispatch(switchCurrentNode({
+          nodeId: value,
+          nodeName: data.device_name || `Device ${value.substring(0, 6)}`,
+          nodeType: 'desktop', // Default to desktop since we don't have this info in the DB
+          rewardTier: data.reward_tier || 'cpu',
+          uptime: data.uptime || 0
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching node uptime during selection:", error);
+    }
   };
 
   const getDeviceIcon = (type: "desktop" | "laptop" | "tablet" | "mobile") => {
@@ -624,6 +800,25 @@ export const NodeControlPanel = () => {
         if (updateError) throw updateError;
 
         console.log(`Node "${data?.device_name}" status updated in database: ${JSON.stringify(data)}`);
+        
+        // Reset all pending and processing tasks for this user/node to pending with null user_id and node_id
+        const { error: taskResetError } = await client
+          .from("tasks")
+          .update({
+            status: "pending",
+            user_id: null,
+            node_id: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq("user_id", userProfile?.id)
+          .eq("node_id", selectedNodeId)
+          .in("status", ["pending", "processing"]);
+          
+        if (taskResetError) {
+          console.error("Error resetting tasks:", taskResetError);
+        } else {
+          console.log("Successfully reset pending and processing tasks for this node");
+        }
 
         // Stop the node in Redux
         dispatch(stopNode());
@@ -635,6 +830,23 @@ export const NodeControlPanel = () => {
             node.id === selectedNodeId ? { ...node, status: "idle" } : node
           )
         );
+        
+        // Update the local uptime map with the latest value from database
+        setTimeout(async () => {
+          const { data: deviceData, error: deviceError } = await client
+            .from("devices")
+            .select("uptime")
+            .eq("id", selectedNodeId)
+            .single();
+            
+          if (!deviceError && deviceData) {
+            console.log(`Updated local uptime map for ${selectedNodeId}: ${deviceData.uptime} seconds`);
+            setNodesUptimeMap(prev => ({
+              ...prev,
+              [selectedNodeId]: deviceData.uptime
+            }));
+          }
+        }, 500);
 
         toast.info(`Node "${selectedNode?.name}" stopped`);
         
@@ -648,7 +860,10 @@ export const NodeControlPanel = () => {
       } finally {
         setIsStopping(false);
       }
-    } else if (selectedNode) {
+          } else if (selectedNode) {
+      // Before starting, refresh uptime data for this node
+      await fetchUserDevicesUptime();
+      
       // Start the node
       setIsStarting(true);
 
@@ -1190,18 +1405,14 @@ export const NodeControlPanel = () => {
           <div className="p-2 sm:p-4 rounded-xl bg-[#1D1D33] flex flex-col">
             <div className="flex items-center gap-1.5 sm:gap-3 mb-0.5 sm:mb-2">
               <div className="icon-bg flex items-center justify-center p-1 sm:p-2">
-                <img
-                  src="/images/success.png"
-                  alt="Success Rate"
-                  className="w-5 h-5 sm:w-7 sm:h-7 object-contain z-10"
-                />
+                <Clock className="w-5 h-5 sm:w-7 sm:h-7 text-white z-10" />
               </div>
               <div className="flex flex-col overflow-hidden">
                 <span className="text-[#515194] text-[10px] sm:text-sm whitespace-nowrap">
-                  Success Rate
+                  Node Uptime
                 </span>
                 <div className="text-sm sm:text-xl font-medium text-white">
-                  {successRate.toFixed(2)}%
+                  {formatUptime(calculatedDisplayUptime)}
                 </div>
               </div>
             </div>

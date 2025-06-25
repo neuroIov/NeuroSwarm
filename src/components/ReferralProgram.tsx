@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Copy,
   Users,
@@ -41,9 +41,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FaWhatsapp } from "react-icons/fa6";
 import { FaSquareXTwitter } from "react-icons/fa6";
 import { FaInstagram, FaTelegram } from "react-icons/fa6";
-
-// Constants for localStorage keys
-const REFERRAL_CODE_KEY = "ref_code";
 
 // Extract referral code from a URL or plain text
 const extractReferralCode = (input: string): string => {
@@ -350,6 +347,25 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
                 Share Referral
               </h2>
             </div>
+            {/* How Referrals Work Section */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/20 rounded-xl mt-4">
+              <p className="text-blue-300 text-sm font-medium mb-2">How Referrals Work:</p>
+              <ul className="text-gray-300 text-xs space-y-2">
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>You get <span className="text-green-400 font-medium">250 SP</span> for each successful referral</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>Your friend gets <span className="text-green-400 font-medium">500 SP</span> when they join with your link</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="mr-2">•</span>
+                  <span>Limited-time promotional period - invite now!</span>
+                </li>
+              </ul>
+            </div>
+
 
             {/* Larger, more prominent referral link */}
             <div className="mb-6 p-4 bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl">
@@ -406,7 +422,7 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
   );
 };
 
-// Thank You Dialog Component
+// Thank You Dialog Component - Updated for manual process
 const ThankYouDialog = ({ isOpen, onClose, referralCode }) => {
   return (
     <AnimatePresence>
@@ -440,10 +456,10 @@ const ThankYouDialog = ({ isOpen, onClose, referralCode }) => {
 
             <div className="text-center mb-6">
               <p className="text-gray-300 mb-2">
-                Thank you for joining through a referral link!
+                Thank you for joining the referral program!
               </p>
               <p className="text-gray-400 text-sm">
-                Your referral code has been automatically applied to your account.
+                You can now start referring others and earning rewards.
               </p>
             </div>
 
@@ -619,6 +635,8 @@ export const ReferralProgram = () => {
   const [totalReferralEarnings, setTotalReferralEarnings] = useState(0);
   const [claimedRewards, setClaimedRewards] = useState(0);
   const [pendingRewards, setPendingRewards] = useState(0);
+  // Add state for automatic fading animation
+  const [fadeAnimation, setFadeAnimation] = useState(false);
   const [isLoadingEarnings, setIsLoadingEarnings] = useState(false);
   const [dataReady, setDataReady] = useState(false);
 
@@ -627,13 +645,11 @@ export const ReferralProgram = () => {
   const [isVerified, setIsVerified] = useState(false);
   const [referralError, setReferralError] = useState("");
   
-  // New state for dialogs
+  // New state for dialogs - Remove unnecessary states
   const [showThankYouDialog, setShowThankYouDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [showSignInRequiredDialog, setShowSignInRequiredDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [storedReferralCode, setStoredReferralCode] = useState<string | null>(null);
-  const [hasAttemptedAutoReferral, setHasAttemptedAutoReferral] = useState(false);
   const [showRewardDialog, setShowRewardDialog] = useState(false);
 
   const dispatch = useDispatch<AppDispatch>();
@@ -663,207 +679,6 @@ export const ReferralProgram = () => {
   const directReferrals = tier1Referrals.length;
   const indirectReferrals = tier2Referrals.length + tier3Referrals.length;
   const totalReferrals = directReferrals + indirectReferrals;
-
-  // Check for referral code in URL when component mounts
-  useEffect(() => {
-    // Get referral code from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const refCode = urlParams.get('ref');
-    
-    if (refCode) {
-      console.log("Found referral code in URL:", refCode);
-      // Store in localStorage
-      localStorage.setItem(REFERRAL_CODE_KEY, refCode);
-      // Update state
-      setStoredReferralCode(refCode);
-    } else {
-      // Check if we have a stored referral code in localStorage
-      const storedCode = localStorage.getItem(REFERRAL_CODE_KEY);
-      if (storedCode) {
-        console.log("Found stored referral code:", storedCode);
-        setStoredReferralCode(storedCode);
-      }
-    }
-  }, []);
-
-  // Check user login status and handle stored referral code
-  useEffect(() => {
-    // If user is not logged in and there's a referral code, show sign in dialog
-    if (storedReferralCode && !userProfile?.id && !loading) {
-      console.log("User not logged in but has referral code, showing sign in dialog");
-      setShowSignInRequiredDialog(true);
-    }
-    
-    // If user is logged in, referral code exists, and we haven't tried auto-referral yet
-    if (userProfile?.id && storedReferralCode && !hasAttemptedAutoReferral) {
-      console.log("User logged in with stored referral code, attempting auto-referral");
-      handleAutoReferral();
-    }
-  }, [userProfile?.id, storedReferralCode, loading]);
-
-  // Handle automatic referral process
-  const handleAutoReferral = async () => {
-    if (!userProfile?.id || !storedReferralCode) {
-      return;
-    }
-    
-    setHasAttemptedAutoReferral(true);
-    console.log("Processing auto-referral with code:", storedReferralCode);
-    
-    // Clear any existing dialogs to prevent multiple dialogs showing
-    setShowErrorDialog(false);
-    setShowThankYouDialog(false);
-    
-    try {
-      // First check if the user already has any referrer
-      const hasReferrer = await checkUserHasReferrer();
-      
-      if (hasReferrer) {
-        console.log("User already has a referrer, showing error dialog");
-        setErrorMessage("You are already part of a referral program and cannot join another one.");
-        setShowErrorDialog(true);
-        // Clear the stored referral code since it can't be used
-        localStorage.removeItem(REFERRAL_CODE_KEY);
-        setStoredReferralCode(null);
-        return;
-      }
-      
-      // Verify the referral code
-      const verifyResult = await dispatch(verifyReferralCode(storedReferralCode));
-      
-      if (!verifyReferralCode.fulfilled.match(verifyResult)) {
-        console.log("Invalid referral code");
-        setErrorMessage("Invalid referral code.");
-        setShowErrorDialog(true);
-        localStorage.removeItem(REFERRAL_CODE_KEY);
-        setStoredReferralCode(null);
-        return;
-      }
-      
-      const { isValid, referrerId } = verifyResult.payload as {
-        isValid: boolean;
-        referrerId: string;
-      };
-      
-      if (!isValid) {
-        console.log("Invalid referral code");
-        setErrorMessage("Invalid referral code.");
-        setShowErrorDialog(true);
-        localStorage.removeItem(REFERRAL_CODE_KEY);
-        setStoredReferralCode(null);
-        return;
-      }
-      
-      // Check if referrer is the current user (can't refer yourself)
-      if (referrerId === userProfile.id) {
-        console.log("User tried to use their own referral code");
-        setErrorMessage("You cannot use your own referral code.");
-        setShowErrorDialog(true);
-        localStorage.removeItem(REFERRAL_CODE_KEY);
-        setStoredReferralCode(null);
-        return;
-      }
-      
-      // Check if user already has a referral relationship with this code
-      const hasRelationship = await checkExistingReferralRelationship(referrerId);
-      if (hasRelationship) {
-        console.log("User already has a relationship with this referrer");
-        setErrorMessage("You are already referred by this user.");
-        setShowErrorDialog(true);
-        localStorage.removeItem(REFERRAL_CODE_KEY);
-        setStoredReferralCode(null);
-        return;
-      }
-      
-      // Create the referral relationship
-      const resultAction = await dispatch(
-        createReferralRelationship({
-          referrerCode: storedReferralCode,
-          referredId: userProfile.id,
-        })
-      );
-      
-      if (createReferralRelationship.fulfilled.match(resultAction)) {
-        console.log("Successfully created referral relationship!");
-        
-        // Give 100 SP to the referrer (user A)
-        try {
-          const { referrerId } = verifyResult.payload as { isValid: boolean; referrerId: string };
-          if (referrerId) {
-            const client = getSwarmSupabase();
-            
-            // Create an earnings entry for the referral
-            await client.from("earnings").insert({
-              user_id: referrerId,
-              amount: 100,
-              earning_type: "referral",
-              task_id: null
-            });
-            
-            // Update earnings_history by fetching latest amount and adding to it
-            const { data: latestEarnings, error: fetchError } = await client
-              .from("earnings_history")
-              .select("*")
-              .eq("user_id", referrerId)
-              .order("timestamp", { ascending: false })
-              .limit(1)
-              .single();
-            
-            if (fetchError && fetchError.code !== "PGRST116") {
-              console.error("Error fetching latest earnings history:", fetchError);
-            }
-            
-            const currentAmount = latestEarnings ? parseFloat(latestEarnings.amount) : 0;
-            const newAmount = currentAmount + 100;
-            const currentTaskCount = latestEarnings ? latestEarnings.task_count : 0;
-            
-            // Insert or update earnings_history
-            if (latestEarnings) {
-              await client
-                .from("earnings_history")
-                .update({ 
-                  amount: newAmount,
-                  timestamp: new Date().toISOString()
-                })
-                .eq("id", latestEarnings.id);
-            } else {
-              await client
-                .from("earnings_history")
-                .insert({
-                  user_id: referrerId,
-                  amount: 100,
-                  task_count: currentTaskCount,
-                  payout_status: "pending"
-                });
-            }
-            
-            console.log("Added 100 SP reward to referrer:", referrerId);
-          }
-        } catch (err) {
-          console.error("Error adding referrer reward:", err);
-        }
-        
-        // Show thank you dialog
-        setShowThankYouDialog(true);
-        // Show the reward dialog
-        setShowRewardDialog(true);
-        // Clear the stored referral code since it's been used
-        localStorage.removeItem(REFERRAL_CODE_KEY);
-        setStoredReferralCode(null);
-        // Refresh referral data
-        setTimeout(() => loadReferralData(), 500); // Small delay to ensure DB has updated
-      } else {
-        console.log("Failed to create referral relationship");
-        setErrorMessage("Failed to join referral program. Please try again.");
-        setShowErrorDialog(true);
-        // Don't clear the referral code in case they want to try again
-      }
-    } catch (error) {
-      console.error("Error in auto-referral process:", error);
-      setErrorMessage("An error occurred while processing your referral.");
-      setShowErrorDialog(true);
-    }
-  };
 
   // Format username - remove wallet part helper function
   const formatDisplayName = (name: string) => {
@@ -1340,7 +1155,7 @@ export const ReferralProgram = () => {
             // Create an earnings entry for the referral
             await client.from("earnings").insert({
               user_id: referrerId,
-              amount: 100,
+              amount: 250,
               earning_type: "referral",
               task_id: null
             });
@@ -1534,7 +1349,7 @@ export const ReferralProgram = () => {
       <ThankYouDialog 
         isOpen={showThankYouDialog}
         onClose={() => setShowThankYouDialog(false)}
-        referralCode={storedReferralCode}
+        referralCode={referralCode}
       />
       
       <ErrorDialog 
@@ -1587,21 +1402,67 @@ export const ReferralProgram = () => {
       {/* Share and Tweet Buttons - Only show if user is logged in */}
       {userProfile?.id ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
-          <button
-            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
+          <motion.button
+            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2 relative overflow-hidden"
             onClick={() => setIsShareModalOpen(true)}
+            initial="initial"
+            whileHover="hover"
           >
             <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-sm sm:text-base">Share Referral</span>
-          </button>
+            <div className="relative w-36 text-center">
+              <motion.span 
+                className="text-sm sm:text-base absolute left-0 right-0 whitespace-nowrap"
+                variants={{
+                  initial: { opacity: 1 },
+                  hover: { opacity: 0 }
+                }}
+                transition={{ duration: 0.3 }}
+              >
+                Promotional Period
+              </motion.span>
+              <motion.span 
+                className="text-sm sm:text-base whitespace-nowrap"
+                variants={{
+                  initial: { opacity: 0 },
+                  hover: { opacity: 1 }
+                }}
+                transition={{ duration: 0.3 }}
+              >
+                Share Referral
+              </motion.span>
+            </div>
+          </motion.button>
 
-          <button
-            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2"
+          <motion.button
+            className="gradient-button py-3 sm:py-4 flex items-center justify-center gap-2 relative overflow-hidden"
             onClick={() => openSocialShare(getShareMessage("Twitter"))}
+            initial="initial"
+            whileHover="hover"
           >
             <FaSquareXTwitter className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-sm sm:text-base">Tweet Referral</span>
-          </button>
+            <div className="relative w-36 text-center">
+              <motion.span 
+                className="text-sm sm:text-base absolute left-0 right-0 whitespace-nowrap"
+                variants={{
+                  initial: { opacity: 1 },
+                  hover: { opacity: 0 }
+                }}
+                transition={{ duration: 0.3 }}
+              >
+                Promotional Period
+              </motion.span>
+              <motion.span 
+                className="text-sm sm:text-base whitespace-nowrap"
+                variants={{
+                  initial: { opacity: 0 },
+                  hover: { opacity: 1 }
+                }}
+                transition={{ duration: 0.3 }}
+              >
+                Tweet Referral
+              </motion.span>
+            </div>
+          </motion.button>
         </div>
       ) : (
         <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 p-5 rounded-xl border border-blue-500/20 text-center">

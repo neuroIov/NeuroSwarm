@@ -63,8 +63,7 @@ export const EarningsDashboard = () => {
   const [debugMode, setDebugMode] = useState<boolean>(false);
   const [debugData, setDebugData] = useState<any>(null);
   const [checkInLoading, setCheckInLoading] = useState<boolean>(false);
-  const [streakCompleted, setStreakCompleted] = useState<boolean>(false);
-  const [streakReward, setStreakReward] = useState<number>(0);
+  // Removed streakCompleted and streakReward states as they're no longer needed
   const [showWalletPrompt, setShowWalletPrompt] = useState<boolean>(true);
 
   const { session } = useSession();
@@ -272,12 +271,14 @@ export const EarningsDashboard = () => {
     }
   };
 
-  // Calculate daily average based on completed tasks and time range
-  const calculateDailyAverage = () => {
+  // Calculate monthly expected earnings based on recent performance
+  const calculateMonthlyExpectedEarnings = () => {
     if (earnings.completedTasks <= 0) return 0;
 
-    // Simple daily average calculation
-    return earnings.totalEarnings / 30; // Simplified: total earnings divided by a month
+    // Calculate average daily earnings from recent history
+    const dailyAverage = earnings.totalEarnings / 30;
+    // Project to monthly (30 days)
+    return dailyAverage * 30;
   };
 
   // Get total balance directly from earnings.pendingEarnings (from earnings_history)
@@ -368,21 +369,13 @@ export const EarningsDashboard = () => {
       switch (result.status) {
         case "checked_in":
           toast.success(
-            `Day ${result.streak} checked in! Keep the streak going!`
+            `Day ${result.streak} checked in! You earned ${result.amount} SP!`
           );
+          // Refresh earnings data to show updated balance
+          refreshData();
           break;
         case "already_checked_in":
           toast.info("You've already checked in today");
-          break;
-        case "rewarded":
-          toast.success(
-            `Congratulations! You've completed a 7-day streak and earned ${result.amount} SP!`
-          );
-          // Show streak completion message
-          setStreakCompleted(true);
-          setStreakReward(result.amount || 280);
-          // Refresh earnings data to show updated balance
-          refreshData();
           break;
         case "error":
           toast.error(`Error: ${result.error}`);
@@ -396,18 +389,7 @@ export const EarningsDashboard = () => {
     }
   };
 
-  // Add this to clear the streak completion message after a delay
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (streakCompleted) {
-      timer = setTimeout(() => {
-        setStreakCompleted(false);
-      }, 10000); // Hide after 10 seconds
-    }
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [streakCompleted]);
+  // No longer need the streak completion message effect with immediate rewards
 
   // Chart tooltip components
   const CustomTooltip = ({
@@ -611,17 +593,28 @@ export const EarningsDashboard = () => {
       <div className="flex justify-between items-center mb-8 flex-wrap gap-2">
         <h2 className="text-xl">Earnings Dashboard</h2>
         <div className="flex gap-2">
-          <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-            <SelectTrigger className="w-[80px] h-8 m-0 bg-[#1D1D33] rounded-full ">
-              <SelectValue placeholder="Time Range" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="daily">Daily</SelectItem>
-              <SelectItem value="weekly">Weekly</SelectItem>
-              <SelectItem value="monthly">Monthly</SelectItem>
-              <SelectItem value="all-time">All Time</SelectItem>
-            </SelectContent>
-          </Select>
+{
+
+  false && <>          <Select value={timeRange} onValueChange={handleTimeRangeChange}>
+  <SelectTrigger className="w-[80px] h-8 m-0 bg-[#1D1D33] rounded-full ">
+    <SelectValue placeholder="Time Range" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="daily">Daily</SelectItem>
+    <SelectItem value="weekly">Weekly</SelectItem>
+    <SelectItem value="monthly">Monthly</SelectItem>
+    <SelectItem value="all-time">All Time</SelectItem>
+  </SelectContent>
+</Select>
+<Button
+  variant="outline"
+  className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
+  size="sm"
+  onClick={toggleDebugMode}
+>
+  <Bug className="h-4 w-4" />
+</Button></>
+}
           <Button
             variant="outline"
             className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
@@ -631,14 +624,7 @@ export const EarningsDashboard = () => {
           >
             Refresh
           </Button>
-          <Button
-            variant="outline"
-            className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
-            size="sm"
-            onClick={toggleDebugMode}
-          >
-            <Bug className="h-4 w-4" />
-          </Button>
+
         </div>
       </div>
 
@@ -711,9 +697,12 @@ export const EarningsDashboard = () => {
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">Daily Average</span>
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-[#515194]">Monthly Expected</span>
+                <InfoTooltip content="Projected monthly earnings based on your recent performance" />
+              </div>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : calculateDailyAverage().toFixed(2)} SP
+                {loading ? "..." : calculateMonthlyExpectedEarnings().toFixed(2)} SP
               </span>
             </div>
           </div>
@@ -875,14 +864,14 @@ export const EarningsDashboard = () => {
 
             <div>
               <div className="text-sm text-[#515194] mb-1">Minimum Payout</div>
-              <div className="font-medium text-white">100 Swarm Point</div>
+              <div className="font-medium text-white">10,000 Swarm Point</div>
             </div>
 
             <div>
               <div className="text-sm text-[#515194] mb-1">
                 Next Payout Date
               </div>
-              <div className="font-medium text-white">30/04/2025</div>
+              <div className="font-medium text-white">Coming Soon</div>
             </div>
 
             <Button
@@ -927,16 +916,19 @@ export const EarningsDashboard = () => {
                     <div className="max-w-xs">
                       <p className="mb-2">Check in daily to earn rewards!</p>
                       <p className="mb-1">
-                        • Visit daily for 7 consecutive days
+                        • Each day you check in, earn SP instantly
                       </p>
                       <p className="mb-1">
-                        • If you miss a day, your streak resets
+                        • Rewards increase with consecutive days
                       </p>
                       <p className="mb-1">
-                        • Complete a 7-day streak to earn 280 SP
+                        • Day 1: 10 SP, Day 2: 20 SP, Day 3: 30 SP, etc.
+                      </p>
+                      <p className="mb-1">
+                        • If you miss a day, your streak resets to day 1
                       </p>
                       <p className="text-xs text-blue-300 mt-2">
-                        Rewards are added to your balance automatically
+                        Rewards are added to your balance immediately
                       </p>
                     </div>
                   }
@@ -976,42 +968,49 @@ export const EarningsDashboard = () => {
             points={10}
             isActive={streakData.streak === 0}
             isCompleted={streakData.streak >= 1}
+            description="Earn instantly"
           />
           <DailyRewardCard
             day={2}
             points={20}
             isActive={streakData.streak === 1}
             isCompleted={streakData.streak >= 2}
+            description="Earn instantly"
           />
           <DailyRewardCard
             day={3}
             points={30}
             isActive={streakData.streak === 2}
             isCompleted={streakData.streak >= 3}
+            description="Earn instantly"
           />
           <DailyRewardCard
             day={4}
             points={40}
             isActive={streakData.streak === 3}
             isCompleted={streakData.streak >= 4}
+            description="Earn instantly"
           />
           <DailyRewardCard
             day={5}
             points={50}
             isActive={streakData.streak === 4}
             isCompleted={streakData.streak >= 5}
+            description="Earn instantly"
           />
           <DailyRewardCard
             day={6}
             points={60}
             isActive={streakData.streak === 5}
             isCompleted={streakData.streak >= 6}
+            description="Earn instantly"
           />
           <DailyRewardCard
             day={7}
             points={70}
             isActive={streakData.streak === 6}
-            isCompleted={false}
+            isCompleted={streakData.streak >= 7}
+            description="Earn instantly"
           />
         </div>
 
@@ -1031,32 +1030,7 @@ export const EarningsDashboard = () => {
         )}
       </div>
 
-      {/* Streak completion message */}
-      {streakCompleted && (
-        <div className="w-full p-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-lg mt-4 border border-blue-500/30 flex items-center justify-between">
-          <div className="flex items-center">
-            <div className="bg-blue-500/20 p-2 rounded-full mr-3">
-              <Check className="h-6 w-6 text-blue-400" />
-            </div>
-            <div>
-              <h4 className="text-lg font-medium text-blue-300">
-                7-Day Streak Completed!
-              </h4>
-              <p className="text-sm text-slate-300">
-                You've earned {streakReward} SP for your consistency
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-slate-400 hover:text-slate-300"
-            onClick={() => setStreakCompleted(false)}
-          >
-            Dismiss
-          </Button>
-        </div>
-      )}
+      {/* We no longer need the streak completion message with immediate rewards */}
 
       {/* Recent Transactions */}
       <div className="w-full p-4 bg-[#161628] rounded-lg data-panel mt-6">
@@ -1262,11 +1236,13 @@ const DailyRewardCard = ({
   points,
   isActive,
   isCompleted,
+  description,
 }: {
   day: number;
   points: number;
   isActive: boolean;
   isCompleted: boolean;
+  description?: string;
 }) => {
   return (
     <div
@@ -1299,6 +1275,11 @@ const DailyRewardCard = ({
           <div className="text-xs sm:text-sm text-blue-400/80 mt-1">
             {points} SP
           </div>
+          {description && (
+            <div className="text-[10px] sm:text-xs text-blue-300/60 mt-1">
+              {description}
+            </div>
+          )}
         </div>
         {isCompleted && (
           <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-1">

@@ -11,7 +11,7 @@
   "currency_description": "Select your preferred currency for displaying values.",
   "display_currency": "Display Currency",
   "reset_password": "Reset Password",
-  "reset_password_description": "Request a password reset link to be sent to your email.",
+  "reset_password_description": "Request a OTP (One Time Password) to your email for reset password.",
   "your_email_address": "Your Email Address",
   "enter_email": "Enter your email address",
   "send_link": "Send Link",
@@ -24,6 +24,14 @@
   "permanently_delete": "Permanently Delete Account",
   "deleting_account": "Deleting Account...",
   "cancel": "Cancel",
+  "forgot_password": "Forgot Password",
+  "forgot_password_description": "Enter your email address and we'll send you an OTP to reset your password.",
+  "enter_otp": "Enter OTP",
+  "new_password": "New Password",
+  "confirm_password": "Confirm Password",
+  "otp_sent_to": "OTP code has been sent to",
+  "send_otp": "Send OTP",
+  "resetting_password": "Resetting Password...",
   "helpCenter": {
     "title": "Help Center",
     "contactSupport": "Contact Support",
@@ -110,7 +118,8 @@
       "processingTime": "Processing Time",
       "avgUptime": "Avg. Uptime",
       "totalUsers": "Total Users",
-      "activeNodes": "Active Nodes"
+      "activeNodes": "Total Compute Usage",
+      "totalEarnings": "Total Earnings"
     },
     "tasks": {
       "title": "Recent Global Tasks",

@@ -11,7 +11,7 @@
   "currency_description": "Seleccione su moneda preferida para mostrar valores.",
   "display_currency": "Moneda de visualización",
   "reset_password": "Restablecer contraseña",
-  "reset_password_description": "Solicite un enlace para restablecer su contraseña que se enviará a su correo electrónico.",
+  "reset_password_description": "Solicite un OTP (One Time Password) a su correo electrónico para restablecer su contraseña.",
   "your_email_address": "Su dirección de correo electrónico",
   "enter_email": "Ingrese su dirección de correo electrónico",
   "send_link": "Enviar enlace",
@@ -24,6 +24,14 @@
   "permanently_delete": "Eliminar cuenta permanentemente",
   "deleting_account": "Eliminando cuenta...",
   "cancel": "Cancelar",
+  "forgot_password": "Olvidé mi contraseña",
+  "forgot_password_description": "Ingrese su dirección de correo electrónico y le enviaremos un OTP para restablecer su contraseña.",
+  "enter_otp": "Ingresar OTP",
+  "new_password": "Nueva contraseña",
+  "confirm_password": "Confirmar contraseña",
+  "otp_sent_to": "El código OTP ha sido enviado a",
+  "send_otp": "Enviar OTP",
+  "resetting_password": "Restableciendo contraseña...",
   "helpCenter": {
     "title": "Centro de Ayuda",
     "contactSupport": "Contactar Soporte",
@@ -36,21 +44,21 @@
     "faqs": {
       "getStarted": {
         "question": "¿Cómo empiezo con NeuroSwarm?",
-        "answer": "¡Comenzar con NeuroSwarm es fácil! Solo siga estos pasos:",
+        "answer": "¡Empezar con NeuroSwarm es fácil! Solo sigue estos pasos:",
         "steps": [
-          "Cree una cuenta o inicie sesión si ya tiene una",
-          "Complete la configuración de su perfil",
-          "Explore las tareas y oportunidades disponibles",
-          "Únase a su primer enjambre y comience a contribuir"
+          "Crea una cuenta o inicia sesión si ya tienes una",
+          "Completa la configuración de tu perfil",
+          "Explora las tareas y oportunidades disponibles",
+          "Únete a tu primer enjambre y comienza a contribuir"
         ]
       },
       "earnings": {
         "question": "¿Cómo funcionan las ganancias y los pagos?",
-        "answer": "Las ganancias se calculan en función de sus contribuciones a los enjambres y tareas. Los pagos se procesan al final de cada ciclo, generalmente mensualmente. Puede realizar un seguimiento de sus ganancias en el panel de control y retirar fondos una vez que alcancen el umbral mínimo."
+        "answer": "Las ganancias se calculan en función de tus contribuciones a enjambres y tareas. Los pagos se procesan al final de cada ciclo, generalmente mensual. Puedes realizar un seguimiento de tus ganancias en el panel de control y retirar fondos una vez que alcancen el umbral mínimo."
       },
       "skills": {
         "question": "¿Qué habilidades necesito para participar?",
-        "answer": "NeuroSwarm da la bienvenida a participantes con diversos niveles de habilidad. Diferentes enjambres pueden requerir diferentes experiencias, desde el etiquetado de datos hasta el entrenamiento complejo de IA. Puede explorar oportunidades que coincidan con sus habilidades y nivel de experiencia."
+        "answer": "NeuroSwarm da la bienvenida a participantes con diversos niveles de habilidad. Diferentes enjambres pueden requerir diferentes experiencias, desde etiquetado de datos hasta entrenamiento complejo de IA. Puedes buscar oportunidades que coincidan con tus habilidades y nivel de experiencia."
       },
       "security": {
         "question": "¿Qué tan segura está mi información en NeuroSwarm?",
@@ -84,16 +92,16 @@
       "hours": "9:00 AM - 6:00 PM UTC"
     },
     "resources": {
-      "title": "Recursos Adicionales",
+      "title": "Additional Resources",
       "guides": {
-        "title": "Guías de Usuario",
-        "description": "Guías paso a paso para ayudarle a navegar por la plataforma de manera efectiva",
-        "button": "Explorar Guías"
+        "title": "User Guides",
+        "description": "Step-by-step guides to help you navigate the platform effectively",
+        "button": "Browse Guides"
       },
       "community": {
-        "title": "Foro de la Comunidad",
-        "description": "Conéctese con otros usuarios, comparta consejos y obtenga soporte de la comunidad",
-        "button": "Visitar Foro"
+        "title": "Community Forum",
+        "description": "Connect with other users, share tips, and get community support",
+        "button": "Visit Forum"
       }
     }
   },
@@ -110,7 +118,8 @@
       "processingTime": "Tiempo de Procesamiento",
       "avgUptime": "Tiempo Activo Promedio",
       "totalUsers": "Usuarios Totales",
-      "activeNodes": "Nodos Activos"
+      "activeNodes": "Uso Total de Cómputo",
+      "totalEarnings": "Ganancias Totales"
     },
     "tasks": {
       "title": "Tareas Globales Recientes",
@@ -120,7 +129,7 @@
       "status": {
         "completed": "Completada",
         "processing": "Procesando",
-        "pending": "Pendiente",
+        "pending": "Pendiente", 
         "failed": "Fallida"
       }
     },

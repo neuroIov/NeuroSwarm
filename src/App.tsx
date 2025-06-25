@@ -196,13 +196,18 @@ const AppContent = () => {
 
   // Sync uptime on app close/refresh
   useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
       if (isActive) {
         console.log("App closing/refreshing - syncing uptime data...");
 
         // Get current node state
         const { nodeId, startTime, totalUptime } = store.getState().node;
+<<<<<<< HEAD
 
+=======
+        const userId = userProfile?.id;
+         
+>>>>>>> 51a38408e5e08deaa17f1d6c16a869bf16310816
         // Calculate current session uptime
         if (startTime && nodeId) {
           const sessionUptime = Math.floor((Date.now() - startTime) / 1000);
@@ -221,10 +226,38 @@ const AppContent = () => {
             // Also store node stop info
             localStorage.setItem("nodeToStop", nodeId);
             localStorage.setItem("nodeStopTime", new Date().toISOString());
+<<<<<<< HEAD
 
             console.log(
               `Stored pending sync for node ${nodeId}: ${finalUptime} seconds`
             );
+=======
+             
+            console.log(`Stored pending sync for node ${nodeId}: ${finalUptime} seconds`);
+
+            // Reset all pending and processing tasks for this user/node to pending with null user_id and node_id
+            // Note: This is a fire-and-forget call since we can't await in beforeunload reliably
+            if (userId && swarmSupabase) {
+              swarmSupabase
+                .from("tasks")
+                .update({
+                  status: "pending",
+                  user_id: null,
+                  node_id: null,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("user_id", userId)
+                .eq("node_id", nodeId)
+                .in("status", ["pending", "processing"])
+                .then(({ error }) => {
+                  if (error) {
+                    console.error("Error resetting tasks on page unload:", error);
+                  } else {
+                    console.log("Successfully reset pending and processing tasks on page unload");
+                  }
+                });
+            }
+>>>>>>> 51a38408e5e08deaa17f1d6c16a869bf16310816
           } catch (e) {
             console.error("Failed to store sync info:", e);
           }

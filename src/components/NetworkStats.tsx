@@ -1,16 +1,22 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { ArrowUp, Clock } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "@/store";
-import { formatUptime } from "@/utils/timeUtils";
 import { useSession } from "@/hooks/useSession";
+<<<<<<< HEAD
 import {
   updateUptime,
   setUptimeFromDatabase,
   syncUptime,
 } from "@/store/slices/nodeSlice";
+=======
+import axios from "axios"
+
+// Import the Supabase anon key
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_KEY;
+>>>>>>> 51a38408e5e08deaa17f1d6c16a869bf16310816
 
 type StatCardProps = {
   title: string;
@@ -90,6 +96,7 @@ export const NetworkStats = () => {
   const [totalNodes, setTotalNodes] = useState(0);
   const [totalActiveNodes, setTotalActiveNodes] = useState(0);
   const [networkLoad, setNetworkLoad] = useState(0);
+<<<<<<< HEAD
   const [nodesUptimeMap, setNodesUptimeMap] = useState<Record<string, number>>(
     {}
   );
@@ -231,65 +238,119 @@ export const NetworkStats = () => {
     nodesUptimeMap,
     totalStoredUptime,
   ]);
+=======
+  const [previousNodeState, setPreviousNodeState] = useState<boolean | null>(null);
+  const [userComputeUsage, setUserComputeUsage] = useState(0);
+  const [totalTasks, setTotalTasks] = useState(0);
 
-  // Listen for node changes to update the displayed uptime
+  // Get node status from redux store
+  const { isActive, nodeId } = useSelector(
+    (state: RootState) => state.node
+  );
+
+  // Update active nodes count locally when node status changes
   useEffect(() => {
-    if (nodeId) {
-      // When node ID changes, fetch the latest uptime for all devices
-      fetchUserDevicesUptime();
-    }
-  }, [nodeId]);
-
-  const getTotalNodes = async () => {
-    try {
-      const { data, error } = await client.from("devices").select("id");
-      if (error) throw error;
-      setTotalNodes(data?.length || 0);
-      console.log("Total nodes updated:", data?.length || 0);
-    } catch (error) {
-      console.error("Error getting total nodes:", error);
-    }
-  };
-
-  const getTotalActiveNodes = async () => {
-    try {
-      const { data, error } = await client
-        .from("devices")
-        .select("id, status")
-        .eq("status", "busy");
-
-      if (error) throw error;
-
-      console.log("Active nodes data:", data);
-      setTotalActiveNodes(data?.length || 0);
-      console.log("Active nodes updated:", data?.length || 0);
-
-      // Calculate network load based on active nodes / total nodes
+    // Only run this after initial render and when isActive changes
+    if (previousNodeState !== null && previousNodeState !== isActive) {
+      if (isActive) {
+        // Node was activated - increment active nodes count
+        setTotalActiveNodes(prev => prev + 1);
+        console.log("Node activated: Incrementing active nodes count locally");
+      } else if (previousNodeState === true) {
+        // Node was deactivated - decrement active nodes count
+        setTotalActiveNodes(prev => Math.max(0, prev - 1));
+        console.log("Node deactivated: Decrementing active nodes count locally");
+      }
+      
+      // Recalculate network load
       if (totalNodes > 0) {
-        const loadPercentage = Math.round(
-          ((data?.length || 0) / totalNodes) * 100
-        );
+        const newActiveCount = isActive ? totalActiveNodes + 1 : Math.max(0, totalActiveNodes - 1);
+        const loadPercentage = Math.round((newActiveCount / totalNodes) * 100);
         setNetworkLoad(loadPercentage);
       }
+    }
+    
+    // Update previous state for next comparison
+    setPreviousNodeState(isActive);
+  }, [isActive, totalNodes]);
+>>>>>>> 51a38408e5e08deaa17f1d6c16a869bf16310816
+
+  // Fetch global stats from edge function
+  const fetchGlobalStats = async () => {
+    try {
+      // Include user_id as a parameter if the user is logged in
+      const params = userProfile?.id ? { user_id: userProfile.id } : {};
+      
+      const response = await axios.get("https://zphiymepbkzgczxorqgz.supabase.co/functions/v1/luffy", {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        params: params
+      });
+
+      const data = response.data;
+    
+      console.log("Global stats:", data);
+    
+      if (data) {
+        setTotalNodes(data?.totalUsers || 0);
+        setTotalActiveNodes(data?.activeDevices || 0);
+        setTotalTasks(data?.completedTasks || 0);
+        // Set user compute usage if available
+        if (data.userComputeUsage !== null) {
+          setUserComputeUsage(data.userComputeUsage);
+        }
+        
+        // Calculate network load
+        if (data.totalUsers > 0) {
+          const loadPercentage = Math.round(((data.activeDevices || 0) / data.totalUsers) * 100);
+          setNetworkLoad(loadPercentage);
+        }
+        
+        console.log("Global stats updated from API:", data);
+        
+        // Cache the result
+        localStorage.setItem("global_stats", JSON.stringify({
+          total_nodes: data.totalUsers || 0,
+          active_nodes: data.activeDevices || 0,
+          total_tasks: data.completedTasks || 0,
+          user_compute_usage: data.userComputeUsage || 0,
+          timestamp: Date.now()
+        }));
+      }
     } catch (error) {
-      console.error("Error getting total active nodes:", error);
+      console.error("Error fetching global stats:", error);
+      
+      // Use cached data if available
+      const cachedData = localStorage.getItem("global_stats");
+      if (cachedData) {
+        const parsedData = JSON.parse(cachedData);
+        setTotalNodes(parsedData.total_nodes);
+        setTotalActiveNodes(parsedData.active_nodes);
+        setTotalTasks(parsedData.total_tasks);
+        setUserComputeUsage(parsedData.user_compute_usage || 0);
+        if (parsedData.total_nodes > 0) {
+          const loadPercentage = Math.round((parsedData.active_nodes / parsedData.total_nodes) * 100);
+          setNetworkLoad(loadPercentage);
+        }
+      }
     }
   };
 
   // Update active nodes count when a node's status changes in redux
   useEffect(() => {
-    // When node becomes active or inactive, immediately update the active nodes count
-    if (nodeId) {
-      getTotalActiveNodes();
-    }
+    // When node becomes active or inactive, we don't need to fetch global stats
+    // because we're updating the count locally
+    // We'll still fetch periodically via the polling mechanism
   }, [isActive, nodeId]);
 
-  // Fetch initial data
+  // Set up polling for global stats and user data
   useEffect(() => {
-    getTotalNodes();
-    getTotalActiveNodes();
-    fetchUserDevicesUptime();
+    // Fetch initial data
+    fetchGlobalStats();
 
+<<<<<<< HEAD
     // Set up polling for active nodes with longer interval
     const activeNodesInterval = setInterval(() => {
       getTotalActiveNodes();
@@ -392,8 +453,17 @@ export const NetworkStats = () => {
         clearTimeout(updateTimeout);
       }
       devicesSubscription.unsubscribe();
+=======
+    // Poll for global stats every minute
+    const globalStatsInterval = setInterval(() => {
+      fetchGlobalStats();
+    }, 60000); // Every minute
+
+    return () => {
+      clearInterval(globalStatsInterval);
+>>>>>>> 51a38408e5e08deaa17f1d6c16a869bf16310816
     };
-  }, [client, userProfile?.id]);
+  }, [userProfile?.id]);
 
   // Check if node should be stopped due to time limit
   useEffect(() => {
@@ -406,18 +476,25 @@ export const NetworkStats = () => {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 md:mb-10 w-full">
       <StatCard
-        title="Total Nodes"
+        title="Active Nodes"
         value={totalNodes}
-        unit="nodes"
+        unit="users"
         changePercentage={5.8}
-        info="Total number of registered nodes across the Swarm network"
+        info="Total number of registered users across the Swarm network"
+      />
+              <StatCard
+        title="Compute Usage"
+        value={(userComputeUsage || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        unit="TFLOPs"
+        changePercentage={2.3}
+        info="Your compute usage contribution to the network"
       />
       <StatCard
-        title="Active Nodes"
-        value={totalActiveNodes}
-        unit="nodes"
-        changePercentage={0.8}
-        info="Currently active nodes processing tasks on the network"
+        title="Total AI Content Generated"
+        value={totalTasks}
+        unit="tasks"
+        changePercentage={7.2}
+        info="Total number of tasks processed by the network"
       />
       <StatCard
         title="Your Plan"
@@ -430,6 +507,7 @@ export const NetworkStats = () => {
         unit=""
         info="Current utilization of the network's total processing capacity"
       />
+<<<<<<< HEAD
       <StatCard
         title="Uptime"
         value={formatUptime(calculatedDisplayUptime)}
@@ -441,6 +519,8 @@ export const NetworkStats = () => {
         }
         isUptime={true}
       />
+=======
+>>>>>>> 51a38408e5e08deaa17f1d6c16a869bf16310816
     </div>
   );
 };

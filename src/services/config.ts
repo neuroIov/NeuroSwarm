@@ -6,20 +6,20 @@ export const TASK_PROCESSING_CONFIG = {
     // Processing time in seconds for different task types
     PROCESSING_TIME: {
         image: 300,
-        text: 150
+        text: 150,
     },
     // Hardware-specific time multipliers - lower means faster processing
     HARDWARE_MULTIPLIERS: {
-        webgpu: 0.5, //2x
-        wasm: 0.65, //1.6x
-        webgl: 0.85, //1.3x
-        cpu: 1.0 //1x
+        webgpu: 0.65,
+        wasm: 0.775,
+        webgl: 0.8875,
+        cpu: 1.0
     },
 
-    
+    // Earnings per task for different task types
     EARNINGS_NLOVE: {
-        image: 2,
-        text: 1,
+        image: 8,
+        text: 4,
     },
 
     

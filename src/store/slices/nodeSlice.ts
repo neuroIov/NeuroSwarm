@@ -125,10 +125,71 @@ export const checkPendingSyncOperations = async () => {
         key.startsWith('node-uptime-sync-pending-')
     );
     
-    if (pendingSyncKeys.length === 0) return;
+    // Check for node stop operations
+    const nodeToStop = localStorage.getItem("nodeToStop");
+    const nodeStopTime = localStorage.getItem("nodeStopTime");
     
-    console.log(`Found ${pendingSyncKeys.length} pending sync operations`);
+    if (pendingSyncKeys.length === 0 && !nodeToStop) return;
     
+    console.log(`Found ${pendingSyncKeys.length} pending sync operations${nodeToStop ? ' and a node stop operation' : ''}`);
+    
+    // Process node stop operation first
+    if (nodeToStop && nodeStopTime) {
+        try {
+            const stopTime = new Date(nodeStopTime);
+            const now = new Date();
+            const timeDiff = now.getTime() - stopTime.getTime();
+            
+            // If the stored data is recent (within last 5 minutes), handle tasks and update the node status
+            if (timeDiff < 300000) { // 5 minutes
+                console.log(`Processing node stop for node ${nodeToStop} from ${timeDiff/1000}s ago`);
+                
+                const client = getSwarmSupabase();
+                if (client) {
+                    // First update the node status to offline
+                    await client
+                        .from('devices')
+                        .update({ 
+                            status: "offline",
+                            last_seen: new Date().toISOString()
+                        })
+                        .eq('id', nodeToStop);
+                    
+                    // Then reset tasks related to this node
+                    const { error: taskResetError } = await client
+                        .from('tasks')
+                        .update({
+                            status: 'pending',
+                            user_id: null,
+                            node_id: null,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('node_id', nodeToStop)
+                        .in('status', ['pending', 'processing']);
+                    
+                    if (taskResetError) {
+                        console.error('Error resetting tasks on recovery:', taskResetError);
+                    } else {
+                        console.log(`Successfully reset tasks for node ${nodeToStop}`);
+                    }
+                    
+                    console.log(`Node ${nodeToStop} has been marked offline and tasks reset`);
+                }
+            }
+            
+            // Clean up the node stop info even if it's old
+            localStorage.removeItem("nodeToStop");
+            localStorage.removeItem("nodeStopTime");
+            
+        } catch (error) {
+            console.error('Error processing node stop operation:', error);
+            // Clean up to avoid retrying invalid data
+            localStorage.removeItem("nodeToStop");
+            localStorage.removeItem("nodeStopTime");
+        }
+    }
+    
+    // Process pending sync operations
     for (const key of pendingSyncKeys) {
         try {
             const nodeId = key.replace('node-uptime-sync-pending-', '');
