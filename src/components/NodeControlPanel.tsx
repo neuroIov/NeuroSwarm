@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { getTierByName, getMaxUptimeByTier } from "@/lib/subscriptionTiers";
 import { formatUptime } from "@/utils/timeUtils";
 
@@ -115,6 +115,9 @@ export const NodeControlPanel = () => {
   const client = getSwarmSupabase();
   const { session } = useSession();
   const userProfile = session.userProfile;
+  
+  // Add render count tracking for debugging
+  const renderCount = React.useRef(0);
 
   const {
     isActive,
@@ -332,8 +335,27 @@ export const NodeControlPanel = () => {
     }
   };
   
-  // Fetch uptime data from all user's devices from the database
-  const fetchUserDevicesUptime = async () => {
+  // Set up polling for user uptime data
+  useEffect(() => {
+    // Skip if user is not logged in
+    if (!userProfile?.id) return;
+    
+    // Fetch initial data
+    fetchUserDevicesUptime();
+
+    // Create ONE single data refresh interval instead of multiple ones
+    const dataRefreshInterval = setInterval(() => {
+      console.log("Running scheduled uptime data refresh");
+      fetchUserDevicesUptime(true); // true = silent mode (no loading indicators)
+    }, 30000); // Every 30 seconds
+
+    return () => {
+      clearInterval(dataRefreshInterval);
+    };
+  }, [userProfile?.id]);
+
+  // Modify the fetchUserDevicesUptime function to avoid unnecessary updates
+  const fetchUserDevicesUptime = async (silent = false) => {
     if (!userProfile?.id) return;
 
     try {
@@ -344,35 +366,48 @@ export const NodeControlPanel = () => {
 
       if (error) throw error;
 
-      // Create a map of node ID to uptime
+      // Check if there are actual changes before updating state
+      let hasChanges = false;
       const uptimeMap: Record<string, number> = {};
+      
       data.forEach(device => {
         uptimeMap[device.id] = device.uptime || 0;
+        // Check if this device's uptime has changed
+        if (nodesUptimeMap[device.id] !== device.uptime) {
+          hasChanges = true;
+        }
       });
       
-      // Store the map for individual node tracking
-      setNodesUptimeMap(uptimeMap);
+      // Only update state if there are actual changes
+      if (hasChanges || Object.keys(nodesUptimeMap).length !== data.length) {
+        console.log("Uptime data changed, updating local state");
+        setNodesUptimeMap(uptimeMap);
+      
+        // Calculate total uptime across all user's devices
+        const totalUserUptime = data.reduce(
+          (sum, device) => sum + (device.uptime || 0),
+          0
+        );
+        
+        // Only update if the value has changed
+        if (totalStoredUptime !== totalUserUptime) {
+          setTotalStoredUptime(totalUserUptime);
+        }
 
-      // Calculate total uptime across all user's devices
-      const totalUserUptime = data.reduce(
-        (sum, device) => sum + (device.uptime || 0),
-        0
-      );
-      setTotalStoredUptime(totalUserUptime);
-
-      // If the current node is in the devices, update its local uptime
-      if (nodeId) {
-        const currentDevice = data.find((device) => device.id === nodeId);
-        if (currentDevice) {
-          console.log(
-            `Found device uptime for current node ${currentDevice.device_name} (${nodeId}): ${currentDevice.uptime} seconds`
-          );
-          
-          // Only update Redux if the node is not active (to avoid overwriting active session tracking)
-          if (!isActive) {
+        // If the current node is in the devices, update its local uptime
+        if (nodeId && !isActive) { // Only update if node is not active
+          const currentDevice = data.find((device) => device.id === nodeId);
+          if (currentDevice && currentDevice.uptime !== nodesUptimeMap[nodeId]) {
+            console.log(
+              `Found updated uptime for current node ${currentDevice.device_name} (${nodeId}): ${currentDevice.uptime} seconds`
+            );
+            
+            // Only update Redux if the node is not active (to avoid overwriting active session tracking)
             dispatch(setUptimeFromDatabase(currentDevice.uptime || 0));
           }
         }
+      } else if (!silent) {
+        console.log("No uptime changes detected");
       }
     } catch (error) {
       console.error("Error fetching user devices uptime:", error);
@@ -382,7 +417,11 @@ export const NodeControlPanel = () => {
   // Update selectedNodeId when nodeId from redux changes
   useEffect(() => {
     if (nodeId) {
-      setSelectedNodeId(nodeId);
+      // Prevent unnecessary updates by checking if value is different
+      if (selectedNodeId !== nodeId) {
+        console.log(`Syncing selectedNodeId with Redux nodeId: ${nodeId}`);
+        setSelectedNodeId(nodeId);
+      }
     }
   }, [nodeId]);
   
@@ -414,21 +453,6 @@ export const NodeControlPanel = () => {
     }
   }, [nodeId]);
   
-  // Set up polling for user uptime data
-  useEffect(() => {
-    // Fetch initial data
-    fetchUserDevicesUptime();
-
-    // Poll for user device data every minute
-    const userDataInterval = setInterval(() => {
-      fetchUserDevicesUptime();
-    }, 30000); // Every 30 seconds for more responsive updates
-
-    return () => {
-      clearInterval(userDataInterval);
-    };
-  }, [userProfile?.id]);
-  
   // Listen for Redux uptime sync events to update local state
   useEffect(() => {
     // When totalUptime changes in Redux, refresh our local uptime map
@@ -445,6 +469,8 @@ export const NodeControlPanel = () => {
   useEffect(() => {
     const fetchNodeUptime = async () => {
       if (!selectedNodeId || !userProfile?.id) return;
+      // Skip if we're just syncing with Redux state to avoid circular updates
+      if (selectedNodeId === nodeId && nodeId) return;
 
       try {
         const { data, error } = await client
@@ -460,15 +486,16 @@ export const NodeControlPanel = () => {
             `Fetched uptime for node "${data.device_name}" (${selectedNodeId}): ${data.uptime} seconds`
           );
           
-          // Update the local uptime map immediately
+          // Update the local uptime map
           setNodesUptimeMap(prev => ({
             ...prev,
             [selectedNodeId]: data.uptime || 0
           }));
           
-          // If the node is currently active, we don't want to override the current uptime
-          // as it's being tracked in real-time
-          if (!isActive || nodeId !== selectedNodeId) {
+          // Only update Redux if this is an actual node change, not just a sync
+          // This breaks the circular dependency
+          if (nodeId !== selectedNodeId) {
+            console.log(`Switching current node in Redux from ${nodeId} to ${selectedNodeId}`);
             // Use switchCurrentNode to properly update the Redux store with this node's info
             dispatch(switchCurrentNode({
               nodeId: selectedNodeId,
@@ -486,31 +513,45 @@ export const NodeControlPanel = () => {
 
     fetchNodeUptime();
     
-    // Create a polling interval specific to the selected node
-    const selectedNodeInterval = setInterval(fetchNodeUptime, 5000); // Check every 5 seconds
+    // Don't create a polling interval for every selection change
+    // Only set up polling if this is a "real" selection (not just syncing from Redux)
+    const selectedNodeInterval = (nodeId !== selectedNodeId) 
+      ? setInterval(fetchNodeUptime, 5000) // Only poll every 5 seconds if this is a user-initiated change
+      : null;
     
     return () => {
-      clearInterval(selectedNodeInterval);
+      if (selectedNodeInterval) clearInterval(selectedNodeInterval);
     };
   }, [selectedNodeId, userProfile?.id, isActive, nodeId, dispatch, client]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
-  // Node metrics simulation when active
+  // Node metrics simulation when active - optimize to prevent excessive state updates
   useEffect(() => {
     let metricsInterval: NodeJS.Timeout | null = null;
 
+    // Only set up interval if node is active
     if (isActive) {
+      console.log("Starting node metrics simulation");
+      
+      // Set initial metrics with small random values
+      dispatch(
+        updateNodeMetrics({
+          cpuUsage: Math.random() * 30 + 10,
+          memoryUsage: Math.random() * 20 + 5,
+          networkUsage: Math.random() * 5 + 0.5,
+        })
+      );
+      
       metricsInterval = setInterval(() => {
-        const newCpuUsage = Math.min(95, cpuUsage + (Math.random() * 10 - 5));
-        const newMemoryUsage = Math.min(
-          95,
-          memoryUsage + (Math.random() * 8 - 4)
-        );
-        const newNetworkUsage = Math.max(
-          0.1,
-          networkUsage + (Math.random() * 1 - 0.5)
-        );
+        // Get current metrics from Redux to ensure we're working with latest values
+        const { cpuUsage: currentCpu, memoryUsage: currentMemory, networkUsage: currentNetwork } = 
+          store.getState().node;
+        
+        // Calculate new values with dampened randomization to prevent wild swings
+        const newCpuUsage = Math.min(95, Math.max(5, currentCpu + (Math.random() * 8 - 4)));
+        const newMemoryUsage = Math.min(95, Math.max(5, currentMemory + (Math.random() * 6 - 3)));
+        const newNetworkUsage = Math.max(0.1, Math.min(10, currentNetwork + (Math.random() * 0.8 - 0.4)));
 
         dispatch(
           updateNodeMetrics({
@@ -524,10 +565,11 @@ export const NodeControlPanel = () => {
 
     return () => {
       if (metricsInterval) {
+        console.log("Cleaning up metrics simulation interval");
         clearInterval(metricsInterval);
       }
     };
-  }, [isActive, cpuUsage, memoryUsage, networkUsage, dispatch]);
+  }, [isActive, dispatch]); // Remove cpuUsage, memoryUsage, networkUsage from deps to prevent unnecessary reruns
 
   // Fetch user's devices when component mounts or user profile changes
   useEffect(() => {
@@ -561,8 +603,9 @@ export const NodeControlPanel = () => {
 
         setNodes(userNodes);
 
-        // If there's no selected node and we have nodes, select the first one
-        if (!selectedNodeId && userNodes.length > 0) {
+        // Only select first node on initial load when there's no selection at all
+        if ((!selectedNodeId && !nodeId) && userNodes.length > 0) {
+          console.log(`No node selected, selecting first node: ${userNodes[0].id}`);
           setSelectedNodeId(userNodes[0].id);
         }
 
@@ -617,12 +660,20 @@ export const NodeControlPanel = () => {
     fetchUserDevices();
   }, [userProfile?.id, client, isActive, nodeId]);
 
-  const handleNodeSelect = async (value: string) => {
+  const handleNodeSelect = useCallback(async (value: string) => {
+    // Skip if already selected (prevents unnecessary updates)
+    if (value === selectedNodeId) {
+      console.log(`Node ${value} already selected, skipping update`);
+      return;
+    }
+    
     // Prevent changing nodes while a node is active
     if (isActive) {
       toast.error("Please stop the current node before switching to another node");
       return;
     }
+    
+    console.log(`User selected node: ${value}`);
     
     // Set the selected node ID in the local state
     setSelectedNodeId(value);
@@ -660,7 +711,7 @@ export const NodeControlPanel = () => {
     } catch (error) {
       console.error("Error fetching node uptime during selection:", error);
     }
-  };
+  }, [selectedNodeId, isActive, dispatch, client]);
 
   const getDeviceIcon = (type: "desktop" | "laptop" | "tablet" | "mobile") => {
     switch (type) {
@@ -1206,6 +1257,21 @@ export const NodeControlPanel = () => {
       if (syncInterval) clearInterval(syncInterval);
     };
   }, [isActive, selectedNodeId, dispatch, client, userProfile?.id, nodeId]);
+
+  // Component mount/unmount logging
+  useEffect(() => {
+    console.log("NodeControlPanel mounted");
+    renderCount.current = 1; // Initialize render count
+    console.log(`Initial render (${renderCount.current})`);
+    
+    // Return cleanup function
+    return () => {
+      console.log("NodeControlPanel unmounting - cleaning up resources");
+      // Make sure any active intervals are cleared
+    };
+  }, []);
+
+  // Performance logging at component render - removed duplicate declaration
 
   return (
     <>

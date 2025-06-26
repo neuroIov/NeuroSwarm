@@ -510,21 +510,19 @@ export const createReferralRelationship = createAsyncThunk(
         throw new Error('Invalid referral code');
       }
 
-      // Create the referral relationship
-      const { data: referral, error: referralError } = await supabase
-        .from('referrals')
-        .insert({
-          referrer_id: referrer.id,
-          referred_id: referredId,
-          tier_level: 'tier_1',
-          referred_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+      // Call the stored procedure to create tiered referral relationships
+      const { data: result, error: procedureError } = await supabase
+        .rpc('create_referral_relationship', {
+          p_referrer_code: referrerCode,
+          p_referred_id: referredId
+        });
 
-      if (referralError) {
-        throw new Error(referralError.message);
+      if (procedureError) {
+        console.error('Error creating tiered referral relationships:', procedureError);
+        throw new Error(procedureError.message);
       }
+
+      console.log('Tiered referral relationships created:', result);
 
       // Add 500 SP reward for joining the referral program
       const { data: earning, error: earningError } = await supabase
@@ -590,6 +588,28 @@ export const createReferralRelationship = createAsyncThunk(
         } catch (historyError) {
           console.error('Error updating earnings history:', historyError);
         }
+      }
+
+      // Fetch the created referral to return
+      const { data: referral, error: fetchError } = await supabase
+        .from('referrals')
+        .select('*')
+        .eq('referrer_id', referrer.id)
+        .eq('referred_id', referredId)
+        .eq('tier_level', 'tier_1')
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching created referral:', fetchError);
+        // Return a mock referral object if we can't fetch the actual one
+        return {
+          id: 'temp-id',
+          referrer_id: referrer.id,
+          referred_id: referredId,
+          tier_level: 'tier_1',
+          referred_at: new Date().toISOString(),
+          referred_name: null
+        };
       }
 
       return referral;

@@ -91,6 +91,7 @@ export const NetworkStats = () => {
   const [networkLoad, setNetworkLoad] = useState(0);
   const [previousNodeState, setPreviousNodeState] = useState<boolean | null>(null);
   const [userComputeUsage, setUserComputeUsage] = useState(0);
+  const [totalComputeUsage, setTotalComputeUsage] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
 
   // Get node status from redux store
@@ -150,6 +151,10 @@ export const NetworkStats = () => {
         if (data.userComputeUsage !== null) {
           setUserComputeUsage(data.userComputeUsage);
         }
+        // Set total compute usage if available
+        if (data.totalComputeUsage !== null) {
+          setTotalComputeUsage(data.totalComputeUsage);
+        }
         
         // Calculate network load
         if (data.totalUsers > 0) {
@@ -165,6 +170,7 @@ export const NetworkStats = () => {
           active_nodes: data.activeDevices || 0,
           total_tasks: data.completedTasks || 0,
           user_compute_usage: data.userComputeUsage || 0,
+          total_compute_usage: data.totalComputeUsage || 0,
           timestamp: Date.now()
         }));
       }
@@ -179,6 +185,7 @@ export const NetworkStats = () => {
         setTotalActiveNodes(parsedData.active_nodes);
         setTotalTasks(parsedData.total_tasks);
         setUserComputeUsage(parsedData.user_compute_usage || 0);
+        setTotalComputeUsage(parsedData.total_compute_usage || 0);
         if (parsedData.total_nodes > 0) {
           const loadPercentage = Math.round((parsedData.active_nodes / parsedData.total_nodes) * 100);
           setNetworkLoad(loadPercentage);
@@ -220,10 +227,10 @@ export const NetworkStats = () => {
       />
               <StatCard
         title="Compute Usage"
-        value={(userComputeUsage || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        value={(totalComputeUsage || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
         unit="TFLOPs"
         changePercentage={2.3}
-        info="Your compute usage contribution to the network"
+        info="Total compute usage across the network"
       />
       <StatCard
         title="Total AI Content Generated"
