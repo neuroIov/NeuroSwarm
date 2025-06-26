@@ -23,6 +23,9 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { AuthModal } from "./auth/AuthModal";
 import { WalletConnectionModal } from "./auth/WalletConnectionModal";
+import { useDispatch } from "react-redux";
+import { fetchOrCreateUserProfile } from "@/store/slices/sessionSlice";
+import { AppDispatch } from "@/store";
 
 interface HeaderProps {
   className?: string;
@@ -39,6 +42,9 @@ export const Header = ({
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { connectWallet, session, logout } = useSession();
+  const dispatch = useDispatch<AppDispatch>();
+
+  console.log("userProfile", session?.userProfile);
 
   // Get the username from userProfile if available
   const displayName =
@@ -62,6 +68,25 @@ export const Header = ({
       window.history.replaceState({}, document.title, newUrl);
     }
   }, [isLoggedIn, hasWallet]);
+
+  // Attempt to fetch profile if needed
+  useEffect(() => {
+    // If logged in, have email, but no userProfile, fetch it
+    if (isLoggedIn && session.email && !session.userProfile) {
+      console.log("Attempting to fetch user profile for missing profile:", session.email);
+      dispatch(fetchOrCreateUserProfile({ 
+        email: session.email,
+        username: session.email.split('@')[0] 
+      }))
+      .unwrap()
+      .then(result => {
+        console.log("Successfully fetched/created user profile:", result);
+      })
+      .catch(error => {
+        console.error("Failed to fetch/create user profile in Header:", error);
+      });
+    }
+  }, [isLoggedIn, session.email, session.userProfile, dispatch]);
 
   useEffect(() => {
     // Debug log to check session state
