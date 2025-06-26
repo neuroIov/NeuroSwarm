@@ -47,6 +47,124 @@ export const useSession = () => {
     }
   }, [session.walletAddress, session.walletType]);
 
+  // Handle OAuth callbacks
+  useEffect(() => {
+    const handleAuthCallback = async () => {
+      // Check if we're returning from OAuth
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasAuthParams = urlParams.has('code') || urlParams.has('access_token');
+      
+      if (hasAuthParams) {
+        setIsAuthLoading(true);
+        try {
+          // Get the current session after OAuth redirect
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) throw error;
+          
+          if (session?.user) {
+            console.log("OAuth session recovered:", session.user);
+            // The onAuthStateChange will handle the rest
+          } else {
+            console.log("No session found after OAuth redirect");
+            setIsAuthLoading(false);
+          }
+        } catch (error) {
+          console.error("Failed to recover OAuth session:", error);
+          setIsAuthLoading(false);
+        }
+      }
+    };
+
+    handleAuthCallback();
+  }, []);
+
+  // Enhanced Auth State Listener
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, supabaseSession) => {
+        console.log("Auth state changed:", event, supabaseSession?.user?.email);
+        
+        if (event === 'SIGNED_IN' && supabaseSession) {
+          const user = supabaseSession.user;
+          console.log("User metadata:", user.user_metadata);
+          console.log("User app metadata:", user.app_metadata);
+          
+          // Start session with OAuth auth method
+          dispatch(
+            startSession({
+              userId: user.id,
+              authMethod: user.app_metadata?.provider ? "oauth" : "email",
+              email: user.email || null,
+              walletAddress: null,
+            })
+          );
+          
+          if (user.email) {
+            // Extract username from metadata with fallbacks
+            const username = user.user_metadata?.full_name || 
+                            user.user_metadata?.name ||
+                            user.user_metadata?.preferred_username ||
+                            user.email.split('@')[0];
+                            
+            console.log("Creating user profile with:", { email: user.email, username });
+            
+            try {
+              // Fetch or create user profile with more reliable approach
+              // Use a timeout to ensure this runs after the session is initialized
+              setTimeout(async () => {
+                try {
+                  // Fetch or create user profile
+                  const result = await dispatch(fetchOrCreateUserProfile({
+                    email: user.email!,
+                    username,
+                    walletAddress: null
+                  })).unwrap();
+                  
+                  console.log("User profile created/fetched:", result);
+                  
+                  dispatch(
+                    logActivity({
+                      type: user.app_metadata?.provider ? "oauth_login_success" : "email_login",
+                      details: { 
+                        email: user.email,
+                        provider: user.app_metadata?.provider || 'email',
+                        username: username
+                      },
+                    })
+                  );
+                  
+                  // Explicitly refresh the session
+                  dispatch(
+                    startSession({
+                      userId: user.id,
+                      authMethod: user.app_metadata?.provider ? "oauth" : "email",
+                      email: user.email || null,
+                      walletAddress: null,
+                    })
+                  );
+                  
+                  setIsAuthLoading(false);
+                } catch (profileError) {
+                  console.error("Failed to create/fetch user profile:", profileError);
+                  setIsAuthLoading(false);
+                }
+              }, 500); // Small delay to ensure session is initialized first
+            } catch (profileError) {
+              console.error("Failed to create/fetch user profile:", profileError);
+              setIsAuthLoading(false);
+            }
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setIsAuthLoading(false);
+        }
+      }
+    );
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [dispatch]);
+
   const loginWithEmail = async (email: string, password: string) => {
     setIsAuthLoading(true);
     try {
@@ -93,6 +211,32 @@ export const useSession = () => {
     } finally {
       setIsAuthLoading(false);
     }
+  };
+
+  const loginWithGoogle = async () => {
+    setIsAuthLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`, // Direct redirect to dashboard
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      // Don't log activity here - do it after successful auth in the state listener
+      return data;
+    } catch (error) {
+      console.error("Google login failed:", error);
+      setIsAuthLoading(false); // Only set loading false on error
+      throw error;
+    }
+    // Don't set loading false here - let the OAuth redirect handle it
   };
 
   const signupWithEmail = async (
@@ -172,6 +316,7 @@ export const useSession = () => {
       if (savedSession) {
         try {
           const parsed = JSON.parse(savedSession);
+          console.log("Restoring session from localStorage:", parsed);
 
           dispatch(
             startSession({
@@ -186,31 +331,54 @@ export const useSession = () => {
 
           if (parsed.email) {
             // If email is present, fetch user profile by email
-            dispatch(fetchOrCreateUserProfile({ email: parsed.email }));
-
-            // If wallet is also connected, update wallet state
-            if (parsed.walletAddress) {
-              setWalletConnected(true);
-              try {
-                setUserPublicKey(new PublicKey(parsed.walletAddress));
-                setWalletType(parsed.walletType || "phantom");
-              } catch (e) {
-                console.error("Invalid wallet address in saved session:", e);
-              }
-            }
+            console.log("Fetching user profile for restored session with email:", parsed.email);
+            dispatch(fetchOrCreateUserProfile({ email: parsed.email }))
+              .unwrap()
+              .then(result => {
+                console.log("Successfully restored user profile:", result);
+                // If wallet is also connected, update wallet state
+                if (parsed.walletAddress) {
+                  setWalletConnected(true);
+                  try {
+                    setUserPublicKey(new PublicKey(parsed.walletAddress));
+                    setWalletType(parsed.walletType || "phantom");
+                  } catch (e) {
+                    console.error("Invalid wallet address in saved session:", e);
+                  }
+                }
+              })
+              .catch(error => {
+                console.error("Failed to restore user profile:", error);
+                // Create the user profile if it failed to load
+                if (parsed.authMethod === 'oauth') {
+                  const username = parsed.email.split('@')[0];
+                  console.log("Attempting to create user profile for OAuth user:", username);
+                  dispatch(fetchOrCreateUserProfile({ 
+                    email: parsed.email,
+                    username 
+                  }));
+                }
+              });
           } else if (parsed.walletAddress) {
             // Legacy support for wallet-only authentication
+            console.log("Fetching user profile for wallet-only session:", parsed.walletAddress);
             dispatch(fetchOrCreateUserProfile({
               email: '',  // Pass empty string for email
               walletAddress: parsed.walletAddress
-            }));
-            setWalletConnected(true);
-            try {
-              setUserPublicKey(new PublicKey(parsed.walletAddress));
-              setWalletType(parsed.walletType || "phantom");
-            } catch (e) {
-              console.error("Invalid wallet address in saved session:", e);
-            }
+            }))
+              .unwrap()
+              .then(() => {
+                setWalletConnected(true);
+                try {
+                  setUserPublicKey(new PublicKey(parsed.walletAddress));
+                  setWalletType(parsed.walletType || "phantom");
+                } catch (e) {
+                  console.error("Invalid wallet address in saved session:", e);
+                }
+              })
+              .catch(error => {
+                console.error("Failed to restore wallet user profile:", error);
+              });
           } else {
             console.log("Restored guest session (no authentication)");
           }
@@ -257,9 +425,14 @@ export const useSession = () => {
           walletAddress: session.walletAddress,
           walletType: session.walletType || walletType,
           plan: session.plan,
+          userProfileId: session.userProfile?.id || null,
         })
       );
-      console.log("Session saved to localStorage");
+      console.log("Session saved to localStorage", {
+        userId: session.userId, 
+        authMethod: session.authMethod,
+        userProfileId: session.userProfile?.id || null
+      });
     }
   }, [
     session.sessionId,
@@ -269,6 +442,7 @@ export const useSession = () => {
     session.walletAddress,
     session.walletType,
     session.plan,
+    session.userProfile,
     walletType,
   ]);
 
@@ -514,6 +688,7 @@ export const useSession = () => {
     userPublicKey,
     isAuthLoading,
     loginWithEmail,
+    loginWithGoogle,
     signupWithEmail,
     connectWallet,
     disconnectWallet,

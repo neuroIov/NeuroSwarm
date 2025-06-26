@@ -284,7 +284,7 @@ export const connectWalletToAccount = createAsyncThunk(
 // Async thunk to fetch or create user profile
 export const fetchOrCreateUserProfile = createAsyncThunk(
   'session/fetchOrCreateUserProfile',
-  async ({ email, walletAddress, username }: { email: string; walletAddress?: string; username?: string }, { rejectWithValue }) => {
+  async ({ email, walletAddress, username }: { email: string; walletAddress?: string | null; username?: string }, { rejectWithValue }) => {
     try {
       const supabase = getSwarmSupabase();
 
@@ -296,32 +296,54 @@ export const fetchOrCreateUserProfile = createAsyncThunk(
           .from('user_profiles')
           .select('*')
           .eq('email', email)
-          .single();
+          .maybeSingle(); // Use maybeSingle instead of single to avoid errors
 
         // If user doesn't exist, create a new profile with email
         if (error || !userProfile) {
           console.log(`No existing profile found. Creating new profile for email: ${email}`);
 
+          // Create a new user profile with default values
+          // Ensure all required fields have values based on the schema
           const newUserData = {
-            email: email,
+            email: email, // Required field
             wallet_address: walletAddress || null,
-            user_name: username || null
+            user_name: username || email.split('@')[0],
+            joined_at: new Date().toISOString(),
+            total_earnings: 0,
+            total_tasks_completed: 0,
+            reputation_score: 0,
+            plan: 'free', // This is a required field
+            subscription_tier: 'Basic',
+            freedom_ai_credits: 10000,
+            music_video_credits: 0,
+            deepfake_credits: 0,
+            video_generator_credits: 0
           };
 
-          const { data: newUser, error: insertError } = await supabase
-            .from('user_profiles')
-            .insert(newUserData)
-            .select()
-            .single();
+          console.log("Creating new user profile with data:", newUserData);
 
-          if (insertError) {
-            console.error(`Error creating user profile: ${insertError.message}`);
-            throw new Error(insertError.message);
+          try {
+            const { data: newUser, error: insertError } = await supabase
+              .from('user_profiles')
+              .insert(newUserData)
+              .select()
+              .single();
+
+            if (insertError) {
+              console.error(`Error creating user profile: ${insertError.message}`);
+              // More detailed error logging
+              console.error("Failed with data:", newUserData);
+              console.error("Error details:", insertError);
+              throw new Error(`Error creating user profile: ${insertError.message}`);
+            }
+
+            console.log('New user profile created successfully:', newUser);
+            // Ensure email is included in the response
+            return { ...newUser, email };
+          } catch (createError) {
+            console.error("Exception during profile creation:", createError);
+            throw createError;
           }
-
-          console.log('New user profile created:', newUser);
-          // Ensure email is included in the response
-          return { ...newUser, email };
         }
 
         // If wallet address is provided, update the profile
