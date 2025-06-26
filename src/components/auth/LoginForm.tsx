@@ -394,14 +394,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   return (
     <>
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold leading-tight text-white">
-            {t("login")}
-          </h2>
-          <p className="mt-2 text-sm text-gray-400">
-            Don't have an account yet? <span className="text-blue-400 hover:text-blue-500 cursor-pointer">Sign Up</span>
-          </p>
-        </div>
+       
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
