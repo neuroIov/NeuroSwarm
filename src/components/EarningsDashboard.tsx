@@ -406,7 +406,7 @@ export const EarningsDashboard = () => {
           }}
         >
           <p className="text-sm font-medium text-blue-400">{`${label}`}</p>
-          <p className="text-md font-semibold">{`${payload[0].value} SP`}</p>
+          <p className="text-md font-semibold">{`${Number(payload[0].value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP`}</p>
         </div>
       );
     }
@@ -641,7 +641,7 @@ export const EarningsDashboard = () => {
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Total Earning</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : earnings.totalEarnings.toFixed(2)} SP
+                {loading ? "..." : earnings.totalEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
               </span>
             </div>
           </div>
@@ -660,7 +660,7 @@ export const EarningsDashboard = () => {
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Total Balance</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : getTotalBalance().toFixed(2)} SP
+                {loading ? "..." : getTotalBalance().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
               </span>
             </div>
           </div>
@@ -679,7 +679,7 @@ export const EarningsDashboard = () => {
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Total Tasks</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : getTaskCount()}
+                {loading ? "..." : getTaskCount().toLocaleString()}
               </span>
             </div>
           </div>
@@ -701,7 +701,7 @@ export const EarningsDashboard = () => {
                 <InfoTooltip content="Projected monthly earnings based on your recent performance" />
               </div>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : calculateMonthlyExpectedEarnings().toFixed(2)} SP
+                {loading ? "..." : calculateMonthlyExpectedEarnings().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
               </span>
             </div>
           </div>
@@ -937,7 +937,7 @@ export const EarningsDashboard = () => {
                   Current streak:
                 </span>
                 <span className="text-sm font-medium text-blue-400">
-                  {streakData.streak} days
+                  {streakData.streak.toLocaleString()} days
                 </span>
               </div>
             )}
@@ -1071,7 +1071,7 @@ export const EarningsDashboard = () => {
                   <div className="flex flex-col items-end">
                     <div className="transaction-amount">
                       <span className="text-sm font-medium text-green-500">
-                        +{Number(tx.amount).toFixed(2)} SP
+                        +{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
                       </span>
                       {tx.transaction_hash && (
                         <a
