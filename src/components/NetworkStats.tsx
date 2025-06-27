@@ -218,9 +218,9 @@ export const NetworkStats = () => {
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4 md:mb-10 w-full">
-      <StatCard
+                    <StatCard
         title="Active Nodes"
-        value={totalNodes}
+        value={totalNodes.toLocaleString()}
         unit="users"
         changePercentage={5.8}
         info="Total number of registered users across the Swarm network"
@@ -234,7 +234,7 @@ export const NetworkStats = () => {
       />
       <StatCard
         title="Total AI Content Generated"
-        value={totalTasks}
+        value={totalTasks.toLocaleString()}
         unit="tasks"
         changePercentage={7.2}
         info="Total number of tasks processed by the network"

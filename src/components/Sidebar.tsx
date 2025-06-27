@@ -17,6 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { updateUsername } from "@/store/slices/sessionSlice";
 import { ProfileEditModal } from "./ProfileEditModal";
+import ShinyText from "./ui/ShinyText";
 
 // Define extended session type with additional properties
 interface ExtendedSession {
@@ -251,7 +252,11 @@ export function Sidebar({
 
             {/* Social Media Links */}
             <div className="social-links">
-              <p className="social-text">For more updates follow us on Twitter and Telegram</p>
+              <ShinyText 
+                text="For more updates follow us on Twitter and Telegram" 
+                className="social-text"
+                speed={2.75}
+              />
               <div className="social-icons">
                 <a href="https://x.com/neurolov" target="_blank" rel="noopener noreferrer">
                   <FaXTwitter id="twitter" className="icons-social-media" />

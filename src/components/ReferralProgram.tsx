@@ -197,7 +197,7 @@ const RewardItem = ({
       </div>
       <div className="flex items-center gap-2">
         <div className="text-green-400 font-medium">
-          +{rewardAmount.toFixed(2)}
+          +{rewardAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
         {showClaimButton && (
           <Button
@@ -1393,7 +1393,7 @@ export const ReferralProgram = () => {
           label="Total Referral Rewards"
           value={isLoadingEarnings || !dataReady ? 
             "..." : 
-            `${totalReferralEarnings.toFixed(2)} SP`}
+            `${totalReferralEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP`}
           backgroundImage={"/images/flower_2.png"}
           highlight
         />
@@ -1583,7 +1583,7 @@ export const ReferralProgram = () => {
                         <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
                       ) : (
                         <span className="text-green-400 font-bold text-sm sm:text-base">
-                          {claimedRewards.toFixed(2)} SP
+                          {claimedRewards.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
                         </span>
                       )}
                       <button 
@@ -1621,7 +1621,7 @@ export const ReferralProgram = () => {
                         <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
                       ) : (
                         <span className="text-amber-400 font-bold text-sm sm:text-base">
-                          {pendingRewards.toFixed(2)} SP
+                          {pendingRewards.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
                         </span>
                       )}
                       <button 
@@ -1723,7 +1723,7 @@ export const ReferralProgram = () => {
                 All Referrals
               </h3>
                               <span className="text-[#515194]/80 text-xs sm:text-sm">
-                {totalReferrals} total
+                {totalReferrals.toLocaleString()} total
               </span>
             </div>
 
@@ -1757,7 +1757,7 @@ export const ReferralProgram = () => {
                 Recent Rewards
               </h3>
               <span className="text-[#515194]/80 text-xs sm:text-sm">
-                {referralRewards.length} total
+                {referralRewards.length.toLocaleString()} total
               </span>
             </div>
 

@@ -407,8 +407,8 @@ export const GlobalStatistics = () => {
 
   // Format currency for display
   const formatCurrency = (amount: number) => {
-    // Format as SP tokens instead of dollars
-    return `${amount.toFixed(2)} SP`;
+    // Format as SP tokens instead of dollars with comma separation
+    return `${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP`;
   };
 
   // Clean username by removing wallet type information
@@ -573,10 +573,10 @@ export const GlobalStatistics = () => {
             </div>
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Your rank</span>
-              <span className="text-xl font-bold text-white">
+                              <span className="text-xl font-bold text-white">
                 {currentUserRank ? (
                   <>
-                    {currentUserRank.rank}
+                    {currentUserRank.rank.toLocaleString()}
                     {currentUserRank.rank <= 3 && (
                       <span className="ml-1">
                         {currentUserRank.rank === 1 && "👑"}
@@ -637,7 +637,7 @@ export const GlobalStatistics = () => {
                 {t("globalStatistics.cards.totalUsers")}
               </span>
               <span className="text-xl font-bold text-white">
-                {stats.totalUsers}
+                {stats.totalUsers.toLocaleString()}
               </span>
             </div>
           </div>
@@ -729,7 +729,7 @@ export const GlobalStatistics = () => {
                   {formatCurrency(entry.total_earnings)}
                 </div>
                 <div className="col-span-3 text-right text-slate-300">
-                  {entry.task_count}
+                  {entry.task_count.toLocaleString()}
                 </div>
               </div>
             ))}
@@ -760,7 +760,7 @@ export const GlobalStatistics = () => {
                       {formatCurrency(currentUserRank.total_earnings)}
                     </div>
                     <div className="col-span-3 text-right text-slate-300">
-                      {currentUserRank.task_count}
+                      {currentUserRank.task_count.toLocaleString()}
                     </div>
                   </div>
                 </>
