@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { SubscriptionNotice } from "@/components/SubscriptionNotice";
+
 import { Button } from "@/components/ui/button";
 
 import Index from "./pages/Index";
@@ -309,7 +309,7 @@ const AppContent = () => {
     <>
       <Toaster />
       <Sonner />
-      <SubscriptionNotice />
+      
       <ConnectAppModal
         isOpen={showConnectModal}
         onClose={() => setShowConnectModal(false)}
