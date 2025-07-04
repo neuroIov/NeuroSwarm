@@ -11,22 +11,28 @@ import { store } from '@/store';
 const taskProcessingState = {
     currentTask: null,
     isProcessing: false,
+    currentTaskId: null as string | null,
+    processingPromise: null as Promise<any> | null,
     locks: new Map<string, {
         acquiredAt: number,
         userId: string,
-        nodeId: string
+        nodeId: string,
+        processingStartTime: number | null,
+        processingEndTime: number | null
     }>(),
 
     // Try to acquire a lock for a task
     acquireLock(taskId: string, userId: string, nodeId: string): boolean {
         const now = Date.now();
         const lockTimeout = 5 * 60 * 1000; // 5 minutes timeout
+        const processingTimeout = 10 * 60 * 1000; // 10 minutes processing timeout
 
-        // Clear expired locks
+        // Clear expired locks and stuck processing tasks
         this.locks.forEach((lock, id) => {
-            if (now - lock.acquiredAt > lockTimeout) {
+            if (now - lock.acquiredAt > lockTimeout || 
+                (lock.processingStartTime && now - lock.processingStartTime > processingTimeout)) {
                 this.locks.delete(id);
-                logger.warn(`Cleared expired lock for task ${id}`);
+                logger.warn(`Cleared expired/stuck lock for task ${id}`);
             }
         });
 
@@ -44,7 +50,9 @@ const taskProcessingState = {
         this.locks.set(taskId, {
             acquiredAt: now,
             userId,
-            nodeId
+            nodeId,
+            processingStartTime: null,
+            processingEndTime: null
         });
         logger.log(`Lock acquired for task ${taskId} by user ${userId} on node ${nodeId}`);
         return true;
@@ -54,9 +62,34 @@ const taskProcessingState = {
     releaseLock(taskId: string, userId: string, nodeId: string): void {
         const lock = this.locks.get(taskId);
         if (lock && lock.userId === userId && lock.nodeId === nodeId) {
+            lock.processingEndTime = Date.now();
             this.locks.delete(taskId);
             logger.log(`Lock released for task ${taskId}`);
+            
+            // Clear processing state
+            if (this.currentTaskId === taskId) {
+                this.currentTaskId = null;
+                this.processingPromise = null;
+                this.isProcessing = false;
+                this.currentTask = null;
+            }
         }
+    },
+
+    // Start processing a task
+    startProcessing(taskId: string): void {
+        const lock = this.locks.get(taskId);
+        if (lock) {
+            lock.processingStartTime = Date.now();
+            this.currentTaskId = taskId;
+            this.isProcessing = true;
+        }
+    },
+
+    // Check if a task is being processed
+    isTaskProcessing(taskId: string): boolean {
+        const lock = this.locks.get(taskId);
+        return !!(lock && lock.processingStartTime && !lock.processingEndTime);
     }
 };
 
@@ -261,8 +294,8 @@ export const processTask = async (taskId, userId) => {
             // Continue processing to attempt recovery
         }
 
-        // Set as currently processing task
-        taskProcessingState.isProcessing = true;
+        // Set as currently processing task and update processing state
+        taskProcessingState.startProcessing(taskId);
         taskProcessingState.currentTask = task;
         
         // Update status to processing
@@ -272,10 +305,12 @@ export const processTask = async (taskId, userId) => {
                 .from('tasks')
                 .update({
                     status: 'processing',
-                    updated_at: new Date().toISOString()
+                    updated_at: new Date().toISOString(),
+                    processing_started_at: new Date().toISOString()
                 })
                 .eq('id', taskId)
-                .eq('user_id', userId);
+                .eq('user_id', userId)
+                .eq('status', 'pending'); // Extra check to prevent race conditions
 
             if (updateError) {
                 logger.error(`Error updating task ${taskId} to processing:`, updateError);
@@ -366,9 +401,8 @@ export const processTask = async (taskId, userId) => {
                 
                 logger.warn(`Task ${taskId} reset to pending due to node deactivation`);
                 
-                // Clear processing state
-                taskProcessingState.isProcessing = false;
-                taskProcessingState.currentTask = null;
+                // Release the task lock and clear processing state
+        taskProcessingState.releaseLock(taskId, userId, state.node?.nodeId || '');
                 
                 return { success: false, message: 'NODE_DEACTIVATED' };
             } catch (resetError) {
