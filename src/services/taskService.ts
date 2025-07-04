@@ -7,10 +7,57 @@ import { TASK_PROCESSING_CONFIG, calculateProcessingTime } from './config';
 import { recordTaskEarning, processReferralRewards } from './earningsService';
 import { store } from '@/store';
 
-// Simple cache to track current processing task
+// Enhanced task processing state with locks
 const taskProcessingState = {
     currentTask: null,
-    isProcessing: false
+    isProcessing: false,
+    locks: new Map<string, {
+        acquiredAt: number,
+        userId: string,
+        nodeId: string
+    }>(),
+
+    // Try to acquire a lock for a task
+    acquireLock(taskId: string, userId: string, nodeId: string): boolean {
+        const now = Date.now();
+        const lockTimeout = 5 * 60 * 1000; // 5 minutes timeout
+
+        // Clear expired locks
+        this.locks.forEach((lock, id) => {
+            if (now - lock.acquiredAt > lockTimeout) {
+                this.locks.delete(id);
+                logger.warn(`Cleared expired lock for task ${id}`);
+            }
+        });
+
+        // Check if task is already locked
+        const existingLock = this.locks.get(taskId);
+        if (existingLock) {
+            // If locked by same user+node, allow it
+            if (existingLock.userId === userId && existingLock.nodeId === nodeId) {
+                return true;
+            }
+            return false;
+        }
+
+        // Acquire new lock
+        this.locks.set(taskId, {
+            acquiredAt: now,
+            userId,
+            nodeId
+        });
+        logger.log(`Lock acquired for task ${taskId} by user ${userId} on node ${nodeId}`);
+        return true;
+    },
+
+    // Release a lock
+    releaseLock(taskId: string, userId: string, nodeId: string): void {
+        const lock = this.locks.get(taskId);
+        if (lock && lock.userId === userId && lock.nodeId === nodeId) {
+            this.locks.delete(taskId);
+            logger.log(`Lock released for task ${taskId}`);
+        }
+    }
 };
 
 /**
@@ -170,8 +217,15 @@ export const processTask = async (taskId, userId) => {
         return { success: false, message: 'NODE_INACTIVE' };
     }
     
+    // Try to acquire a lock for this task
+    if (!taskProcessingState.acquireLock(taskId, userId, state.node?.nodeId || '')) {
+        logger.log(`Task ${taskId} is locked by another user/node, skipping`);
+        return { success: false, message: 'TASK_LOCKED' };
+    }
+
     // Prevent processing multiple tasks simultaneously
     if (taskProcessingState.isProcessing) {
+        taskProcessingState.releaseLock(taskId, userId, state.node?.nodeId || '');
         logger.log(`Already processing task ${taskProcessingState.currentTask?.id}, skipping ${taskId}`);
         return { success: false, message: 'ALREADY_PROCESSING' };
     }
@@ -349,25 +403,46 @@ export const processTask = async (taskId, userId) => {
         }
             
         // Update task as completed - use a more robust update that works even if task was marked failed
-        // This helps recover from race conditions where task was marked as failed but actually completes
-        const { error: completeError } = await client
-            .from('tasks')
-            .update({
-                status: 'completed',
-                result,
-                updated_at: new Date().toISOString(),
-                compute_time: processingTime,
-                output_tokens: task.type === 'text' ? Math.ceil(result.length / 4) : 0
-            })
-            .eq('id', taskId)
-            .eq('user_id', userId)
-            .in('status', ['processing', 'failed', 'pending']); // Allow updating from any of these states
+        // First, insert the completed task into task_proof table
+        const taskProofData = {
+            id: taskId,  // Primary key from the original task
+            status: 'completed',  // Always completed when moving to proof
+            type: task.type,
+            prompt: task.prompt || null,
+            result: result || null,
+            user_id: userId,  // Add user_id as seen in screenshots
+            node_id: task.node_id || null,  // Add node_id from original task
+            created_at: new Date().toISOString(),
+            compute_time: Math.round(processingTime) // Round to nearest integer
+        };
 
-        if (completeError) {
-            logger.error(`Error completing task ${taskId}:`, completeError);
+        // Log the data we're trying to insert
+        logger.log('Attempting to insert into task_proof:', taskProofData);
+
+        const { error: proofError } = await client
+            .from('task_proof')
+            .insert(taskProofData);
+
+        if (proofError) {
+            logger.error(`Error inserting into task_proof for task ${taskId}:`, proofError);
             taskProcessingState.isProcessing = false;
             taskProcessingState.currentTask = null;
-            return { success: false, message: 'COMPLETION_ERROR' };
+            return { success: false, message: 'PROOF_INSERT_ERROR' };
+        }
+
+        // Then delete the task from tasks table since it's now in task_proof
+        const { error: deleteError } = await client
+            .from('tasks')
+            .delete()
+            .eq('id', taskId)
+            .eq('user_id', userId)
+            .in('status', ['processing', 'failed', 'pending']); // Allow deleting from any of these states
+
+        if (deleteError) {
+            logger.error(`Error deleting completed task ${taskId}:`, deleteError);
+            taskProcessingState.isProcessing = false;
+            taskProcessingState.currentTask = null;
+            return { success: false, message: 'TASK_DELETE_ERROR' };
         }
 
         logger.log(`Successfully completed task ${taskId} in ${processingTime}s`);
@@ -395,9 +470,10 @@ export const processTask = async (taskId, userId) => {
             logger.error(`Failed to record earnings for task ${taskId}: ${earningResult.message || 'Unknown error'}`);
         }
 
-        // Clear processing state
+        // Clear processing state and release lock
         taskProcessingState.isProcessing = false;
         taskProcessingState.currentTask = null;
+        taskProcessingState.releaseLock(taskId, userId, state.node?.nodeId || '');
 
         return { success: true, result };
     } catch (error) {
@@ -420,9 +496,10 @@ export const processTask = async (taskId, userId) => {
             logger.error('Error marking task as failed:', updateError);
         }
 
-        // Clear processing state
+        // Clear processing state and release lock
         taskProcessingState.isProcessing = false;
         taskProcessingState.currentTask = null;
+        taskProcessingState.releaseLock(taskId, userId, state.node?.nodeId || '');
 
         return { success: false, message: 'PROCESSING_ERROR' };
     }
