@@ -44,7 +44,7 @@ export const recordTaskEarning = async (taskId, userId, taskType) => {
             return { success: false, message: 'Earnings already recorded for this task' };
         }
 
-        // Insert new earning record
+        // Insert earnings record while task still exists in tasks table
         const { data: earning, error: insertError } = await client
             .from('earnings')
             .insert({

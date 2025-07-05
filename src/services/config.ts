@@ -5,8 +5,8 @@ export const TASK_TABLES = ['img_gen_messages', 'freedomai_messages',]
 export const TASK_PROCESSING_CONFIG = {
     // Processing time in seconds for different task types
     PROCESSING_TIME: {
-        image: 10,
-        text: 10,
+        image: 300,
+        text: 150,
     },
     // Hardware-specific time multipliers - lower means faster processing
     HARDWARE_MULTIPLIERS: {

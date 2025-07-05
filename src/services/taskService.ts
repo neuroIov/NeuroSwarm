@@ -430,7 +430,31 @@ export const processTask = async (taskId, userId) => {
             return { success: false, message: 'PROOF_INSERT_ERROR' };
         }
 
-        // Then delete the task from tasks table since it's now in task_proof
+        // Record earnings BEFORE deleting the task
+        const amount = task.type === 'image'
+            ? TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.image
+            : TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.text;
+
+        // Record earnings for the completed task while task still exists in tasks table
+        const earningResult = await recordTaskEarning(taskId, userId, task.type);
+
+        if (!earningResult.success) {
+            logger.error(`Failed to record earnings for task ${taskId}: ${earningResult.message || 'Unknown error'}`);
+            taskProcessingState.isProcessing = false;
+            taskProcessingState.currentTask = null;
+            return { success: false, message: 'EARNINGS_RECORD_ERROR' };
+        }
+
+        logger.log(`Successfully recorded earnings for task ${taskId}`);
+
+        // Process referral rewards since earning was successful
+        const referralResult = await processReferralRewards(userId, amount);
+        if (!referralResult.success) {
+            logger.error(`Failed to process referral rewards for user ${userId}: ${referralResult.message || 'Unknown error'}`);
+            // Continue anyway since earnings were recorded
+        }
+
+        // Now delete the task from tasks table since earnings are recorded
         const { error: deleteError } = await client
             .from('tasks')
             .delete()
@@ -446,29 +470,6 @@ export const processTask = async (taskId, userId) => {
         }
 
         logger.log(`Successfully completed task ${taskId} in ${processingTime}s`);
-
-        // Get user wallet address for recording earnings
-        // Determine amount based on task type
-        const amount = task.type === 'image'
-            ? TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.image
-            : TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.text;
-
-        // Record earnings for the completed task
-        const earningResult = await recordTaskEarning(taskId, userId, task.type);
-
-        if (earningResult.success) {
-            logger.log(`Successfully recorded earnings for task ${taskId}`);
-
-            // Process referral rewards if task earning was successful
-            const referralResult = await processReferralRewards(userId, amount);
-            if (referralResult.success) {
-                logger.log(`Successfully processed referral rewards for user ${userId}`);
-            } else {
-                logger.error(`Failed to process referral rewards for user ${userId}: ${referralResult.message || 'Unknown error'}`);
-            }
-        } else {
-            logger.error(`Failed to record earnings for task ${taskId}: ${earningResult.message || 'Unknown error'}`);
-        }
 
         // Clear processing state and release lock
         taskProcessingState.isProcessing = false;
