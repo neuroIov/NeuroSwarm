@@ -133,6 +133,61 @@ export const getPendingUnassignedTasks = async (limit = 20) => {
 /**
  * Assign a batch of tasks to a user
  */
+/**
+ * Clear all processing locks for a user's tasks
+ */
+export const clearProcessingLocks = async (userId: string, nodeId: string) => {
+    try {
+        const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return;
+        }
+
+        // Find all tasks that are locked by this user/node
+        const { data: lockedTasks, error: fetchError } = await client
+            .from('tasks')
+            .select('id')
+            .eq('processing_locked_by', userId)
+            .eq('processing_lock_node_id', nodeId);
+
+        if (fetchError) {
+            logger.error('Error fetching locked tasks:', fetchError);
+            return;
+        }
+
+        if (!lockedTasks || lockedTasks.length === 0) {
+            return;
+        }
+
+        // Clear locks and reset status for these tasks
+        const taskIds = lockedTasks.map(task => task.id);
+        const { error: updateError } = await client
+            .from('tasks')
+            .update({
+                status: 'pending',
+                user_id: null,
+                node_id: null,
+                processing_locked_by: null,
+                processing_locked_at: null,
+                processing_lock_node_id: null,
+                updated_at: new Date().toISOString()
+            })
+            .in('id', taskIds)
+            .eq('processing_locked_by', userId)
+            .eq('processing_lock_node_id', nodeId);
+
+        if (updateError) {
+            logger.error('Error clearing processing locks:', updateError);
+            return;
+        }
+
+        logger.log(`Cleared processing locks for ${taskIds.length} tasks`);
+    } catch (error) {
+        logger.error('Error in clearProcessingLocks:', error);
+    }
+};
+
 export const assignTasksToUser = async (userId, nodeId, batchSize = 5) => {
     try {
         if (!userId) {
@@ -146,50 +201,46 @@ export const assignTasksToUser = async (userId, nodeId, batchSize = 5) => {
             return [];
         }
 
-        // Check if node is active
-        const state = store.getState();
-        if (!state.node?.isActive) {
-            logger.warn('Cannot assign tasks: Node is not active');
-            return [];
-        }
-
         // Get pending unassigned tasks
-        const pendingTasks = await getPendingUnassignedTasks(batchSize * 2);
-        if (pendingTasks.length === 0) {
-            logger.log('No pending unassigned tasks available for assignment');
+        const { data: pendingTasks, error: fetchError } = await client
+            .from('tasks')
+            .select('*')
+            .eq('status', 'pending')
+            .is('user_id', null)
+            .is('processing_locked_by', null)
+            .limit(batchSize);
+
+        if (fetchError) {
+            logger.error('Error fetching pending tasks:', fetchError);
             return [];
         }
 
-        // Take only the batch size we need
-        const tasksToAssign = pendingTasks.slice(0, batchSize);
-        const taskIds = tasksToAssign.map(task => task.id);
-        const timestamp = new Date().toISOString();
+        if (!pendingTasks || pendingTasks.length === 0) {
+            logger.log('No pending unassigned tasks available');
+            return [];
+        }
 
-        // Update all tasks in one batch operation
-        const { error } = await client
+        const now = new Date().toISOString();
+        const taskIds = pendingTasks.map(task => task.id);
+
+        // Update tasks with user assignment and processing lock
+        const { data: assignedTasks, error: updateError } = await client
             .from('tasks')
             .update({
                 user_id: userId,
                 node_id: nodeId,
-                updated_at: timestamp
+                processing_locked_by: userId,
+                processing_locked_at: now,
+                processing_lock_node_id: nodeId,
+                updated_at: now
             })
             .in('id', taskIds)
-            .is('user_id', null); // Only update if still unassigned
+            .is('user_id', null)
+            .is('processing_locked_by', null)
+            .select();
 
-        if (error) {
-            logger.error('Error assigning tasks to user:', error);
-            return [];
-        }
-
-        // Re-fetch the assigned tasks to confirm assignment
-        const { data: assignedTasks, error: fetchError } = await client
-            .from('tasks')
-            .select('*')
-            .in('id', taskIds)
-            .eq('user_id', userId);
-
-        if (fetchError) {
-            logger.error('Error fetching assigned tasks:', fetchError);
+        if (updateError) {
+            logger.error('Error assigning tasks:', updateError);
             return [];
         }
 
@@ -265,23 +316,42 @@ export const processTask = async (taskId, userId) => {
         taskProcessingState.isProcessing = true;
         taskProcessingState.currentTask = task;
         
-        // Update status to processing
+        // Update status to processing and set processing lock
         // Only update if task is in pending state to prevent overwriting completed tasks
         if (task.status === 'pending') {
+            const now = new Date().toISOString();
             const { error: updateError } = await client
                 .from('tasks')
                 .update({
                     status: 'processing',
-                    updated_at: new Date().toISOString()
+                    updated_at: now,
+                    processing_locked_by: userId,
+                    processing_locked_at: now,
+                    processing_lock_node_id: state.node?.nodeId || null
                 })
                 .eq('id', taskId)
-                .eq('user_id', userId);
+                .eq('user_id', userId)
+                .is('processing_locked_by', null); // Only acquire lock if not already locked
 
             if (updateError) {
                 logger.error(`Error updating task ${taskId} to processing:`, updateError);
                 taskProcessingState.isProcessing = false;
                 taskProcessingState.currentTask = null;
                 return { success: false, message: 'UPDATE_ERROR' };
+            }
+
+            // Verify we got the lock
+            const { data: verifyTask, error: verifyError } = await client
+                .from('tasks')
+                .select('processing_locked_by')
+                .eq('id', taskId)
+                .single();
+
+            if (verifyError || !verifyTask || verifyTask.processing_locked_by !== userId) {
+                logger.error(`Failed to acquire processing lock for task ${taskId}`);
+                taskProcessingState.isProcessing = false;
+                taskProcessingState.currentTask = null;
+                return { success: false, message: 'LOCK_ACQUISITION_FAILED' };
             }
         }
         
@@ -303,7 +373,10 @@ export const processTask = async (taskId, userId) => {
                             status: 'pending',
                             updated_at: new Date().toISOString(),
                             user_id: null,  // Release the task so others can pick it up
-                            node_id: null   // Clear the node ID
+                            node_id: null,   // Clear the node ID
+                            processing_locked_by: null,
+                            processing_locked_at: null,
+                            processing_lock_node_id: null
                         })
                         .eq('id', taskId)
                         .eq('user_id', userId)
@@ -435,7 +508,26 @@ export const processTask = async (taskId, userId) => {
             ? TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.image
             : TASK_PROCESSING_CONFIG.EARNINGS_NLOVE.text;
 
-        // Record earnings for the completed task while task still exists in tasks table
+        // First mark the task as completed
+        const { error: completeError } = await client
+            .from('tasks')
+            .update({
+                status: 'completed',
+                updated_at: new Date().toISOString(),
+                result: result
+            })
+            .eq('id', taskId)
+            .eq('user_id', userId)
+            .eq('status', 'processing');
+
+        if (completeError) {
+            logger.error(`Error marking task ${taskId} as completed:`, completeError);
+            taskProcessingState.isProcessing = false;
+            taskProcessingState.currentTask = null;
+            return { success: false, message: 'COMPLETION_ERROR' };
+        }
+
+        // Record earnings for the completed task
         const earningResult = await recordTaskEarning(taskId, userId, task.type);
 
         if (!earningResult.success) {
@@ -454,13 +546,13 @@ export const processTask = async (taskId, userId) => {
             // Continue anyway since earnings were recorded
         }
 
-        // Now delete the task from tasks table since earnings are recorded
+        // Only after earnings are confirmed recorded, delete the task
         const { error: deleteError } = await client
             .from('tasks')
             .delete()
             .eq('id', taskId)
             .eq('user_id', userId)
-            .in('status', ['processing', 'failed', 'pending']); // Allow deleting from any of these states
+            .eq('status', 'completed'); // Only delete completed tasks
 
         if (deleteError) {
             logger.error(`Error deleting completed task ${taskId}:`, deleteError);
@@ -489,7 +581,10 @@ export const processTask = async (taskId, userId) => {
                     status: 'failed',
                     updated_at: new Date().toISOString(),
                     user_id: null,  // Release the task
-                    node_id: null   // Clear the node ID
+                    node_id: null,   // Clear the node ID
+                    processing_locked_by: null,
+                    processing_locked_at: null,
+                    processing_lock_node_id: null
                 })
                 .eq('id', taskId)
                 .eq('user_id', userId);

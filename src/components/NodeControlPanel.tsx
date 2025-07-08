@@ -60,6 +60,7 @@ import {
   fetchAndAssignTasks,
   clearAssignedTasks,
 } from "@/store/slices/taskSlice";
+import { clearProcessingLocks } from "@/services/taskService";
 import { useSession } from "@/hooks/useSession";
 
 import { RootState, useAppDispatch } from "@/store";
@@ -868,7 +869,10 @@ export const NodeControlPanel = () => {
           console.log("Successfully reset pending and processing tasks for this node");
         }
 
-        // Stop the node in Redux
+        // Clear processing locks and stop node
+        if (userProfile?.id) {
+          await clearProcessingLocks(userProfile.id, selectedNodeId);
+        }
         dispatch(stopNode());
         dispatch(clearAssignedTasks());
 
@@ -1128,7 +1132,7 @@ export const NodeControlPanel = () => {
 
     // This function will be called when the page is actually being unloaded
     const handleUnload = () => {
-      if (isActive && selectedNodeId) {
+      if (isActive && selectedNodeId && userProfile?.id) {
         console.log("Page actually unloading - stopping node");
 
         try {
@@ -1149,6 +1153,9 @@ export const NodeControlPanel = () => {
               timestamp: Date.now()
             }));
           }
+
+          // Clear processing locks before unload
+          clearProcessingLocks(userProfile.id, selectedNodeId);
         } catch (e) {
           console.error("Failed to save node stop info to localStorage", e);
         }
