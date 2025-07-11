@@ -1,8 +1,7 @@
-import { taskPollingService } from './taskPollingService';
 import { logger } from '../utils/logger';
 import { TASK_PROCESSING_CONFIG } from './config';
-import { setUserIdProvider } from './swarmTaskService';
 import { store } from '../store';
+import { startUptimeTracking, stopUptimeTracking } from '../store/slices/taskSlice';
 
 class StartupService {
     private initialized = false;
@@ -16,33 +15,17 @@ class StartupService {
             return;
         }
 
-        // Set up the user ID provider function to break circular dependencies
-        setUserIdProvider(() => {
-            try {
-                const state = store.getState();
-                return state.session?.userProfile?.id;
-            } catch (error) {
-                logger.error('Error getting user ID from store:', error);
-                return null;
-            }
-        });
-        logger.log('User ID provider initialized');
-
-        // Configure the polling service to use a throttle
-        const pollingInterval = TASK_PROCESSING_CONFIG.POLLING_INTERVAL || 20000;
-        const minPollingInterval = 10000; // 10 seconds minimum between polls
-
-        // Start task polling service with a small random offset to avoid synchronization
+        // Configure the proxy task service with a small random offset to avoid synchronization
         const randomOffset = Math.floor(Math.random() * 5000); // 0-5 second offset
-        const actualInterval = Math.max(minPollingInterval, pollingInterval + randomOffset);
-
-        logger.log(`Starting task polling service with interval: ${Math.round(actualInterval / 1000)}s`);
+        
+        logger.log(`Starting proxy task service`);
 
         // Use setTimeout to start the service with a slight delay
         // This helps avoid multiple systems starting up simultaneously
         setTimeout(() => {
-            taskPollingService.start(undefined, actualInterval);
-        }, 2000);
+            startUptimeTracking();
+            logger.log('Uptime tracking started for proxy task generation');
+        }, 2000 + randomOffset);
 
         // Mark as initialized
         this.initialized = true;
@@ -53,9 +36,9 @@ class StartupService {
      * Clean up services on application shutdown
      */
     cleanup(): void {
-        // Stop task polling
-        taskPollingService.stop();
-
+        // Stop uptime tracking
+        stopUptimeTracking();
+        
         logger.log('Services cleaned up');
     }
 }

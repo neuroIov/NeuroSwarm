@@ -1,16 +1,13 @@
 // taskSlice.js - Redux slice for task management
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import {
-    getPendingUnassignedTasks,
-    assignTasksToUser,
-    processTask,
-    getUserAssignedTasks
-} from '@/services/taskService';
 import { logger } from '@/utils/logger';
-import { RootState } from '@/store'; // Fix import path for RootState
+import { RootState } from '@/store'; 
 import { TASK_PROCESSING_CONFIG } from '@/services/config';
-import { getSwarmSupabase } from '@/lib/supabase-client';
+import { v4 as uuidv4 } from 'uuid';
+import { AITask } from '@/services/types';
+import proxyTaskService from '@/services/proxyTaskService';
+import { recordTaskEarning } from '@/services/earningsService';
 
 // Simple polling controller
 let pollingInterval: NodeJS.Timeout | null = null;
@@ -21,6 +18,9 @@ let storeRef: { getState: () => RootState } | null = null;
 // Track current task processing state
 let isProcessingTask = false;
 let currentProcessingTaskId: string | null = null;
+let uptimeSeconds = 0;
+let uptimeTimer: NodeJS.Timeout | null = null;
+let lastTaskGenTime = 0;
 
 // Enhanced mutex for task processing with lock timeout
 const taskProcessingLock = {
@@ -164,13 +164,7 @@ export const taskSlice = createSlice({
                 if (index !== -1) {
                     logger.warn(`Resetting task ${task.id} (${task.type}) from processing to pending`);
                     state.assignedTasks[index].status = 'pending';
-                    // Clear user and node assignment in local state too
-                    state.assignedTasks[index].user_id = null;
-                    state.assignedTasks[index].node_id = null;
                 }
-                
-                // Also update in database - reset to pending and release the task
-                updateTaskStatusInDatabase(task.id, 'pending', userId, true);
             });
             
             // Clear current task and processing state
@@ -198,84 +192,59 @@ export const taskSlice = createSlice({
                 return state;
             }
 
-            // Find tasks stuck in processing state for this user
-            const stuckTasks = state.assignedTasks.filter(task => 
-                task.status === 'processing' && task.user_id === userId
-            );
+            // Find any tasks that are stuck in processing state
+            const now = new Date();
+            const stuckTasks = state.assignedTasks.filter(task => {
+                if (task.status !== 'processing' || !task.updated_at) {
+                    return false;
+                }
+                
+                // Calculate seconds since last update
+                const updatedAt = new Date(task.updated_at);
+                const timeDiff = (now.getTime() - updatedAt.getTime()) / 1000;
+                
+                // Task is stuck if it's been processing for more than 10 minutes
+                return timeDiff > 600;
+            });
 
             if (stuckTasks.length === 0) {
-                return state;
+                return;
             }
             
-            logger.warn(`Attempting recovery of ${stuckTasks.length} potentially stuck tasks`);
+            logger.warn(`Found ${stuckTasks.length} stuck tasks for user ${userId}`);
             
-            // Mark stuck tasks as needing retry rather than immediately failed
-            // This gives the task a chance to complete if it's just taking longer than expected
+            // Reset stuck tasks to failed
             stuckTasks.forEach(task => {
                 const index = state.assignedTasks.findIndex(t => t.id === task.id);
                 if (index !== -1) {
-                    // Instead of marking as failed, we're just updating processing state
-                    // The task will be retried in the processing loop
-                    logger.warn(`Task ${task.id} appears stuck (${task.type} task), will reset processing state`);
-                    state.assignedTasks[index].status = 'pending';
-                    state.assignedTasks[index].retry_count = (state.assignedTasks[index].retry_count || 0) + 1;
-
-                    // Only mark as failed if this is the second or third retry
-                    if (state.assignedTasks[index].retry_count > 2) {
-                        logger.error(`Task ${task.id} has failed ${state.assignedTasks[index].retry_count} recovery attempts, marking as failed`);
+                    logger.warn(`Marking stuck task ${task.id} as failed`);
                         state.assignedTasks[index].status = 'failed';
-                        
-                        // Also update in global tasks list if needed
-                        const globalIndex = state.allTasks.findIndex(t => t.id === task.id);
-                        if (globalIndex !== -1) {
-                            state.allTasks[globalIndex].status = 'failed';
-                        }
-                    }
-                    
-                    // Update task in database to match our local state
-                    const updatedStatus = state.assignedTasks[index].status;
-                    // Release the task if it's going back to pending so others can pick it up
-                    const releaseTask = updatedStatus === 'pending';
-                    updateTaskStatusInDatabase(task.id, updatedStatus, userId, releaseTask);
+                    state.assignedTasks[index].updated_at = now.toISOString();
                 }
             });
-
-            // Reset processing state if current task was stuck
-            if (state.currentTask?.status === 'processing' && 
-                stuckTasks.some(task => task.id === state.currentTask?.id)) {
-                // Look for next pending task
-                const nextTask = state.assignedTasks.find(t => t.status === 'pending');
-                state.currentTask = nextTask || null;
+            
+            // Clear current task if it's one of the stuck tasks
+            if (state.currentTask && stuckTasks.some(task => task.id === state.currentTask?.id)) {
+                state.currentTask = null;
                 state.isProcessing = false;
             }
 
-            // Clear global task processing state
-            isProcessingTask = false;
-            currentProcessingTaskId = null;
-            taskProcessingLock.release();
-
-            logger.log(`Processed recovery for ${stuckTasks.length} tasks`);
-
-            return state;
+            logger.log(`Successfully recovered ${stuckTasks.length} stuck tasks`);
+        },
+        addGeneratedTasks: (state, action) => {
+            const newTasks = action.payload;
+            
+            // Add tasks to assigned tasks if they don't exist already
+            newTasks.forEach(task => {
+                const exists = state.assignedTasks.some(t => t.id === task.id);
+                if (!exists) {
+                    state.assignedTasks.push(task);
+                }
+            });
         }
     },
     extraReducers: (builder) => {
         builder
-            // Fetch pending tasks
-            .addCase(fetchPendingTasks.pending, (state) => {
-                state.isLoading = true;
-            })
-            .addCase(fetchPendingTasks.fulfilled, (state, action) => {
-                state.isLoading = false;
-                state.allTasks = action.payload;
-                state.lastFetchTime = Date.now();
-            })
-            .addCase(fetchPendingTasks.rejected, (state, action) => {
-                state.isLoading = false;
-                state.error = action.payload;
-            })
-
-            // Assign tasks to user
             .addCase(fetchAndAssignTasks.pending, (state) => {
                 state.isLoading = true;
             })
@@ -291,29 +260,22 @@ export const taskSlice = createSlice({
 
                     if (newTasks.length > 0) {
                         state.assignedTasks = [...state.assignedTasks, ...newTasks];
-
-                        // Set first pending task as current if none is selected
-                        if (!state.currentTask) {
-                            const firstPending = newTasks.find(t => t.status === 'pending');
-                            if (firstPending) state.currentTask = firstPending;
-                        }
+                        logger.log(`Added ${newTasks.length} new tasks to the queue`);
                     }
                 }
+
+                state.lastFetchTime = Date.now();
             })
             .addCase(fetchAndAssignTasks.rejected, (state, action) => {
                 state.isLoading = false;
-                state.error = action.payload;
+                state.error = action.error.message || 'Failed to assign tasks';
             })
-
-            // Process task
             .addCase(processNextTask.pending, (state) => {
                 state.isProcessing = true;
             })
-            .addCase(processNextTask.fulfilled, (state, action) => {
+            .addCase(processNextTask.fulfilled, (state) => {
+                // Reset processing state if task completed
                 state.isProcessing = false;
-
-                // Task status updates are handled via the updateTaskStatus reducer
-                // This gets called when the task updates
             })
             .addCase(processNextTask.rejected, (state) => {
                 state.isProcessing = false;
@@ -321,88 +283,82 @@ export const taskSlice = createSlice({
     }
 });
 
-/**
- * Helper function to update task status directly in the database
- * Used for cleanup operations when node is stopped
- */
-const updateTaskStatusInDatabase = async (taskId: string, status: string, userId?: string, releaseTask = false) => {
-    try {
-        const supabase = getSwarmSupabase();
-        if (!supabase) {
-            logger.error('Supabase client not available for task status update');
-            return null;
-        }
-        
-        // Prepare update payload
-        const updateData: any = {
-            status,
-            updated_at: new Date().toISOString()
-        };
-        
-        // If releaseTask is true, set user_id and node_id to null
-        if (releaseTask) {
-            updateData.user_id = null;
-            updateData.node_id = null;
-        }
-        
-        // Build the update query
-        let query = supabase
-            .from('tasks')
-            .update(updateData)
-            .eq('id', taskId);
-            
-        // Add user_id filter if provided
-        if (userId) {
-            query = query.eq('user_id', userId);
-        }
-        
-        // Execute the update and return the data
-        const { data, error } = await query.select('id, status, type').single();
-            
-        if (error) {
-            logger.error(`Failed to update task ${taskId} status to ${status} in database:`, error);
-            return null;
-        } else {
-            const action = releaseTask ? "released back to pool" : "updated";
-            logger.log(`Task ${taskId} ${action} with status ${status} in database`);
-            return data;
-        }
-    } catch (err) {
-        logger.error(`Error updating task status in database:`, err);
-        return null;
-    }
-};
+export const { setCurrentTask, updateTaskStatus, clearAssignedTasks, setProcessingStatus, cleanupProcessingTasks, recoverStuckTasks, addGeneratedTasks } = taskSlice.actions;
 
-// Async thunks
-export const fetchPendingTasks = createAsyncThunk(
-    'tasks/fetchPendingTasks',
-    async (_, { rejectWithValue, getState }) => {
-        try {
-            // Check if node is active before fetching
-            const state = getState() as RootState;
-            if (!state.node?.isActive) {
-                logger.log('Node is inactive, skipping task fetch');
-                return [];
+/**
+ * Generate random proxy tasks based on hardware tier
+ */
+export const generateProxyTasks = createAsyncThunk(
+    'tasks/generateProxyTasks',
+    async (_, { getState, dispatch }) => {
+        const state = getState() as RootState;
+        const userId = state.session?.userProfile?.id;
+        const nodeId = state.node?.nodeId;
+        const isActive = state.node?.isActive;
+        
+        if (!userId || !nodeId || !isActive) {
+            return [];
+        }
+        
+        // Generate random task count based on hardware tier
+        const hardwareTier = state.node?.rewardTier || 'cpu';
+        const taskTypes: ('image' | 'text' | '3d' | 'video')[] = ['image', 'text', '3d', 'video'];
+        const tasks: AITask[] = [];
+        
+        // Generate 2-5 tasks
+        const taskCount = Math.floor(Math.random() * 3) + 2;
+        
+        for (let i = 0; i < taskCount; i++) {
+            // Select random task type with weighted distribution
+            const randomValue = Math.random();
+            let selectedType: typeof taskTypes[number];
+            
+            if (randomValue < TASK_PROCESSING_CONFIG.DISTRIBUTION.image) {
+                selectedType = 'image';
+            } else if (randomValue < TASK_PROCESSING_CONFIG.DISTRIBUTION.image + TASK_PROCESSING_CONFIG.DISTRIBUTION.text) {
+                selectedType = 'text';
+            } else if (randomValue < TASK_PROCESSING_CONFIG.DISTRIBUTION.image + TASK_PROCESSING_CONFIG.DISTRIBUTION.text + TASK_PROCESSING_CONFIG.DISTRIBUTION.three_d) {
+                selectedType = 'three_d';
+            } else {
+                selectedType = 'video';
             }
             
-            const tasks = await getPendingUnassignedTasks(20);
-            return tasks;
-        } catch (error) {
-            logger.error('Error fetching pending tasks:', error);
-            return rejectWithValue(error.message);
+            // Create new task
+            const task: AITask = {
+                id: uuidv4(),
+                type: selectedType,
+                status: 'pending',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                compute_time: 0,
+                user_id: userId,
+                node_id: nodeId,
+                model: selectedType === 'image' ? 'stable-diffusion-xl' : 
+                       selectedType === 'text' ? 'llama-3-8b' : 
+                       selectedType === 'three_d' ? '3d-diffusion' : 
+                       'stable-video-diffusion',
+                prompt: `Generate a ${selectedType === 'image' ? 'realistic image' : 
+                          selectedType === 'text' ? 'creative text' : 
+                          selectedType === 'three_d' ? '3D model' : 
+                          'short video'} of ${Math.random().toString(36).substring(7)}`
+            };
+            
+            tasks.push(task);
         }
+        
+        if (tasks.length > 0) {
+            dispatch(addGeneratedTasks(tasks));
+            logger.log(`Generated ${tasks.length} proxy tasks`);
+        }
+        
+            return tasks;
     }
 );
 
-interface AssignTasksParams {
-    userId: string;
-    nodeId: string;
-    batchSize?: number;
-}
-
+// Async thunks
 export const fetchAndAssignTasks = createAsyncThunk(
     'tasks/fetchAndAssignTasks',
-    async ({ userId, nodeId, batchSize = 5 }: AssignTasksParams, { rejectWithValue, getState }) => {
+    async ({ userId, nodeId, batchSize = 5 }, { rejectWithValue, getState, dispatch }) => {
         try {
             if (!userId) {
                 return rejectWithValue('No user ID provided');
@@ -421,10 +377,16 @@ export const fetchAndAssignTasks = createAsyncThunk(
                 return [];
             }
 
-            const assignedTasks = await assignTasksToUser(userId, nodeId, batchSize);
-            return assignedTasks;
+            // Generate proxy tasks instead of fetching from API
+            const now = Date.now();
+            if (now - lastTaskGenTime > 120000) { // Generate new tasks every 2 minutes max
+                lastTaskGenTime = now;
+                return await dispatch(generateProxyTasks()).unwrap();
+            }
+            
+            return [];
         } catch (error) {
-            logger.error('Error assigning tasks to user:', error);
+            logger.error('Error generating proxy tasks:', error);
             return rejectWithValue(error.message);
         }
     }
@@ -433,35 +395,42 @@ export const fetchAndAssignTasks = createAsyncThunk(
 export const processNextTask = createAsyncThunk(
     'tasks/processNextTask',
     async (_, { getState, dispatch, rejectWithValue }) => {
-        let taskToProcess = null;
-
         try {
-            // Get current state
             const state = getState() as RootState;
             const userId = state.session?.userProfile?.id;
-            
-            // Check if node is active before processing
-            if (!state.node?.isActive) {
-                logger.log('Node is inactive, skipping task processing');
-                return rejectWithValue('NODE_INACTIVE');
+            const nodeId = state.node?.nodeId;
+
+            // Exit conditions
+            if (!userId || !nodeId || !state.node?.isActive) {
+                logger.warn('Cannot process task: Node inactive or user not logged in');
+                return rejectWithValue('Node is not active');
             }
 
-            if (!userId) {
-                return rejectWithValue('No user ID available');
+            if (isProcessingTask) {
+                logger.log(`Already processing task ${currentProcessingTaskId}, skipping`);
+                return rejectWithValue({ success: false, message: 'ALREADY_PROCESSING' });
             }
 
-            // Get the current task or find next pending task
-            taskToProcess = state.tasks.currentTask;
+            // Find next pending task
+            let taskToProcess = state.tasks.currentTask;
 
+            // If no current task or current task is not pending, find one
             if (!taskToProcess || taskToProcess.status !== 'pending') {
-                logger.warn('No valid task to process');
-                return rejectWithValue('No pending tasks to process');
+                const pendingTask = state.tasks.assignedTasks.find(task => task.status === 'pending');
+                
+                if (!pendingTask) {
+                    logger.log('No pending tasks available to process');
+                    return rejectWithValue({ success: false, message: 'NO_PENDING_TASKS' });
+                }
+
+                taskToProcess = pendingTask;
+                dispatch(setCurrentTask(pendingTask));
             }
 
-            // Try to acquire lock - if already processing, don't start another task
+            // Try to acquire processing lock
             if (!taskProcessingLock.acquire(taskToProcess.id)) {
-                logger.warn(`Cannot process task ${taskToProcess.id} - processing lock could not be acquired`);
-                return rejectWithValue('Processing lock could not be acquired');
+                logger.warn(`Could not acquire processing lock for task ${taskToProcess.id}`);
+                return rejectWithValue({ success: false, message: 'Processing lock could not be acquired' });
             }
 
             // Set global processing state
@@ -474,9 +443,9 @@ export const processNextTask = createAsyncThunk(
                 status: 'processing'
             }));
 
-            // Step 2: Process task
+            // Step 2: Process task using proxy service
             logger.log(`Starting to process task ${taskToProcess.id}`);
-            const result = await processTask(taskToProcess.id, userId);
+            const result = await proxyTaskService.processTask(taskToProcess.id, userId);
 
             // Step 3: Update status based on result
             if (result.success) {
@@ -486,6 +455,18 @@ export const processNextTask = createAsyncThunk(
                     result: result.result
                 }));
                 logger.log(`Task ${taskToProcess.id} completed successfully`);
+                
+                // Record earnings based on task type and hardware tier
+                const taskType = taskToProcess.type;
+                const hardwareTier = state.node?.rewardTier || 'cpu';
+                
+                // Record earnings
+                try {
+                    await recordTaskEarning(taskToProcess.id, userId, taskType);
+                    logger.log(`Recorded earnings for task ${taskToProcess.id}`);
+                } catch (err) {
+                    logger.error(`Failed to record earnings for task ${taskToProcess.id}:`, err);
+                }
             } else if (result.message === 'ALREADY_PROCESSING') {
                 // Don't mark as failed if it was just skipped due to another task processing
                 // Just leave it in pending state to try again later
@@ -493,249 +474,122 @@ export const processNextTask = createAsyncThunk(
                     taskId: taskToProcess.id,
                     status: 'pending'
                 }));
-                logger.log(`Task ${taskToProcess.id} skipped (another task is processing)`);
             } else {
+                // Mark as failed for other errors
                 dispatch(updateTaskStatus({
                     taskId: taskToProcess.id,
                     status: 'failed'
                 }));
-                logger.warn(`Task ${taskToProcess.id} processing failed`);
+                logger.warn(`Task ${taskToProcess.id} failed: ${result.message || 'Unknown error'}`);
             }
+
+            // Release processing lock and reset state
+            taskProcessingLock.release();
+            isProcessingTask = false;
+            currentProcessingTaskId = null;
 
             return result;
         } catch (error) {
-            // Mark task as failed
-            if (taskToProcess) {
-                dispatch(updateTaskStatus({
-                    taskId: taskToProcess.id,
-                    status: 'failed'
-                }));
-            }
-
-            logger.error(`Error processing task: ${error.message || error}`);
-            return rejectWithValue(error.message || 'Unknown error');
-        } finally {
-            // Always clean up
+            // Clean up if there was an error
+            logger.error('Error processing task:', error);
+            
+            // Release lock and reset state
+            taskProcessingLock.release();
             isProcessingTask = false;
             currentProcessingTaskId = null;
-            taskProcessingLock.release();
+            
+            return rejectWithValue(error);
         }
     }
 );
 
-// Start simple polling for tasks
+/**
+ * Initialize uptime tracking for proxy tasks
+ */
+export const startUptimeTracking = () => {
+    if (uptimeTimer) {
+        clearInterval(uptimeTimer);
+    }
+    
+    uptimeSeconds = 0;
+    uptimeTimer = setInterval(() => {
+        const state = storeRef?.getState();
+        if (state?.node?.isActive) {
+            uptimeSeconds++;
+            
+            // Every 10 minutes (600 seconds), generate tasks
+            if (uptimeSeconds > 0 && uptimeSeconds % 600 === 0) {
+                const now = Date.now();
+                if (now - lastTaskGenTime > 590000) { // Prevent multiple generations
+                    lastTaskGenTime = now;
+                    generateProxyTasks();
+                }
+            }
+        }
+    }, 1000);
+};
+
+/**
+ * Stop uptime tracking
+ */
+export const stopUptimeTracking = () => {
+    if (uptimeTimer) {
+        clearInterval(uptimeTimer);
+        uptimeTimer = null;
+    }
+};
+
 export const startTaskPolling = (dispatch, userId, nodeId) => {
     if (pollingInterval) {
         clearInterval(pollingInterval);
+        pollingInterval = null;
     }
     
-    // Track consecutive empty polls for backoff
-    let consecutiveEmptyPolls = 0;
-    let currentPollingInterval = 20000; // Start with 20 seconds
-    const MAX_POLLING_INTERVAL = 120000; // Max 2 minutes
-
-    // First fetch immediately
-    dispatch(fetchPendingTasks());
-
-    // Assign initial batch of tasks if we have a user ID
-    if (userId) {
+    // Check for tasks immediately
+    if (userId && nodeId) {
         dispatch(fetchAndAssignTasks({ userId, nodeId }));
     }
 
-    const pollWithBackoff = () => {
-        // Skip polling if node is inactive
-        if (storeRef) {
-            const state = storeRef.getState();
-            if (!state.node?.isActive) {
-                logger.log('Node is inactive, skipping poll');
+    // Start uptime tracking
+    startUptimeTracking();
+    
+    // Start polling with increasing interval if fetch fails
+    let consecutiveFailures = 0;
+    
+    pollingInterval = setInterval(() => {
+        if (!userId || !nodeId) {
                 return;
-            }
         }
         
-        // Don't poll if we're actively processing a task
-        if (isProcessingTask) {
-            logger.log('Skipping poll while task is processing');
+        // Skip if already processing
+        const state = storeRef?.getState();
+        if (state?.tasks?.isProcessing) {
             return;
         }
 
-        dispatch(fetchPendingTasks())
-            .then((action) => {
-                // Check if we got any tasks
-                const fetchedTasks = action.payload || [];
-                
-                if (fetchedTasks.length === 0) {
-                    consecutiveEmptyPolls++;
-                    
-                    // Apply exponential backoff up to the maximum
-                    if (consecutiveEmptyPolls > 2) {
-                        // Increase interval with each empty poll, capped at MAX_POLLING_INTERVAL
-                        currentPollingInterval = Math.min(
-                            currentPollingInterval * 1.5, 
-                            MAX_POLLING_INTERVAL
-                        );
-                        
-                        logger.log(`Increasing polling interval to ${currentPollingInterval}ms after ${consecutiveEmptyPolls} empty polls`);
-                        
-                        // Reset the interval with the new timing
-                        if (pollingInterval) {
-                            clearInterval(pollingInterval);
-                            pollingInterval = setInterval(pollWithBackoff, currentPollingInterval);
-                        }
-                    }
-                } else {
-                    // Reset backoff if we found tasks
-                    if (consecutiveEmptyPolls > 0) {
-                        consecutiveEmptyPolls = 0;
-                        
-                        // If we were in backoff mode, reset to normal interval
-                        if (currentPollingInterval > 20000) {
-                            currentPollingInterval = 20000;
-                            logger.log('Resetting polling interval to 20000ms after finding tasks');
-                            
-                            // Reset the interval with the normal timing
-                            if (pollingInterval) {
-                                clearInterval(pollingInterval);
-                                pollingInterval = setInterval(pollWithBackoff, currentPollingInterval);
-                            }
-                        }
-                    }
-                }
-                
-                // If we have less than 3 pending tasks left, fetch more
-                if (storeRef) {
-                    const state = storeRef.getState();
-                    const pendingTaskCount = state.tasks.assignedTasks.filter(t => t.status === 'pending').length;
-
-                    if (pendingTaskCount < 3 && userId && !isProcessingTask) {
-                        dispatch(fetchAndAssignTasks({ userId, nodeId }));
-                    }
-                }
+        // Dispatch with backoff on failure
+        dispatch(fetchAndAssignTasks({ userId, nodeId }))
+            .unwrap()
+            .then(() => {
+                consecutiveFailures = 0;
             })
-            .catch(err => {
-                logger.error('Error during task polling:', err);
+            .catch(() => {
+                consecutiveFailures++;
             });
-    };
+            
+    }, TASK_PROCESSING_CONFIG.POLLING_INTERVAL);
+    
+    return pollingInterval;
+};
 
-    // Set up polling interval with the initial interval
-    pollingInterval = setInterval(pollWithBackoff, currentPollingInterval);
-
-    // Return a function to stop polling
-    return () => {
+export const stopTaskPolling = () => {
         if (pollingInterval) {
             clearInterval(pollingInterval);
             pollingInterval = null;
         }
-    };
+    
+    // Stop uptime tracking
+    stopUptimeTracking();
 };
 
-// Process tasks in a loop
-export const startTaskProcessing = (dispatch, userId) => {
-    let processingInterval = null;
-    let isProcessing = false;
-    let lastProcessingAttempt = 0;
-
-    const processLoop = async () => {
-        // Prevent multiple simultaneous processing
-        if (isProcessing || isProcessingTask) {
-            return;
-        }
-
-        // Check if node is active
-        if (storeRef) {
-            const state = storeRef.getState();
-            if (!state.node?.isActive) {
-                // If node is not active, do not process tasks
-                return;
-            }
-        }
-        
-        // Throttle processing attempts (not more than once every 3 seconds)
-        const now = Date.now();
-        if (now - lastProcessingAttempt < 3000) {
-            return;
-        }
-
-        lastProcessingAttempt = now;
-
-        try {
-            isProcessing = true;
-
-            const state = storeRef?.getState();
-            if (!state || !state.node.isActive) {
-                isProcessing = false;
-                return;
-            }
-
-            // Check for any tasks stuck in processing state
-            // Calculate max processing time based on task type and hardware tier
-            const rewardTier = state.node?.rewardTier || 'cpu';
-            
-            // Calculate the maximum time any task should take based on current hardware
-            const maxProcessingTime = Math.max(
-                TASK_PROCESSING_CONFIG.PROCESSING_TIME.image * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier],
-                TASK_PROCESSING_CONFIG.PROCESSING_TIME.text * TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier]
-            ) * 1000; // Convert to milliseconds
-            
-            // Add a 60-second buffer to accommodate any delays
-            const stuckThreshold = maxProcessingTime + 60000;
-            
-            const stuckTasks = state.tasks.assignedTasks.filter(
-                t => t.status === 'processing' &&
-                    Date.now() - new Date(t.updated_at || 0).getTime() > stuckThreshold
-            );
-
-            if (stuckTasks.length > 0) {
-                logger.warn(`Found ${stuckTasks.length} tasks stuck in processing state, recovering...`);
-                dispatch(recoverStuckTasks());
-                isProcessing = false;
-                return;
-            }
-
-            // Check if we have a pending task to process
-            const pendingTask = state.tasks.assignedTasks.find(t => t.status === 'pending');
-
-            if (pendingTask && !isProcessingTask) {
-                logger.log(`Found pending task ${pendingTask.id}, will process`);
-                // Process one task at a time
-                await dispatch(processNextTask()).unwrap();
-
-                // Wait a bit before processing the next task
-                setTimeout(() => {
-                    isProcessing = false;
-                }, 3000);
-            } else {
-                isProcessing = false;
-            }
-        } catch (error) {
-            logger.error('Error in task processing loop:', error);
-            isProcessing = false;
-        }
-    };
-
-    // Initial process immediately
-    processLoop();
-
-    // Set up interval for continuous processing (check every 5 seconds)
-    processingInterval = setInterval(processLoop, 5000);
-
-    // Return a function to stop processing
-    return () => {
-        if (processingInterval) {
-            clearInterval(processingInterval);
-            processingInterval = null;
-        }
-        
-        // Clean up any processing tasks when stopping
-        dispatch(cleanupProcessingTasks());
-    };
-};
-
-export const {
-    setCurrentTask,
-    updateTaskStatus,
-    clearAssignedTasks,
-    setProcessingStatus,
-    recoverStuckTasks,
-    cleanupProcessingTasks
-} = taskSlice.actions;
 export default taskSlice.reducer;

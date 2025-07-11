@@ -1,4 +1,4 @@
-export type TaskType = 'image' | 'video' | 'model' | 'text' | 'inference' | 'training' | 'data_processing';
+export type TaskType = 'image' | 'video' | 'model' | 'text' | 'three_d' | 'inference' | 'training' | 'data_processing';
 export type TaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 export interface TaskProcessingResult {

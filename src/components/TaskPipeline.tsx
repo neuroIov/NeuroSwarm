@@ -10,6 +10,8 @@ import {
   AlignLeft,
   Calculator,
   RefreshCw,
+  Video,
+  Boxes as Cube,
 } from "lucide-react";
 import { InfoTooltip } from "./InfoTooltip";
 import { Switch } from "@/components/ui/switch";
@@ -22,20 +24,19 @@ import {
   updateTaskStatus,
   processNextTask,
   recoverStuckTasks,
+  generateProxyTasks,
 } from "@/store/slices/taskSlice";
 import {
   incrementTasksCompleted,
   updateSuccessRate,
 } from "@/store/slices/nodeSlice";
-import { processTask } from "@/services/swarmTaskService";
 import { AITask, TaskStatus, TaskType } from "@/services/types";
 import { Button } from "@/components/ui/button";
 import { TASK_PROCESSING_CONFIG } from "@/services/config";
-import { getSwarmSupabase } from "@/lib/supabase-client";
 
 export const TaskPipeline = () => {
   const dispatch = useAppDispatch();
-  const { isActive, nodeId } = useSelector((state: RootState) => state.node);
+  const { isActive, nodeId, rewardTier } = useSelector((state: RootState) => state.node);
   const { assignedTasks, currentTask, isLoading, isProcessing } = useSelector(
     (state: RootState) => state.tasks
   );
@@ -50,6 +51,8 @@ export const TaskPipeline = () => {
     failed: 0,
     imageTasksCount: 0,
     textTasksCount: 0,
+    threeDTasksCount: 0,
+    videoTasksCount: 0,
   });
 
   // Simple flag to prevent concurrent operations
@@ -69,6 +72,8 @@ export const TaskPipeline = () => {
         failed: 0,
         imageTasksCount: 0,
         textTasksCount: 0,
+        threeDTasksCount: 0,
+        videoTasksCount: 0,
       });
       return;
     }
@@ -80,6 +85,8 @@ export const TaskPipeline = () => {
       failed: assignedTasks.filter((t) => t.status === "failed").length,
       imageTasksCount: assignedTasks.filter((t) => t.type === "image").length,
       textTasksCount: assignedTasks.filter((t) => t.type === "text").length,
+      threeDTasksCount: assignedTasks.filter((t) => t.type === "three_d").length,
+      videoTasksCount: assignedTasks.filter((t) => t.type === "video").length,
     };
 
     setStats(newStats);
@@ -155,9 +162,9 @@ export const TaskPipeline = () => {
         clearTimeout(taskAssignTimerRef.current);
       }
 
-      // Schedule task assignment with a delay to avoid overwhelming the system
+      // Generate proxy tasks instead of fetching from API
       taskAssignTimerRef.current = setTimeout(() => {
-        dispatch(fetchAndAssignTasks({ userId, nodeId }));
+        dispatch(generateProxyTasks());
         taskAssignTimerRef.current = null;
       }, 3000);
     }
@@ -233,7 +240,11 @@ export const TaskPipeline = () => {
             `Task completed: ${
               currentTask.type === "image"
                 ? "Image generated"
-                : "Text processed"
+                : currentTask.type === "text"
+                ? "Text processed"
+                : currentTask.type === "three_d"
+                ? "3D model created"
+                : "Video generated"
             }`
           );
         } else {
@@ -275,58 +286,70 @@ export const TaskPipeline = () => {
         // Still try to select next task after error
         selectNextTask();
       } finally {
-        // Reset local processing state with a short delay
+        // Reset local processing state with a delay
         setTimeout(() => {
           setLocalProcessing(false);
         }, 1000);
       }
     };
 
-    // Start processing if we have a pending task selected
-    if (currentTask?.status === "pending") {
+    // Only start processing if we're not already and we have tasks
+    if (!isProcessing && !localProcessing && assignedTasks.length > 0) {
       processTask();
-    } else if (!currentTask && !isLoading) {
-      // No current task, try to select one
-      selectNextTask();
+    } else if (assignedTasks.length === 0) {
+      // If no tasks at all, try to get some
+      checkAndFetchMoreTasks();
     }
 
-    // Check if we need more tasks
-    checkAndFetchMoreTasks();
-
-    // Cleanup function
+    // On unmount, clear all timers
     return () => {
       clearAllTimers();
     };
   }, [
-    autoMode,
     isActive,
     userId,
     nodeId,
-    currentTask,
+    autoMode,
     isProcessing,
     localProcessing,
-    isLoading,
+    currentTask,
     assignedTasks,
     stats,
-    clearAllTimers,
-    recoverStuckTasksHandler,
     selectNextTask,
     checkAndFetchMoreTasks,
+    recoverStuckTasksHandler,
+    clearAllTimers,
     dispatch,
   ]);
 
-  // Toggle auto mode
+  // Whenever node is activated, fetch tasks
+  useEffect(() => {
+    if (isActive && userId && nodeId) {
+      dispatch(
+        fetchAndAssignTasks({
+          userId,
+          nodeId,
+          batchSize: 5,
+        })
+      );
+
+      // Generate initial proxy tasks
+      dispatch(generateProxyTasks());
+    }
+  }, [isActive, userId, nodeId, dispatch]);
+
   const toggleAutoMode = (checked: boolean) => {
     setAutoMode(checked);
-    setLocalProcessing(false);
 
-    // Clear all timers
-    clearAllTimers();
-
-    // Recover any stuck tasks
-    recoverStuckTasksHandler();
-
-    toast(checked ? "Auto-processing enabled" : "Auto-processing disabled");
+    if (checked) {
+      toast.info("Auto mode enabled");
+      // Re-fetch tasks if enabled
+      if (isActive && userId && nodeId) {
+        dispatch(generateProxyTasks());
+      }
+    } else {
+      toast.info("Auto mode disabled");
+    }
   };
 
   // Manual task processing for non-auto mode
@@ -394,72 +417,40 @@ export const TaskPipeline = () => {
     }
   };
 
-  // Get task type icon
   const getTaskTypeIcon = (type: TaskType) => {
     switch (type) {
       case "image":
-        return <ImageIcon className="w-5 h-5 text-green-400" />;
+        return <ImageIcon className="w-5 h-5 text-purple-500" />;
       case "text":
-        return <AlignLeft className="w-5 h-5 text-blue-400" />;
+        return <AlignLeft className="w-5 h-5 text-blue-500" />;
+      case "three_d":
+        return <Cube className="w-5 h-5 text-green-500" />;
+      case "video":
+        return <Video className="w-5 h-5 text-red-500" />;
       default:
-        return <Calculator className="w-5 h-5 text-purple-400" />;
+        return <FileCode className="w-5 h-5 text-gray-500" />;
     }
   };
 
-  // Calculate estimated time remaining for a task
   const getEstimatedTime = (task: AITask): number => {
-    if (task.status !== "processing") return 0;
-    return task.type === "image" ? 30 : 15;
+    // Get appropriate processing time based on task type and hardware
+    return TASK_PROCESSING_CONFIG.PROCESSING_TIME[task.type as keyof typeof TASK_PROCESSING_CONFIG.PROCESSING_TIME] * 
+      TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS[rewardTier as keyof typeof TASK_PROCESSING_CONFIG.HARDWARE_MULTIPLIERS];
   };
 
-  // Function to refresh task list
   const refreshTaskList = () => {
-    // If node is active, refresh assigned tasks
-    if (isActive) {
-      dispatch(fetchAndAssignTasks({ userId, nodeId }));
-    }
+    if (!userId || !nodeId) return;
+
+    // Generate new tasks
+    dispatch(generateProxyTasks());
+    toast.info("Refreshing tasks...");
   };
 
-  // Set up real-time subscription for task updates
-  useEffect(() => {
-    if (!userProfile?.id) return;
-    
-    const client = getSwarmSupabase();
-    
-    // Subscribe only to the user's own tasks
-    const tasksSubscription = client
-      .channel(`tasks-${userProfile.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tasks",
-          filter: `user_id=eq.${userProfile.id}`, // CRITICAL: Only listen for user's own tasks
-        },
-        (payload) => {
-          console.log("Task update received:", payload);
-          
-          // Only refresh if needed, don't reload everything
-          if (payload.eventType === "UPDATE" && payload.new && payload.old) {
-            // If status changed, refresh the task list
-            if (payload.new.status !== payload.old.status) {
-              console.log("Task status changed, refreshing task list");
-              refreshTaskList();
-            }
-          } else if (payload.eventType === "INSERT") {
-            // New task assigned to user, refresh list
-            console.log("New task assigned, refreshing task list");
-            refreshTaskList();
-          }
-        }
-      )
-      .subscribe();
-      
-    return () => {
-      client.removeChannel(tasksSubscription);
-    };
-  }, [userProfile?.id, dispatch]);
+  const getRewardForTask = (task: AITask): number => {
+    const baseReward = TASK_PROCESSING_CONFIG.EARNINGS_NLOVE[task.type as keyof typeof TASK_PROCESSING_CONFIG.EARNINGS_NLOVE] || 5;
+    const multiplier = TASK_PROCESSING_CONFIG.REWARD_MULTIPLIERS[rewardTier as keyof typeof TASK_PROCESSING_CONFIG.REWARD_MULTIPLIERS] || 1;
+    return baseReward * multiplier;
+  };
 
   return (
     <div className="task-pipeline p-2.5 sm:p-6 rounded-2xl sm:rounded-3xl stat-card relative">
@@ -611,7 +602,11 @@ export const TaskPipeline = () => {
                         <span className="text-[10px] sm:text-sm text-[#0361DA] font-medium truncate">
                           {task.type === "image"
                             ? "neuro-image-gen"
-                            : "freedomai-llm"}
+                            : task.type === "text"
+                            ? "freedomai-llm"
+                            : task.type === "video"
+                            ? "video-gen"
+                            : "3d-model-gen"}
                         </span>
                       </div>
                       <div>
@@ -647,10 +642,7 @@ export const TaskPipeline = () => {
                           Task completed successfully
                         </p>
                         <span className="text-xs mt-1 text-stone-50">
-                          {task.type === "image"
-                            ? TASK_PROCESSING_CONFIG.PROCESSING_TIME.image
-                            : TASK_PROCESSING_CONFIG.PROCESSING_TIME.text}
-                          s
+                          {Math.round(task.compute_time || 0)}s
                         </span>
                       </div>
                     )}
@@ -682,12 +674,12 @@ export const TaskPipeline = () => {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-white/60">
-          <div className="w-16 h-16 flex items-center justify-center rounded-md bg-[#1D1D33]/50 mb-6">
-            <FileCode className="w-8 h-8 text-white/30" />
+        <div className="flex flex-col items-center justify-center py-6 sm:py-16 text-white/60">
+          <div className="w-10 h-10 sm:w-16 sm:h-16 flex items-center justify-center rounded-md bg-[#1D1D33]/50 mb-3 sm:mb-6">
+            <FileCode className="w-5 h-5 sm:w-8 sm:h-8 text-white/30" />
           </div>
-          <p className="text-xl font-medium">No tasks assigned yet</p>
-          <p className="text-sm mt-2">
+          <p className="text-base sm:text-xl font-medium">No tasks assigned yet</p>
+          <p className="text-[10px] sm:text-sm mt-1 sm:mt-2">
             {isActive
               ? "Tasks will be assigned when they become available"
               : "Start your node to receive tasks"}
@@ -697,11 +689,7 @@ export const TaskPipeline = () => {
               size="sm"
               className="mt-6 bg-blue-600 hover:bg-blue-700 text-white"
               disabled={isLoading || localProcessing}
-              onClick={() =>
-                nodeId &&
-                userId &&
-                dispatch(fetchAndAssignTasks({ userId, nodeId }))
-              }
+              onClick={refreshTaskList}
             >
               {isLoading || localProcessing ? (
                 <>

@@ -57,15 +57,16 @@ import {
   updateUptime
 } from "@/store/slices/nodeSlice";
 import {
-  fetchAndAssignTasks,
+  setCurrentTask,
+  startTaskPolling,
+  stopTaskPolling,
   clearAssignedTasks,
+  generateProxyTasks,
 } from "@/store/slices/taskSlice";
-import { clearProcessingLocks } from "@/services/taskService";
 import { useSession } from "@/hooks/useSession";
 
 import { RootState, useAppDispatch } from "@/store";
 import { store } from "@/store";
-import { assignTasksToUser } from "@/services/swarmTaskService";
 import { useEarnings } from "@/hooks/useEarnings";
 import {
   getUserEarnings,
@@ -870,9 +871,7 @@ export const NodeControlPanel = () => {
         }
 
         // Clear processing locks and stop node
-        if (userProfile?.id) {
-          await clearProcessingLocks(userProfile.id, selectedNodeId);
-        }
+        // No need to clear processing locks in proxy mode
         dispatch(stopNode());
         dispatch(clearAssignedTasks());
 
@@ -992,12 +991,7 @@ export const NodeControlPanel = () => {
             // Fetch and assign tasks to this node
             try {
               // This thunk action will fetch tasks and assign them to the node
-              dispatch(
-                fetchAndAssignTasks({
-                  nodeId: selectedNode.id,
-                  userId: userProfile?.id,
-                })
-              );
+              dispatch(generateProxyTasks());
             } catch (error) {
               console.error("Error assigning tasks:", error);
               toast.error("Failed to assign tasks to node");
@@ -1155,7 +1149,7 @@ export const NodeControlPanel = () => {
           }
 
           // Clear processing locks before unload
-          clearProcessingLocks(userProfile.id, selectedNodeId);
+          // No need to clear processing locks in proxy mode
         } catch (e) {
           console.error("Failed to save node stop info to localStorage", e);
         }

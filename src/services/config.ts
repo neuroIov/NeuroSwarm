@@ -5,8 +5,10 @@ export const TASK_TABLES = ['img_gen_messages', 'freedomai_messages',]
 export const TASK_PROCESSING_CONFIG = {
     // Processing time in seconds for different task types
     PROCESSING_TIME: {
-        image: 20,
-        text: 20,
+        image: 200,
+        text: 100,
+        three_d: 300,
+        video: 600,
     },
     // Hardware-specific time multipliers - lower means faster processing
     HARDWARE_MULTIPLIERS: {
@@ -16,18 +18,28 @@ export const TASK_PROCESSING_CONFIG = {
         cpu: 1.0
     },
 
-    // Earnings per task for different task types
-    EARNINGS_NLOVE: {
-        image: 8,
-        text: 4,
+    // Reward multipliers for different hardware tiers
+    REWARD_MULTIPLIERS: {
+        webgpu: 2,
+        wasm: 1.6,
+        webgl: 1.3,
+        cpu: 1.0 
     },
 
-    
+    // Earnings per task for different task types (SP - Swarm Points)
+    EARNINGS_NLOVE: {
+        image: 10,
+        text: 5,
+        '3d': 15,
+        video: 30,
+    },
 
     // Ideal distribution percentages for different task types
     DISTRIBUTION: {
         image: 0.4,
-        text: 0.6
+        text: 0.5,
+        '3d': 0.07,
+        video: 0.03
     },
 
     // Cache and debounce settings
@@ -51,12 +63,12 @@ export const TASK_PROCESSING_CONFIG = {
 
 /**
  * Calculate task processing time based on task type and hardware tier
- * @param taskType 'image' | 'text' - The type of task
+ * @param taskType 'image' | 'text' | 'three_d' | 'video' - The type of task
  * @param hardwareTier 'webgpu' | 'wasm' | 'webgl' | 'cpu' - The hardware tier
  * @returns Processing time in seconds
  */
 export const calculateProcessingTime = (
-    taskType: 'image' | 'text',
+    taskType: 'image' | 'text' | 'three_d' | 'video',
     hardwareTier: 'webgpu' | 'wasm' | 'webgl' | 'cpu'
 ): number => {
     const baseTime = TASK_PROCESSING_CONFIG.PROCESSING_TIME[taskType];
