@@ -16,12 +16,18 @@ import { Button } from "@/components/ui/button";
 import { logger } from "@/utils/logger";
 import { safeStorage } from "@/utils/storage";
 import { toast } from "sonner";
-import { getQueuedTasks } from "@/services/swarmTaskService";
 import { AITask } from "@/services/types";
 import { FileCode } from "./ui/file-code";
 import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "@/store";
-import { fetchPendingTasks } from "@/store/slices/taskSlice";
+// Mock functions for removed API calls
+const getQueuedTasks = async () => {
+  return [];
+};
+
+const fetchPendingTasks = () => {
+  return { type: 'NOOP' };
+};
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { formatUptime } from "@/utils/timeUtils";
 
