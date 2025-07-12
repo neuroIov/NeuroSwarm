@@ -7,7 +7,7 @@ import { TASK_PROCESSING_CONFIG } from '@/services/config';
 import { v4 as uuidv4 } from 'uuid';
 import { AITask } from '@/services/types';
 import proxyTaskService from '@/services/proxyTaskService';
-import { recordTaskEarning } from '@/services/earningsService';
+import { addTaskEarning } from '@/services/unclaimedEarningsService';
 
 // Simple polling controller
 let pollingInterval: NodeJS.Timeout | null = null;
@@ -456,16 +456,15 @@ export const processNextTask = createAsyncThunk(
                 }));
                 logger.log(`Task ${taskToProcess.id} completed successfully`);
                 
-                // Record earnings based on task type and hardware tier
+                // Add earnings to unclaimed earnings in localStorage
                 const taskType = taskToProcess.type;
-                const hardwareTier = state.node?.rewardTier || 'cpu';
                 
-                // Record earnings
+                // Add task earning to localStorage
                 try {
-                    await recordTaskEarning(taskToProcess.id, userId, taskType);
-                    logger.log(`Recorded earnings for task ${taskToProcess.id}`);
+                    const newTotal = addTaskEarning(userId, taskType);
+                    logger.log(`Added ${TASK_PROCESSING_CONFIG.EARNINGS_NLOVE[taskType]} NLOVE for ${taskType} task. Total unclaimed: ${newTotal}`);
                 } catch (err) {
-                    logger.error(`Failed to record earnings for task ${taskToProcess.id}:`, err);
+                    logger.error(`Failed to add earnings for task ${taskToProcess.id}:`, err);
                 }
             } else if (result.message === 'ALREADY_PROCESSING') {
                 // Don't mark as failed if it was just skipped due to another task processing

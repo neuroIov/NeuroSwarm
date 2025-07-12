@@ -3,6 +3,7 @@ import { getSwarmSupabase } from "../lib/supabase-client";
 import { useSession } from "./useSession";
 import {
   getUserEarnings,
+  getUserPendingEarnings,
   getUserEarningsTransactions,
 } from "../services/earningsService";
 
@@ -52,7 +53,17 @@ export function useEarnings({
 
     try {
       console.log(`Fetching earnings data for user: ${userId}`);
-      const earningsData = await getUserEarnings(userId);
+      // Get pending earnings from earnings_history table
+      const pendingEarnings = await getUserPendingEarnings(userId);
+      // Get task count from original function
+      const { completedTasks } = await getUserEarnings(userId);
+      
+      const earningsData = {
+        totalEarnings: pendingEarnings, // Use pending earnings as total earnings
+        pendingEarnings: pendingEarnings,
+        completedTasks: completedTasks
+      };
+      
       console.log("Earnings data received:", earningsData);
       setEarnings(earningsData);
     } catch (err) {

@@ -17,6 +17,7 @@ import {
   Smartphone,
   AlertTriangle,
   Trash2,
+  Coins,
 } from "lucide-react";
 import { getSwarmSupabase } from "@/lib/supabase-client";
 import { Button } from "@/components/ui/button";
@@ -70,8 +71,13 @@ import { store } from "@/store";
 import { useEarnings } from "@/hooks/useEarnings";
 import {
   getUserEarnings,
-  getUserTotalEarnings,
+  getUserPendingEarnings,
+  claimUnclaimedEarnings,
 } from "@/services/earningsService";
+import {
+  getUnclaimedEarnings,
+} from "@/services/unclaimedEarningsService";
+import ShinyText from "@/components/ui/ShinyText";
 import { VscDebugStart } from "react-icons/vsc";
 import { IoStopOutline } from "react-icons/io5";
 import { setCurrentDevice } from "@/store/slices/deviceSlice";
@@ -147,6 +153,8 @@ export const NodeControlPanel = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalEarnings, setTotalEarnings] = useState(0);
+  const [unclaimedEarnings, setUnclaimedEarnings] = useState(0);
+  const [isClaiming, setIsClaiming] = useState(false);
   const { subscriptionTier } = useSession();
 
 
@@ -327,8 +335,8 @@ export const NodeControlPanel = () => {
     setError(null);
 
     try {
-      const totalAmount = await getUserTotalEarnings(userProfile?.id);
-      setTotalEarnings(totalAmount);
+      const pendingAmount = await getUserPendingEarnings(userProfile?.id);
+      setTotalEarnings(pendingAmount);
     } catch (err) {
       setError("Failed to load earnings data");
       console.error("Error fetching earnings:", err);
@@ -354,6 +362,13 @@ export const NodeControlPanel = () => {
     return () => {
       clearInterval(dataRefreshInterval);
     };
+  }, [userProfile?.id]);
+
+  // Fetch earnings data when component mounts or user profile changes
+  useEffect(() => {
+    if (userProfile?.id) {
+      fetchEarningsData();
+    }
   }, [userProfile?.id]);
 
   // Modify the fetchUserDevicesUptime function to avoid unnecessary updates
@@ -1272,6 +1287,44 @@ export const NodeControlPanel = () => {
     };
   }, []);
 
+  // Load unclaimed earnings when component mounts or userId changes
+  useEffect(() => {
+    if (userProfile?.id) {
+      const earnings = getUnclaimedEarnings(userProfile.id);
+      setUnclaimedEarnings(earnings.totalAmount);
+    } else {
+      setUnclaimedEarnings(0);
+    }
+  }, [userProfile?.id]);
+
+  // Update unclaimed earnings when tasks are completed
+  useEffect(() => {
+    if (userProfile?.id) {
+      const earnings = getUnclaimedEarnings(userProfile.id);
+      setUnclaimedEarnings(earnings.totalAmount);
+    }
+  }, [userProfile?.id, tasksCompleted]);
+
+  // Handle claiming unclaimed earnings
+  const handleClaimEarnings = async () => {
+    if (!userProfile?.id || unclaimedEarnings <= 0 || isClaiming) {
+      return;
+    }
+    try {
+      setIsClaiming(true);
+      await claimUnclaimedEarnings(userProfile.id);
+      setUnclaimedEarnings(0);
+      // Refresh total earnings after claiming
+      fetchEarningsData(true);
+      toast.success(`Successfully claimed ${unclaimedEarnings.toFixed(2)} NLOVE!`);
+    } catch (error) {
+      console.error('Error claiming earnings:', error);
+      toast.error('Failed to claim earnings. Please try again.');
+    } finally {
+      setIsClaiming(false);
+    }
+  };
+
   // Performance logging at component render - removed duplicate declaration
 
   return (
@@ -1555,6 +1608,56 @@ export const NodeControlPanel = () => {
           </div>
           <p className="absolute bottom-2 right-4 text-[10px] text-white/50 italic">*All Swarm Points will be converted to $NLOV after TGE</p>
         </div>
+
+        {/* Unclaimed Earnings Section */}
+        {unclaimedEarnings > 0 && (
+          <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-[#1a2332] to-[#2a3441] border border-[#3a4451] relative overflow-hidden">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center p-2 rounded-full bg-gradient-to-r from-[#FFD700] to-[#FFA500] shadow-lg">
+                  <Coins className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <p className="text-white/70 text-sm">Unclaimed Earnings</p>
+                  <p className="text-white font-semibold text-lg">
+                    {unclaimedEarnings.toFixed(2)} NLOVE
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={handleClaimEarnings}
+                disabled={isClaiming || unclaimedEarnings <= 0}
+                className="
+                  relative px-6 py-3 rounded-full
+                  bg-gradient-to-r from-[#FFD700] to-[#FFA500]
+                  hover:from-[#FFA500] to-[#FF8C00]
+                  text-white font-semibold
+                  shadow-lg hover:shadow-xl
+                  transition-all duration-300
+                  hover:scale-105
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                  before:absolute before:inset-0 before:rounded-full
+                  before:bg-gradient-to-r before:from-[#FFD700] before:to-[#FFA500]
+                  before:blur-md before:opacity-60
+                  before:animate-pulse
+                  hover:before:opacity-80
+                "
+              >
+                {isClaiming ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <ShinyText text="Claiming..." className="relative z-10 text-white/70" />
+                  </>
+                ) : (
+                  <>
+                    <Coins className="w-4 h-4 mr-2 relative z-10" />
+                    <ShinyText text="Claim Earnings" className="relative z-10 text-white/70" />
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <Dialog open={showScanDialog} onOpenChange={setShowScanDialog}>

@@ -20,7 +20,6 @@ import { useSelector } from "react-redux";
 import { RootState, useAppDispatch } from "@/store";
 import {
   setCurrentTask,
-  fetchAndAssignTasks,
   updateTaskStatus,
   processNextTask,
   recoverStuckTasks,
@@ -33,6 +32,7 @@ import {
 import { AITask, TaskStatus, TaskType } from "@/services/types";
 import { Button } from "@/components/ui/button";
 import { TASK_PROCESSING_CONFIG } from "@/services/config";
+
 
 export const TaskPipeline = () => {
   const dispatch = useAppDispatch();
@@ -322,17 +322,9 @@ export const TaskPipeline = () => {
     dispatch,
   ]);
 
-  // Whenever node is activated, fetch tasks
+  // Whenever node is activated, generate initial tasks
   useEffect(() => {
     if (isActive && userId && nodeId) {
-      dispatch(
-        fetchAndAssignTasks({
-          userId,
-          nodeId,
-          batchSize: 5,
-        })
-      );
-
       // Generate initial proxy tasks
       dispatch(generateProxyTasks());
     }

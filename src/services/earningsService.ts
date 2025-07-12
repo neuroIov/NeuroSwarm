@@ -1,6 +1,7 @@
 import { getSwarmSupabase } from '@/lib/supabase-client';
 import { logger } from '../utils/logger';
 import { TASK_PROCESSING_CONFIG } from './config';
+import { getUnclaimedEarnings, clearUnclaimedEarnings, getTotalTaskCount } from './unclaimedEarningsService';
 
 /**
  * Record earnings for a completed task
@@ -183,6 +184,42 @@ export const getUserEarnings = async (userId) => {
     } catch (error) {
         logger.error('Error in getUserEarnings:', error);
         return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0 };
+    }
+};
+
+export const getUserPendingEarnings = async (userId) => {
+    try {
+        if (!userId) {
+            logger.error('Cannot get user pending earnings: No user ID provided');
+            return 0;
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return 0;
+        }
+
+        // Get latest earnings history for pending amount
+        const { data: earningsHistory, error: historyError } = await client
+            .from('earnings_history')
+            .select('amount')
+            .eq('user_id', userId)
+            .eq('payout_status', 'pending')
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (historyError) {
+            logger.error('Error fetching earnings history:', historyError);
+            return 0;
+        }
+
+        // Get pending earnings from history or default to 0
+        return earningsHistory?.amount || 0;
+    } catch (error) {
+        logger.error('Error in getUserPendingEarnings:', error);
+        return 0;
     }
 };
 
@@ -813,5 +850,123 @@ export const getUserStreakData = async (userId: string) => {
     } catch (err) {
         logger.error("Failed to fetch streak data:", err);
         return { streak: 0, lastCheckIn: null };
+    }
+};
+
+/**
+ * Claim unclaimed earnings from localStorage and record in database
+ * @param {string} userId - User ID from profile
+ * @returns {Promise<{success: boolean, amount?: number, message?: string}>}
+ */
+export const claimUnclaimedEarnings = async (userId: string) => {
+    try {
+        if (!userId) {
+            logger.error('Cannot claim earnings: Missing user ID');
+            return { success: false, message: 'Missing user ID' };
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return { success: false, message: 'Database connection failed' };
+        }
+
+        // Get unclaimed earnings from localStorage
+        const unclaimedEarnings = getUnclaimedEarnings(userId);
+        
+        if (unclaimedEarnings.totalAmount <= 0) {
+            return { success: false, message: 'No earnings to claim' };
+        }
+
+        const totalAmount = unclaimedEarnings.totalAmount;
+        const totalTaskCount = getTotalTaskCount(unclaimedEarnings);
+
+        logger.log(`Claiming ${totalAmount} NLOVE from ${totalTaskCount} completed tasks`);
+
+        // Insert earnings record in database
+        const { data: earning, error: insertError } = await client
+            .from('earnings')
+            .insert({
+                user_id: userId,
+                amount: totalAmount,
+                task_id: null, // Batch claim, no specific task
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                earning_type: 'task'
+            })
+            .select('*')
+            .single();
+
+        if (insertError) {
+            logger.error('Error recording claimed earnings:', insertError);
+            return { success: false, message: 'Failed to record earnings' };
+        }
+
+        // Update earnings_history
+        try {
+            // Get the latest earnings history record for this user
+            const { data: latestHistory, error: fetchError } = await client
+                .from('earnings_history')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('payout_status', 'pending')
+                .order('timestamp', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (fetchError) {
+                logger.error('Error fetching earnings history:', fetchError);
+                // Don't fail the whole operation if just the history update fails
+            } else if (latestHistory) {
+                // Update existing record
+                const { error: updateError } = await client
+                    .from('earnings_history')
+                    .update({
+                        amount: latestHistory.amount + totalAmount,
+                        task_count: latestHistory.task_count + totalTaskCount,
+                        timestamp: new Date().toISOString()
+                    })
+                    .eq('id', latestHistory.id);
+
+                if (updateError) {
+                    logger.error('Error updating earnings history:', updateError);
+                }
+            } else {
+                // Create new history record
+                const { error: insertHistoryError } = await client
+                    .from('earnings_history')
+                    .insert({
+                        user_id: userId,
+                        amount: totalAmount,
+                        task_count: totalTaskCount,
+                        timestamp: new Date().toISOString(),
+                        payout_status: 'pending'
+                    });
+
+                if (insertHistoryError) {
+                    logger.error('Error creating earnings history record:', insertHistoryError);
+                }
+            }
+        } catch (historyError) {
+            logger.error('Error updating earnings history:', historyError);
+            // Continue with clearing localStorage even if history update fails
+        }
+
+        // Clear unclaimed earnings from localStorage after successful database insert
+        clearUnclaimedEarnings(userId);
+        
+        logger.log(`Successfully claimed ${totalAmount} NLOVE earnings`);
+        return { 
+            success: true, 
+            amount: totalAmount,
+            message: `Successfully claimed ${totalAmount} NLOVE from ${totalTaskCount} tasks`
+        };
+
+    } catch (error) {
+        logger.error('Error claiming unclaimed earnings:', error);
+        return { 
+            success: false, 
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
     }
 };
