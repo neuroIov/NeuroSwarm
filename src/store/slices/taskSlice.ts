@@ -317,8 +317,8 @@ export const generateProxyTasks = createAsyncThunk(
                 selectedType = 'image';
             } else if (randomValue < TASK_PROCESSING_CONFIG.DISTRIBUTION.image + TASK_PROCESSING_CONFIG.DISTRIBUTION.text) {
                 selectedType = 'text';
-            } else if (randomValue < TASK_PROCESSING_CONFIG.DISTRIBUTION.image + TASK_PROCESSING_CONFIG.DISTRIBUTION.text + TASK_PROCESSING_CONFIG.DISTRIBUTION.three_d) {
-                selectedType = 'three_d';
+            } else if (randomValue < TASK_PROCESSING_CONFIG.DISTRIBUTION.image + TASK_PROCESSING_CONFIG.DISTRIBUTION.text + TASK_PROCESSING_CONFIG.DISTRIBUTION['3d']) {
+                selectedType = '3d';
             } else {
                 selectedType = 'video';
             }
@@ -335,11 +335,11 @@ export const generateProxyTasks = createAsyncThunk(
                 node_id: nodeId,
                 model: selectedType === 'image' ? 'stable-diffusion-xl' : 
                        selectedType === 'text' ? 'llama-3-8b' : 
-                       selectedType === 'three_d' ? '3d-diffusion' : 
+                       selectedType === '3d' ? '3d-diffusion' : 
                        'stable-video-diffusion',
                 prompt: `Generate a ${selectedType === 'image' ? 'realistic image' : 
                           selectedType === 'text' ? 'creative text' : 
-                          selectedType === 'three_d' ? '3D model' : 
+                          selectedType === '3d' ? '3D model' : 
                           'short video'} of ${Math.random().toString(36).substring(7)}`
             };
             
@@ -351,14 +351,15 @@ export const generateProxyTasks = createAsyncThunk(
             logger.log(`Generated ${tasks.length} proxy tasks`);
         }
         
-            return tasks;
+        return tasks;
     }
 );
 
 // Async thunks
 export const fetchAndAssignTasks = createAsyncThunk(
     'tasks/fetchAndAssignTasks',
-    async ({ userId, nodeId, batchSize = 5 }, { rejectWithValue, getState, dispatch }) => {
+    async (params: { userId: string; nodeId: string; batchSize?: number }, { rejectWithValue, getState, dispatch }) => {
+        const { userId, nodeId, batchSize = 5 } = params;
         try {
             if (!userId) {
                 return rejectWithValue('No user ID provided');
@@ -381,7 +382,8 @@ export const fetchAndAssignTasks = createAsyncThunk(
             const now = Date.now();
             if (now - lastTaskGenTime > 120000) { // Generate new tasks every 2 minutes max
                 lastTaskGenTime = now;
-                return await dispatch(generateProxyTasks()).unwrap();
+                await dispatch(generateProxyTasks());
+                return [];
             }
             
             return [];
@@ -462,7 +464,9 @@ export const processNextTask = createAsyncThunk(
                 
                 // Record earnings
                 try {
-                    await recordTaskEarning(taskToProcess.id, userId, taskType);
+                    // Get user email from the session state
+                    const userEmail = state.session?.userProfile?.email || 'unknown@example.com';
+                    await recordTaskEarning(taskToProcess.id, userId, taskType, userEmail);
                     logger.log(`Recorded earnings for task ${taskToProcess.id}`);
                 } catch (err) {
                     logger.error(`Failed to record earnings for task ${taskToProcess.id}:`, err);
@@ -547,7 +551,7 @@ export const startTaskPolling = (dispatch, userId, nodeId) => {
     
     // Check for tasks immediately
     if (userId && nodeId) {
-        dispatch(fetchAndAssignTasks({ userId, nodeId }));
+        dispatch(fetchAndAssignTasks({ userId, nodeId, batchSize: 5 }));
     }
 
     // Start uptime tracking
@@ -568,7 +572,7 @@ export const startTaskPolling = (dispatch, userId, nodeId) => {
         }
 
         // Dispatch with backoff on failure
-        dispatch(fetchAndAssignTasks({ userId, nodeId }))
+        dispatch(fetchAndAssignTasks({ userId, nodeId, batchSize: 5 }))
             .unwrap()
             .then(() => {
                 consecutiveFailures = 0;

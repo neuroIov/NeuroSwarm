@@ -528,7 +528,15 @@ export const processTask = async (taskId, userId) => {
         }
 
         // Record earnings for the completed task
-        const earningResult = await recordTaskEarning(taskId, userId, task.type);
+        // Get user email from the session or profile
+        const { data: userProfile } = await client
+            .from('user_profiles')
+            .select('email')
+            .eq('id', userId)
+            .single();
+            
+        const userEmail = userProfile?.email || 'unknown@example.com';
+        const earningResult = await recordTaskEarning(taskId, userId, task.type, userEmail);
 
         if (!earningResult.success) {
             logger.error(`Failed to record earnings for task ${taskId}: ${earningResult.message || 'Unknown error'}`);

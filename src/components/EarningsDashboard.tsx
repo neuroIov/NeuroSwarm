@@ -64,6 +64,7 @@ export const EarningsDashboard = () => {
   const [checkInLoading, setCheckInLoading] = useState<boolean>(false);
   // Removed streakCompleted and streakReward states as they're no longer needed
   const [showWalletPrompt, setShowWalletPrompt] = useState<boolean>(true);
+  const [claimCountdown, setClaimCountdown] = useState<number>(0);
 
   const { session } = useSession();
   const userId = session?.userProfile?.id;
@@ -79,11 +80,20 @@ export const EarningsDashboard = () => {
   const [loadingTimeout, setLoadingTimeout] = useState<boolean>(false);
 
   // Use the real earnings hook with auto-refresh to fetch 20 recent transactions
-  const { earnings, transactions, loading, error, refreshData, debug } =
-    useEarnings({
-      autoRefresh: true,
-      refreshInterval: 35000, // 35 seconds
-    });
+  const {
+    earnings,
+    transactions,
+    loading,
+    error,
+    refreshData,
+    claimUserEarnings,
+    claimableData,
+    claimLoading,
+    debug,
+  } = useEarnings({
+    autoRefresh: true,
+    refreshInterval: 35000, // 35 seconds
+  });
 
   // Set a timeout for loading state
   useEffect(() => {
@@ -119,6 +129,19 @@ export const EarningsDashboard = () => {
       fetchStreakData();
     }
   }, [userId, fetchStreakData]);
+
+  // Real-time countdown timer for claim button
+  useEffect(() => {
+    setClaimCountdown(claimableData.timeUntilNextClaim);
+
+    if (claimableData.timeUntilNextClaim > 0) {
+      const timer = setInterval(() => {
+        setClaimCountdown((prev) => Math.max(0, prev - 1000));
+      }, 1000);
+
+      return () => clearInterval(timer);
+    }
+  }, [claimableData.timeUntilNextClaim]);
 
   // Process transactions into chart data based on selected period
   const chartData = useMemo<ChartDataPoint[]>(() => {
@@ -280,9 +303,9 @@ export const EarningsDashboard = () => {
     return dailyAverage * 30;
   };
 
-  // Get total balance directly from earnings.pendingEarnings (from earnings_history)
+  // Get total balance from claimable earnings
   const getTotalBalance = () => {
-    return earnings.pendingEarnings || 0;
+    return claimableData.claimableAmount || 0;
   };
 
   // Get task count from earnings_history or fall back to counted tasks from earnings
@@ -406,7 +429,12 @@ export const EarningsDashboard = () => {
           }}
         >
           <p className="text-sm font-medium text-blue-400">{`${label}`}</p>
-          <p className="text-md font-semibold">{`${Number(payload[0].value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP`}</p>
+          <p className="text-md font-semibold">{`${Number(
+            payload[0].value
+          ).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })} SP`}</p>
         </div>
       );
     }
@@ -592,28 +620,30 @@ export const EarningsDashboard = () => {
       <div className="flex justify-between items-center mb-8 flex-wrap gap-2">
         <h2 className="text-xl">Earnings Dashboard</h2>
         <div className="flex gap-2">
-{
-
-  false && <>          <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-  <SelectTrigger className="w-[80px] h-8 m-0 bg-[#1D1D33] rounded-full ">
-    <SelectValue placeholder="Time Range" />
-  </SelectTrigger>
-  <SelectContent>
-    <SelectItem value="daily">Daily</SelectItem>
-    <SelectItem value="weekly">Weekly</SelectItem>
-    <SelectItem value="monthly">Monthly</SelectItem>
-    <SelectItem value="all-time">All Time</SelectItem>
-  </SelectContent>
-</Select>
-<Button
-  variant="outline"
-  className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
-  size="sm"
-  onClick={toggleDebugMode}
->
-  <Bug className="h-4 w-4" />
-</Button></>
-}
+          {false && (
+            <>
+              {" "}
+              <Select value={timeRange} onValueChange={handleTimeRangeChange}>
+                <SelectTrigger className="w-[80px] h-8 m-0 bg-[#1D1D33] rounded-full ">
+                  <SelectValue placeholder="Time Range" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="all-time">All Time</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
+                size="sm"
+                onClick={toggleDebugMode}
+              >
+                <Bug className="h-4 w-4" />
+              </Button>
+            </>
+          )}
           <Button
             variant="outline"
             className="h-8 m-0 bg-[#1D1D33] rounded-full font-md font-thin"
@@ -623,7 +653,6 @@ export const EarningsDashboard = () => {
           >
             Refresh
           </Button>
-
         </div>
       </div>
 
@@ -641,7 +670,13 @@ export const EarningsDashboard = () => {
             <div className="flex flex-col">
               <span className="text-sm text-[#515194]">Total Earning</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : earnings.totalEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
+                {loading
+                  ? "..."
+                  : earnings.totalEarnings.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                SP
               </span>
             </div>
           </div>
@@ -657,11 +692,48 @@ export const EarningsDashboard = () => {
                 className="w-8 h-9 relative z-10"
               />
             </div>
-            <div className="flex flex-col">
-              <span className="text-sm text-[#515194]">Total Balance</span>
+            <div className="flex flex-col flex-1">
+              <span className="text-sm text-[#515194]">Claimable Balance</span>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : getTotalBalance().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
+                {loading
+                  ? "..."
+                  : claimableData.claimableAmount.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                SP
               </span>
+            </div>
+            <div className="flex flex-col items-end">
+              {claimableData.claimableAmount > 0 && (
+                <Button
+                  onClick={async () => {
+                    const result = await claimUserEarnings();
+                    if (result.success && "claimedAmount" in result) {
+                      toast.success(
+                        `Successfully claimed ${result.claimedAmount} SP!`
+                      );
+                    } else {
+                      toast.error(result.message || "Failed to claim earnings");
+                    }
+                  }}
+                  disabled={
+                    (!claimableData.canClaim && claimCountdown > 0) ||
+                    claimLoading
+                  }
+                  className="h-8 px-3 text-xs bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-full"
+                >
+                  {claimLoading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : claimableData.canClaim ? (
+                    "Claim"
+                  ) : (
+                    `${Math.ceil(claimCountdown / (60 * 1000))}m ${Math.ceil(
+                      (claimCountdown % (60 * 1000)) / 1000
+                    )}s`
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -701,7 +773,13 @@ export const EarningsDashboard = () => {
                 <InfoTooltip content="Projected monthly earnings based on your recent performance" />
               </div>
               <span className="text-xl font-bold text-white">
-                {loading ? "..." : calculateMonthlyExpectedEarnings().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
+                {loading
+                  ? "..."
+                  : calculateMonthlyExpectedEarnings().toLocaleString(
+                      undefined,
+                      { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                    )}{" "}
+                SP
               </span>
             </div>
           </div>
@@ -1071,7 +1149,12 @@ export const EarningsDashboard = () => {
                   <div className="flex flex-col items-end">
                     <div className="transaction-amount">
                       <span className="text-sm font-medium text-green-500">
-                        +{Number(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
+                        +
+                        {Number(tx.amount).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{" "}
+                        SP
                       </span>
                       {tx.transaction_hash && (
                         <a

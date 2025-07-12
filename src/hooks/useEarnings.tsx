@@ -4,6 +4,8 @@ import { useSession } from "./useSession";
 import {
   getUserEarnings,
   getUserEarningsTransactions,
+  claimEarnings,
+  getClaimableEarnings,
 } from "../services/earningsService";
 
 /**
@@ -30,9 +32,17 @@ export function useEarnings({
     totalEarnings: 0,
     pendingEarnings: 0,
     completedTasks: 0,
+    claimableEarnings: 0,
   });
   const [transactions, setTransactions] = useState([]);
   const [lastError, setLastError] = useState(null);
+  const [claimableData, setClaimableData] = useState({
+    claimableAmount: 0,
+    lastClaimTime: null,
+    canClaim: false,
+    timeUntilNextClaim: 0,
+  });
+  const [claimLoading, setClaimLoading] = useState(false);
 
   // Update overall loading state when either earnings or transactions are loading
   useEffect(() => {
@@ -109,12 +119,56 @@ export function useEarnings({
     }
   };
 
+  // Function to fetch claimable earnings data
+  const fetchClaimableData = async () => {
+    if (!userId) {
+      console.log("No user ID available, skipping claimable data fetch");
+      return;
+    }
 
+    try {
+      console.log(`Fetching claimable data for user: ${userId}`);
+      const claimableData = await getClaimableEarnings(userId);
+      console.log("Claimable data received:", claimableData);
+      setClaimableData(claimableData);
+    } catch (err) {
+      console.error("Error fetching claimable data:", err);
+    }
+  };
+
+  // Function to claim earnings
+  const claimUserEarnings = async () => {
+    if (!userId || !session?.userProfile?.email) {
+      console.log("No user ID or email available for claiming");
+      return { success: false, message: "User not authenticated" };
+    }
+
+    setClaimLoading(true);
+    try {
+      console.log(`Claiming earnings for user: ${userId}`);
+      const result = await claimEarnings(userId, session.userProfile.email);
+      console.log("Claim result:", result);
+
+      if (result.success) {
+        // Refresh data after successful claim
+        await fetchEarningsData(true);
+        await fetchClaimableData();
+      }
+
+      return result;
+    } catch (err) {
+      console.error("Error claiming earnings:", err);
+      return { success: false, message: "An error occurred while claiming" };
+    } finally {
+      setClaimLoading(false);
+    }
+  };
 
   // Function to refresh all data
   const refreshData = () => {
     fetchEarningsData();
     fetchTransactions();
+    fetchClaimableData();
   };
 
   // Initial data load
@@ -123,6 +177,7 @@ export function useEarnings({
       console.log(`Initial data load for user: ${userId}`);
       fetchEarningsData();
       fetchTransactions();
+      fetchClaimableData();
     } else {
       console.log("No user ID available, skipping initial data load");
       setEarningsLoading(false);
@@ -200,6 +255,9 @@ export function useEarnings({
     loading,
     error,
     refreshData,
+    claimUserEarnings,
+    claimableData,
+    claimLoading,
     debug: debugInfo,
   };
 }

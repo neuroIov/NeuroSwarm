@@ -45,15 +45,15 @@ import { FaInstagram, FaTelegram } from "react-icons/fa6";
 // Extract referral code from a URL or plain text
 const extractReferralCode = (input: string): string => {
   // If the input appears to be a URL with query parameters
-  if (input.includes('?ref=')) {
+  if (input.includes("?ref=")) {
     try {
       // Try to extract the ref parameter from a URL
       const url = new URL(input);
-      const code = url.searchParams.get('ref');
+      const code = url.searchParams.get("ref");
       return code || input; // Return the code if found, otherwise the original input
     } catch (e) {
       // If URL parsing fails, try a more basic extraction
-      const refIndex = input.indexOf('?ref=');
+      const refIndex = input.indexOf("?ref=");
       if (refIndex !== -1) {
         return input.substring(refIndex + 5); // Extract everything after "?ref="
       }
@@ -87,15 +87,16 @@ const RewardItem = ({
 
   // Format username - remove wallet part
   const displayUsername = () => {
-    let name = reward.referral?.user_profile?.user_name || 
-               reward.referral?.referred_name || 
-               `User ${reward.referral?.referred_id.substring(0, 6)}...`;
-    
+    let name =
+      reward.referral?.user_profile?.user_name ||
+      reward.referral?.referred_name ||
+      `User ${reward.referral?.referred_id.substring(0, 6)}...`;
+
     // Remove wallet type information if present
     if (name.includes("[wallet_type")) {
       name = name.split("[")[0].trim();
     }
-    
+
     return name;
   };
 
@@ -112,42 +113,44 @@ const RewardItem = ({
       // Store the reward amount before claiming in case backend is slow to update
       const amountToAdd = rewardAmount;
       console.log(`Claiming reward ${reward.id} with amount ${amountToAdd}`);
-      
+
       // Update local state IMMEDIATELY before network request
       setIsClaimedLocally(true);
       setRewardAmount(0); // Reset amount since it's claimed
-      
+
       // Immediately notify parent to update totals
       onRewardClaimed(amountToAdd);
-      
+
       // Now make the actual API call
       const result = await claimReferralReward(userProfile.id, reward.id);
 
       if (result.success) {
-        console.log(`Successfully claimed reward ${reward.id}, refreshing data...`);
+        console.log(
+          `Successfully claimed reward ${reward.id}, refreshing data...`
+        );
         toast.success("Reward claimed successfully!");
       } else {
         console.error(`Failed to claim reward: ${result.message}`);
         toast.error(
           `Failed to claim reward: ${result.message || "Unknown error"}`
         );
-        
+
         // Revert the UI changes if the API call failed
         setIsClaimedLocally(false);
         setRewardAmount(amountToAdd);
-        
+
         // Also notify parent to revert the changes
         onRewardClaimed(-amountToAdd);
       }
     } catch (err) {
       console.error("Error claiming reward:", err);
       toast.error("An error occurred while claiming the reward");
-      
+
       // Revert UI changes on error
       setIsClaimedLocally(false);
       const originalAmount = reward.reward_amount;
       setRewardAmount(originalAmount);
-      
+
       // Also revert parent state changes
       onRewardClaimed(-rewardAmount);
     } finally {
@@ -197,7 +200,11 @@ const RewardItem = ({
       </div>
       <div className="flex items-center gap-2">
         <div className="text-green-400 font-medium">
-          +{rewardAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          +
+          {rewardAmount.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}
         </div>
         {showClaimButton && (
           <Button
@@ -229,7 +236,7 @@ const RewardItem = ({
 const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [currentInviteLink, setCurrentInviteLink] = useState(inviteLink);
-  
+
   // Update current invite link when props change
   useEffect(() => {
     if (inviteLink) {
@@ -260,7 +267,7 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
       toast.error("No referral link available");
       return;
     }
-    
+
     try {
       await navigator.clipboard.writeText(currentInviteLink);
       setIsCopied(true);
@@ -285,7 +292,7 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
       toast.error("No referral link available to share");
       return null;
     }
-    
+
     // Twitter message with emojis
     const twitterMessage = `🚀 NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution 🌐\n💰 100M $NLOV tokens available\n📲 Connect your phone, laptop, or GPU — start earning in one click!\n🎯 Join before TGE\n🔗 ${currentInviteLink}`;
 
@@ -349,15 +356,25 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
             </div>
             {/* How Referrals Work Section */}
             <div className="mb-6 p-4 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/20 rounded-xl mt-4">
-              <p className="text-blue-300 text-sm font-medium mb-2">How Referrals Work:</p>
+              <p className="text-blue-300 text-sm font-medium mb-2">
+                How Referrals Work:
+              </p>
               <ul className="text-gray-300 text-xs space-y-2">
                 <li className="flex items-start">
                   <span className="mr-2">•</span>
-                  <span>You get <span className="text-green-400 font-medium">250 SP</span> for each successful referral</span>
+                  <span>
+                    You get{" "}
+                    <span className="text-green-400 font-medium">250 SP</span>{" "}
+                    for each successful referral
+                  </span>
                 </li>
                 <li className="flex items-start">
                   <span className="mr-2">•</span>
-                  <span>Your friend gets <span className="text-green-400 font-medium">500 SP</span> when they join with your link</span>
+                  <span>
+                    Your friend gets{" "}
+                    <span className="text-green-400 font-medium">500 SP</span>{" "}
+                    when they join with your link
+                  </span>
                 </li>
                 <li className="flex items-start">
                   <span className="mr-2">•</span>
@@ -365,7 +382,6 @@ const SocialShareModal = ({ isOpen, onClose, inviteLink, referralCode }) => {
                 </li>
               </ul>
             </div>
-
 
             {/* Larger, more prominent referral link */}
             <div className="mb-6 p-4 bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl">
@@ -561,11 +577,10 @@ const SignInRequiredDialog = ({ isOpen, onClose }) => {
 
             <div className="text-center mb-6">
               <p className="text-gray-300 mb-2">
-                Please sign in or sign up to join the referral program and start earning rewards.
+                Please sign in or sign up to join the referral program and start
+                earning rewards.
               </p>
             </div>
-
-            
           </motion.div>
         </motion.div>
       )}
@@ -644,11 +659,12 @@ export const ReferralProgram = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [referralError, setReferralError] = useState("");
-  
+
   // New state for dialogs - Remove unnecessary states
   const [showThankYouDialog, setShowThankYouDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
-  const [showSignInRequiredDialog, setShowSignInRequiredDialog] = useState(false);
+  const [showSignInRequiredDialog, setShowSignInRequiredDialog] =
+    useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [showRewardDialog, setShowRewardDialog] = useState(false);
 
@@ -669,11 +685,20 @@ export const ReferralProgram = () => {
     referrals?.filter((ref) => ref.tier_level === "tier_2") || [];
   const tier3Referrals =
     referrals?.filter((ref) => ref.tier_level === "tier_3") || [];
-    
+
   // Sort referrals by joined date (newest first)
-  tier1Referrals.sort((a, b) => new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime());
-  tier2Referrals.sort((a, b) => new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime());
-  tier3Referrals.sort((a, b) => new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime());
+  tier1Referrals.sort(
+    (a, b) =>
+      new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime()
+  );
+  tier2Referrals.sort(
+    (a, b) =>
+      new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime()
+  );
+  tier3Referrals.sort(
+    (a, b) =>
+      new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime()
+  );
 
   // Calculate totals
   const directReferrals = tier1Referrals.length;
@@ -696,27 +721,31 @@ export const ReferralProgram = () => {
       console.log("No referral rewards data available, pending rewards = 0");
       return 0;
     }
-    
-    console.log(`Calculating pending rewards from ${referralRewards.length} rewards`);
-    
+
+    console.log(
+      `Calculating pending rewards from ${referralRewards.length} rewards`
+    );
+
     // Log all unclaimed rewards for debugging
     const unclaimedRewards = referralRewards.filter(
-      reward => !reward.claimed && reward.reward_amount > 0
+      (reward) => !reward.claimed && reward.reward_amount > 0
     );
-    
+
     console.log(`Found ${unclaimedRewards.length} unclaimed rewards:`);
-    unclaimedRewards.forEach(reward => {
-      console.log(`  - ID: ${reward.id}, Amount: ${reward.reward_amount}, Type: ${reward.reward_type}`);
+    unclaimedRewards.forEach((reward) => {
+      console.log(
+        `  - ID: ${reward.id}, Amount: ${reward.reward_amount}, Type: ${reward.reward_type}`
+      );
     });
-    
-    const pendingTotal = referralRewards.reduce(
-      (total, reward) => {
-        const amount = !reward.claimed && reward.reward_amount > 0 ? Number(reward.reward_amount) : 0;
-        return total + amount;
-      },
-      0
-    );
-    
+
+    const pendingTotal = referralRewards.reduce((total, reward) => {
+      const amount =
+        !reward.claimed && reward.reward_amount > 0
+          ? Number(reward.reward_amount)
+          : 0;
+      return total + amount;
+    }, 0);
+
     console.log(`Calculated pending rewards: ${pendingTotal}`);
     return pendingTotal;
   };
@@ -726,7 +755,7 @@ export const ReferralProgram = () => {
     if (userProfile?.id) {
       setDataReady(false); // Reset data ready state
       loadReferralData();
-      
+
       // Auto-generate referral code if user doesn't have one
       if (userProfile?.email && !userProfile?.referral_code) {
         console.log("User has no referral code, auto-generating...");
@@ -753,13 +782,13 @@ export const ReferralProgram = () => {
     try {
       setIsLoading(true);
       setDataReady(false);
-      
+
       // Fetch referrals and rewards data
       await Promise.all([
         dispatch(fetchUserReferrals(userProfile.id)).unwrap(),
         dispatch(fetchReferralRewards(userProfile.id)).unwrap(),
       ]);
-      
+
       // Also refresh earnings data
       if (userProfile?.id) {
         await fetchReferralEarnings(userProfile.id);
@@ -811,7 +840,9 @@ export const ReferralProgram = () => {
         0
       );
 
-      console.log(`Fetched claimed referral earnings from database: ${totalClaimedEarnings}`);
+      console.log(
+        `Fetched claimed referral earnings from database: ${totalClaimedEarnings}`
+      );
 
       // Calculate total pending rewards directly from current referral rewards data
       const totalPendingRewards = calculatePendingRewards();
@@ -827,7 +858,7 @@ export const ReferralProgram = () => {
       setClaimedRewards(totalClaimedEarnings);
       setPendingRewards(totalPendingRewards);
       setTotalReferralEarnings(totalEarnings);
-      
+
       // Now all data is ready
       setDataReady(true);
     } catch (error) {
@@ -840,14 +871,16 @@ export const ReferralProgram = () => {
 
   const handleGenerateReferralCode = async (showToast = true) => {
     if (!userProfile?.id) {
-      if (showToast) toast.error("You need to be logged in to generate a referral code");
+      if (showToast)
+        toast.error("You need to be logged in to generate a referral code");
       return;
     }
 
     if (!userProfile?.email) {
-      if (showToast) toast.error(
-        "You need to have an email address to generate a referral code"
-      );
+      if (showToast)
+        toast.error(
+          "You need to have an email address to generate a referral code"
+        );
       return;
     }
 
@@ -859,17 +892,20 @@ export const ReferralProgram = () => {
 
     try {
       setIsGenerating(true);
-      const result = await dispatch(generateReferralCode(userProfile?.id)).unwrap();
+      const result = await dispatch(
+        generateReferralCode(userProfile?.id)
+      ).unwrap();
       if (showToast) toast.success("Referral code generated successfully!");
-      
+
       // Force reload referral data to get the new code
       await loadReferralData();
-      
+
       return result;
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Unknown error occurred";
-      if (showToast) toast.error(`Failed to generate referral code: ${errorMessage}`);
+      if (showToast)
+        toast.error(`Failed to generate referral code: ${errorMessage}`);
       console.error("Failed to generate referral code:", err);
     } finally {
       setIsGenerating(false);
@@ -881,19 +917,19 @@ export const ReferralProgram = () => {
     if (!referralLink) {
       console.log("No referral link available, attempting to generate one");
       await handleGenerateReferralCode(false); // Don't show toast for auto-generation
-      
+
       // Check again after generation attempt
       if (!userProfile?.referral_code) {
         toast.error("Please connect a wallet to generate a referral code");
         return;
       }
     }
-    
+
     // Get the most up-to-date referral link
     const currentReferralLink = userProfile?.referral_code
       ? `${window.location.origin}/dashboard?ref=${userProfile.referral_code}`
       : null;
-      
+
     if (!currentReferralLink) {
       toast.error("Unable to generate referral link");
       return;
@@ -918,34 +954,37 @@ export const ReferralProgram = () => {
   // Function to handle reward claim
   const handleRewardClaimed = (amount: number) => {
     console.log(`Handling reward claimed: ${amount} SP`);
-    
+
     // Update claimed and pending rewards immediately in UI
-    setClaimedRewards(prev => {
+    setClaimedRewards((prev) => {
       const newValue = prev + amount;
       console.log(`Updated claimed rewards: ${prev} -> ${newValue} SP`);
       return newValue;
     });
-    
-    setPendingRewards(prev => {
+
+    setPendingRewards((prev) => {
       const newValue = Math.max(0, prev - amount);
       console.log(`Updated pending rewards: ${prev} -> ${newValue} SP`);
       return newValue;
     });
-    
+
     // Force a full data refresh immediately
     setDataReady(false);
-    
+
     // First immediate refresh attempt
     if (userProfile?.id) {
       // Invalidate current data to force complete reload
-      dispatch(fetchReferralRewards(userProfile.id)).unwrap()
+      dispatch(fetchReferralRewards(userProfile.id))
+        .unwrap()
         .then(() => {
           console.log("Refreshed referral rewards immediately after claim");
           fetchReferralEarnings(userProfile.id);
         })
-        .catch(err => console.error("Error refreshing data after claim:", err));
+        .catch((err) =>
+          console.error("Error refreshing data after claim:", err)
+        );
     }
-    
+
     // Second attempt after a short delay
     setTimeout(() => {
       if (userProfile?.id) {
@@ -953,7 +992,7 @@ export const ReferralProgram = () => {
         loadReferralData(); // Complete full data reload
       }
     }, 1500);
-    
+
     // Third attempt to ensure consistency
     setTimeout(() => {
       if (userProfile?.id) {
@@ -966,10 +1005,10 @@ export const ReferralProgram = () => {
   // Function to check if user is already part of any referral program
   const checkUserHasReferrer = async () => {
     if (!userProfile?.id) return false;
-    
+
     try {
       const client = getSwarmSupabase();
-      
+
       // Check if there's any entry in the referrals table where this user is the referred_id
       const { data, error } = await client
         .from("referrals")
@@ -977,13 +1016,16 @@ export const ReferralProgram = () => {
         .eq("referred_id", userProfile.id)
         .limit(1)
         .maybeSingle();
-        
+
       if (error) {
         console.error("Error checking if user has a referrer:", error);
         return false;
       }
-      
-      console.log("User referrer check:", data ? "User already has a referrer" : "User has no referrer");
+
+      console.log(
+        "User referrer check:",
+        data ? "User already has a referrer" : "User has no referrer"
+      );
       return !!data; // Return true if user already has a referrer
     } catch (err) {
       console.error("Error checking if user has a referrer:", err);
@@ -994,26 +1036,33 @@ export const ReferralProgram = () => {
   // Function to check if user already has a referral relationship
   const checkExistingReferralRelationship = async (referrerId: string) => {
     if (!userProfile?.id || !referrals) {
-      console.log("Cannot check relationship: missing user profile or referrals data");
+      console.log(
+        "Cannot check relationship: missing user profile or referrals data"
+      );
       return false;
     }
-    
-    console.log(`Checking if user ${userProfile.id} has existing referral relationship with ${referrerId}`);
-    
+
+    console.log(
+      `Checking if user ${userProfile.id} has existing referral relationship with ${referrerId}`
+    );
+
     // First check if the user is directly referred by this referrer (tier 1)
     const directReferral = referrals.find(
-      ref => ref.referrer_id === referrerId && ref.tier_level === "tier_1"
+      (ref) => ref.referrer_id === referrerId && ref.tier_level === "tier_1"
     );
-    
+
     if (directReferral) {
-      console.log("Found existing direct referral relationship:", directReferral);
+      console.log(
+        "Found existing direct referral relationship:",
+        directReferral
+      );
       return true;
     }
-    
+
     // If we have a connection to the database, we can also check the referrals table directly
     try {
       const client = getSwarmSupabase();
-      
+
       // Check if there's any referral relationship where this user is referred by the given referrer
       const { data, error } = await client
         .from("referrals")
@@ -1021,13 +1070,16 @@ export const ReferralProgram = () => {
         .eq("referred_id", userProfile.id)
         .eq("referrer_id", referrerId)
         .maybeSingle();
-        
+
       if (error) {
         console.error("Error checking existing referral:", error);
         return false;
       }
-      
-      console.log("Database check for existing referral:", data ? "Found" : "Not found");
+
+      console.log(
+        "Database check for existing referral:",
+        data ? "Found" : "Not found"
+      );
       return !!data; // Return true if a relationship exists
     } catch (err) {
       console.error("Error checking referral relationship:", err);
@@ -1051,7 +1103,9 @@ export const ReferralProgram = () => {
       // First check if the user already has any referrer
       const hasReferrer = await checkUserHasReferrer();
       if (hasReferrer) {
-        setReferralError("You are already part of a referral program and cannot join another one.");
+        setReferralError(
+          "You are already part of a referral program and cannot join another one."
+        );
         setIsVerified(false);
         setIsVerifying(false);
         return;
@@ -1072,9 +1126,13 @@ export const ReferralProgram = () => {
             setIsVerified(false);
           } else {
             // Check if the user already has a referral relationship with the given code
-            const hasRelationship = await checkExistingReferralRelationship(referrerId);
+            const hasRelationship = await checkExistingReferralRelationship(
+              referrerId
+            );
             if (hasRelationship) {
-              setReferralError("You cannot use this code again. You are already part of this referral program.");
+              setReferralError(
+                "You cannot use this code again. You are already part of this referral program."
+              );
               setIsVerified(false);
             } else {
               setIsVerified(true);
@@ -1108,11 +1166,13 @@ export const ReferralProgram = () => {
       // First check if the user already has any referrer
       const hasReferrer = await checkUserHasReferrer();
       if (hasReferrer) {
-        setReferralError("You are already part of a referral program and cannot join another one.");
+        setReferralError(
+          "You are already part of a referral program and cannot join another one."
+        );
         setIsVerified(false);
         return;
       }
-      
+
       // Then verify the code to get the referrer ID
       const verifyResult = await dispatch(verifyReferralCode(extractedCode));
       if (!verifyReferralCode.fulfilled.match(verifyResult)) {
@@ -1131,9 +1191,13 @@ export const ReferralProgram = () => {
       }
 
       // Check if user already has a referral relationship with this code
-      const hasRelationship = await checkExistingReferralRelationship(referrerId);
+      const hasRelationship = await checkExistingReferralRelationship(
+        referrerId
+      );
       if (hasRelationship) {
-        setReferralError("You cannot use this code again. You are already part of this referral program.");
+        setReferralError(
+          "You cannot use this code again. You are already part of this referral program."
+        );
         return;
       }
 
@@ -1146,20 +1210,20 @@ export const ReferralProgram = () => {
 
       if (createReferralRelationship.fulfilled.match(resultAction)) {
         toast.success("Successfully joined referral program!");
-        
+
         // Give 100 SP to the referrer (user A)
         try {
           if (referrerId) {
             const client = getSwarmSupabase();
-            
+
             // Create an earnings entry for the referral
             await client.from("earnings").insert({
               user_id: referrerId,
               amount: 250,
               earning_type: "referral",
-              task_id: null
+              task_id: null,
             });
-            
+
             // Update earnings_history by fetching latest amount and adding to it
             const { data: latestEarnings, error: fetchError } = await client
               .from("earnings_history")
@@ -1168,41 +1232,46 @@ export const ReferralProgram = () => {
               .order("timestamp", { ascending: false })
               .limit(1)
               .single();
-            
+
             if (fetchError && fetchError.code !== "PGRST116") {
-              console.error("Error fetching latest earnings history:", fetchError);
+              console.error(
+                "Error fetching latest earnings history:",
+                fetchError
+              );
             }
-            
-            const currentAmount = latestEarnings ? parseFloat(latestEarnings.amount) : 0;
+
+            const currentAmount = latestEarnings
+              ? parseFloat(latestEarnings.amount)
+              : 0;
             const newAmount = currentAmount + 100;
-            const currentTaskCount = latestEarnings ? latestEarnings.task_count : 0;
-            
+            const currentTaskCount = latestEarnings
+              ? latestEarnings.task_count
+              : 0;
+
             // Insert or update earnings_history
             if (latestEarnings) {
               await client
                 .from("earnings_history")
-                .update({ 
+                .update({
                   amount: newAmount,
-                  timestamp: new Date().toISOString()
+                  timestamp: new Date().toISOString(),
                 })
                 .eq("id", latestEarnings.id);
             } else {
-              await client
-                .from("earnings_history")
-                .insert({
-                  user_id: referrerId,
-                  amount: 100,
-                  task_count: currentTaskCount,
-                  payout_status: "pending"
-                });
+              await client.from("earnings_history").insert({
+                user_id: referrerId,
+                amount: 100,
+                task_count: currentTaskCount,
+                payout_status: "pending",
+              });
             }
-            
+
             console.log("Added 100 SP reward to referrer:", referrerId);
           }
         } catch (err) {
           console.error("Error adding referrer reward:", err);
         }
-        
+
         setReferralCode("");
         setIsVerified(false);
         // Show the reward dialog
@@ -1229,27 +1298,32 @@ export const ReferralProgram = () => {
   // Render a single referral item
   const renderReferralItem = (referral: Referral) => {
     // Format display name for referral
-    let displayName = referral.user_profile?.user_name || 
-                     referral.referred_name || 
-                     `User ${referral.referred_id.substring(0, 6)}...`;
-    
+    let displayName =
+      referral.user_profile?.user_name ||
+      referral.referred_name ||
+      `User ${referral.referred_id.substring(0, 6)}...`;
+
     // Remove wallet type information
     displayName = formatDisplayName(displayName);
-    
+
     // Get tier badge color based on tier level
     const getTierBadgeColor = (tierLevel: string) => {
-      switch(tierLevel) {
-        case 'tier_1': return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
-        case 'tier_2': return 'bg-purple-500/20 text-purple-400 border-purple-500/40';
-        case 'tier_3': return 'bg-indigo-500/20 text-indigo-400 border-indigo-500/40';
-        default: return 'bg-slate-700 text-slate-400';
+      switch (tierLevel) {
+        case "tier_1":
+          return "bg-blue-500/20 text-blue-400 border-blue-500/40";
+        case "tier_2":
+          return "bg-purple-500/20 text-purple-400 border-purple-500/40";
+        case "tier_3":
+          return "bg-indigo-500/20 text-indigo-400 border-indigo-500/40";
+        default:
+          return "bg-slate-700 text-slate-400";
       }
     };
-    
+
     // Format joined date
     const joinDate = new Date(referral.referred_at);
     const formattedDate = joinDate.toLocaleDateString();
-    
+
     return (
       <div
         key={referral.id}
@@ -1258,16 +1332,19 @@ export const ReferralProgram = () => {
         <div className="flex items-center gap-2">
           <User className="w-4 h-4 text-blue-400" />
           <div>
-            <div className="font-medium">
-              {displayName}
-            </div>
+            <div className="font-medium">{displayName}</div>
             <div className="text-xs text-slate-400">
-              Joined on {formattedDate} ({formatDistanceToNow(joinDate, {addSuffix: true})})
+              Joined on {formattedDate} (
+              {formatDistanceToNow(joinDate, { addSuffix: true })})
             </div>
           </div>
         </div>
-        <div className={`text-xs px-2 py-1 rounded border ${getTierBadgeColor(referral.tier_level)}`}>
-          {referral.tier_level.replace('_', ' ').toUpperCase()}
+        <div
+          className={`text-xs px-2 py-1 rounded border ${getTierBadgeColor(
+            referral.tier_level
+          )}`}
+        >
+          {referral.tier_level.replace("_", " ").toUpperCase()}
         </div>
       </div>
     );
@@ -1316,27 +1393,30 @@ export const ReferralProgram = () => {
   useEffect(() => {
     // Only run this if we have user data and the component is mounted
     if (!userProfile?.id || !dataReady) return;
-    
+
     // Check consistency between claimed and pending rewards
     const verifyDataConsistency = () => {
       console.log("Verifying data consistency...");
-      
+
       // If we have inconsistent data or values that don't make sense, reload
-      if (pendingRewards < 0 || 
-          (referralRewards?.some(r => !r.claimed && r.reward_amount > 0) && pendingRewards === 0)) {
+      if (
+        pendingRewards < 0 ||
+        (referralRewards?.some((r) => !r.claimed && r.reward_amount > 0) &&
+          pendingRewards === 0)
+      ) {
         console.log("Data inconsistency detected! Reloading data...");
         loadReferralData();
       } else {
         console.log("Data appears consistent");
       }
     };
-    
+
     // Run initial check after data is loaded
     const initialCheck = setTimeout(verifyDataConsistency, 1000);
-    
+
     // Then set up a periodic check that runs every 10 seconds
     const intervalCheck = setInterval(verifyDataConsistency, 10000);
-    
+
     return () => {
       clearTimeout(initialCheck);
       clearInterval(intervalCheck);
@@ -1346,25 +1426,25 @@ export const ReferralProgram = () => {
   return (
     <div className="space-y-6 sm:space-y-8 p-3 sm:p-6 rounded-3xl max-w-full overflow-x-hidden">
       {/* Dialogs */}
-      <ThankYouDialog 
+      <ThankYouDialog
         isOpen={showThankYouDialog}
         onClose={() => setShowThankYouDialog(false)}
         referralCode={referralCode}
       />
-      
-      <ErrorDialog 
+
+      <ErrorDialog
         isOpen={showErrorDialog}
         onClose={() => setShowErrorDialog(false)}
         message={errorMessage}
       />
-      
-      <SignInRequiredDialog 
+
+      <SignInRequiredDialog
         isOpen={showSignInRequiredDialog}
         onClose={() => setShowSignInRequiredDialog(false)}
       />
 
       {/* Add the RewardDialog component */}
-      <RewardDialog 
+      <RewardDialog
         isOpen={showRewardDialog}
         onClose={() => setShowRewardDialog(false)}
       />
@@ -1391,9 +1471,14 @@ export const ReferralProgram = () => {
         />
         <ReferralStatCard
           label="Total Referral Rewards"
-          value={isLoadingEarnings || !dataReady ? 
-            "..." : 
-            `${totalReferralEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP`}
+          value={
+            isLoadingEarnings || !dataReady
+              ? "..."
+              : `${totalReferralEarnings.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })} SP`
+          }
           backgroundImage={"/images/flower_2.png"}
           highlight
         />
@@ -1410,21 +1495,21 @@ export const ReferralProgram = () => {
           >
             <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
             <div className="relative w-36 text-center">
-              <motion.span 
+              <motion.span
                 className="text-sm sm:text-base absolute left-0 right-0 whitespace-nowrap"
                 variants={{
                   initial: { opacity: 1 },
-                  hover: { opacity: 0 }
+                  hover: { opacity: 0 },
                 }}
                 transition={{ duration: 0.3 }}
               >
                 Promotional Period
               </motion.span>
-              <motion.span 
+              <motion.span
                 className="text-sm sm:text-base whitespace-nowrap"
                 variants={{
                   initial: { opacity: 0 },
-                  hover: { opacity: 1 }
+                  hover: { opacity: 1 },
                 }}
                 transition={{ duration: 0.3 }}
               >
@@ -1441,21 +1526,21 @@ export const ReferralProgram = () => {
           >
             <FaSquareXTwitter className="w-4 h-4 sm:w-5 sm:h-5" />
             <div className="relative w-36 text-center">
-              <motion.span 
+              <motion.span
                 className="text-sm sm:text-base absolute left-0 right-0 whitespace-nowrap"
                 variants={{
                   initial: { opacity: 1 },
-                  hover: { opacity: 0 }
+                  hover: { opacity: 0 },
                 }}
                 transition={{ duration: 0.3 }}
               >
                 Promotional Period
               </motion.span>
-              <motion.span 
+              <motion.span
                 className="text-sm sm:text-base whitespace-nowrap"
                 variants={{
                   initial: { opacity: 0 },
-                  hover: { opacity: 1 }
+                  hover: { opacity: 1 },
                 }}
                 transition={{ duration: 0.3 }}
               >
@@ -1469,9 +1554,9 @@ export const ReferralProgram = () => {
           <Lock className="mx-auto h-10 w-10 text-blue-400 mb-2" />
           <h3 className="text-white font-medium mb-2">Sign In Required</h3>
           <p className="text-sm text-blue-300/80 mb-4">
-            Please sign in or sign up to join the referral program and start earning rewards.
+            Please sign in or sign up to join the referral program and start
+            earning rewards.
           </p>
-          
         </div>
       )}
 
@@ -1500,31 +1585,31 @@ export const ReferralProgram = () => {
 
               <div className="space-y-4">
                 <div>
-                <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 w-full">
-  <div className="relative flex-1 w-full">
-    <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-      <LinkIcon className="h-4 w-4 text-blue-400/60" />
-    </div>
-    <Input
-      value={referralCode}
-      onChange={handleReferralInputChange}
-      className="pl-10 py-3 bg-[#111827]/50 border-blue-500/20 focus:border-blue-400 text-white rounded-xl focus-visible:ring-blue-500/30 focus-visible:ring-offset-0 w-full"
-      placeholder="Enter referral code or link"
-    />
-  </div>
-  <Button
-    onClick={handleVerifyReferralCode}
-    className="bg-blue-600 hover:bg-blue-700 rounded-xl px-5 py-3 flex items-center justify-center w-full sm:w-auto"
-    disabled={isVerifying || !referralCode.trim()}
-  >
-    {isVerifying ? (
-      <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-    ) : (
-      <CheckCircle className="w-4 h-4 mr-2" />
-    )}
-    <span>{isVerifying ? "Verifying..." : "Verify"}</span>
-  </Button>
-</div>
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 w-full">
+                    <div className="relative flex-1 w-full">
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                        <LinkIcon className="h-4 w-4 text-blue-400/60" />
+                      </div>
+                      <Input
+                        value={referralCode}
+                        onChange={handleReferralInputChange}
+                        className="pl-10 py-3 bg-[#111827]/50 border-blue-500/20 focus:border-blue-400 text-white rounded-xl focus-visible:ring-blue-500/30 focus-visible:ring-offset-0 w-full"
+                        placeholder="Enter referral code or link"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleVerifyReferralCode}
+                      className="bg-blue-600 hover:bg-blue-700 rounded-xl px-5 py-3 flex items-center justify-center w-full sm:w-auto"
+                      disabled={isVerifying || !referralCode.trim()}
+                    >
+                      {isVerifying ? (
+                        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                      )}
+                      <span>{isVerifying ? "Verifying..." : "Verify"}</span>
+                    </Button>
+                  </div>
 
                   {referralError && (
                     <p className="text-red-400 text-sm mt-2 flex items-center">
@@ -1583,12 +1668,18 @@ export const ReferralProgram = () => {
                         <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
                       ) : (
                         <span className="text-green-400 font-bold text-sm sm:text-base">
-                          {claimedRewards.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
+                          {claimedRewards.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          SP
                         </span>
                       )}
-                      <button 
+                      <button
                         className="text-blue-400 hover:text-blue-300 p-1 rounded-full hover:bg-blue-500/10"
-                        onClick={() => fetchReferralEarnings(userProfile?.id || '')}
+                        onClick={() =>
+                          fetchReferralEarnings(userProfile?.id || "")
+                        }
                         title="Refresh earnings data"
                       >
                         <RefreshCw className="w-3 h-3" />
@@ -1621,10 +1712,14 @@ export const ReferralProgram = () => {
                         <RefreshCw className="w-4 h-4 text-blue-400 animate-spin" />
                       ) : (
                         <span className="text-amber-400 font-bold text-sm sm:text-base">
-                          {pendingRewards.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SP
+                          {pendingRewards.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}{" "}
+                          SP
                         </span>
                       )}
-                      <button 
+                      <button
                         className="text-blue-400 hover:text-blue-300 p-1 rounded-full hover:bg-blue-500/10"
                         onClick={handleRefresh}
                         title="Refresh rewards data"
@@ -1722,7 +1817,7 @@ export const ReferralProgram = () => {
               <h3 className="text-white font-medium text-sm sm:text-base">
                 All Referrals
               </h3>
-                              <span className="text-[#515194]/80 text-xs sm:text-sm">
+              <span className="text-[#515194]/80 text-xs sm:text-sm">
                 {totalReferrals.toLocaleString()} total
               </span>
             </div>
@@ -1731,16 +1826,19 @@ export const ReferralProgram = () => {
               <div className="flex justify-center items-center py-6">
                 <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
               </div>
-                          ) : totalReferrals > 0 ? (
-                <div className="h-[200px] overflow-y-auto custom-scrollbar pr-2">
-                  <div className="space-y-2">
-                    {/* Combined list of all referrals across tiers */}
-                    {[...tier1Referrals, ...tier2Referrals, ...tier3Referrals]
-                      .sort((a, b) => new Date(b.referred_at).getTime() - new Date(a.referred_at).getTime())
-                      .map(renderReferralItem)}
-                  </div>
-            
+            ) : totalReferrals > 0 ? (
+              <div className="h-[200px] overflow-y-auto custom-scrollbar pr-2">
+                <div className="space-y-2">
+                  {/* Combined list of all referrals across tiers */}
+                  {[...tier1Referrals, ...tier2Referrals, ...tier3Referrals]
+                    .sort(
+                      (a, b) =>
+                        new Date(b.referred_at).getTime() -
+                        new Date(a.referred_at).getTime()
+                    )
+                    .map(renderReferralItem)}
                 </div>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-6 bg-[#090C18]/50 rounded-lg text-center">
                 <Share2 className="w-8 h-8 text-[#515194] mb-2" />
@@ -1767,8 +1865,6 @@ export const ReferralProgram = () => {
               </div>
             ) : referralRewards && referralRewards.length > 0 ? (
               <>
-                
-                  
                 {/* Rewards List */}
                 <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
                   {referralRewards.map((reward) => (

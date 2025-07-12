@@ -7,11 +7,12 @@ import { TASK_PROCESSING_CONFIG } from './config';
  * @param {string} taskId - The ID of the completed task
  * @param {string} userId - User's ID
  * @param {string} taskType - Type of task ('image' or 'text')
+ * @param {string} userEmail - User's email address
  * @returns {Promise<{success: boolean, earningId?: string}>}
  */
-export const recordTaskEarning = async (taskId, userId, taskType) => {
+export const recordTaskEarning = async (taskId, userId, taskType, userEmail) => {
     try {
-        if (!taskId || !userId || !taskType) {
+        if (!taskId || !userId || !taskType || !userEmail) {
             logger.error('Cannot record earnings: Missing required parameters');
             return { success: false };
         }
@@ -44,13 +45,16 @@ export const recordTaskEarning = async (taskId, userId, taskType) => {
             return { success: false, message: 'Earnings already recorded for this task' };
         }
 
-        // Insert earnings record while task still exists in tasks table
+        // Insert earnings record with email tracking and unclaimed status
         const { data: earning, error: insertError } = await client
             .from('earnings')
             .insert({
                 user_id: userId,
+                user_email: userEmail, // Add email tracking
                 amount: amount,
                 task_id: taskId,
+                claimed: false, // Mark as unclaimed initially
+                last_claim_time: null, // No claim time yet
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 earning_type: 'task'
@@ -123,32 +127,200 @@ export const recordTaskEarning = async (taskId, userId, taskType) => {
 };
 
 /**
- * Get user's total earnings
- * @param {string} userId - User ID from profile
- * @returns {Promise<{totalEarnings: number, pendingEarnings: number, completedTasks: number}>}
+ * Manually claim earnings for a user with 10-minute cooldown
+ * @param {string} userId - User's ID
+ * @param {string} userEmail - User's email address
+ * @returns {Promise<{success: boolean, claimedAmount?: number, message?: string}>}
  */
-export const getUserEarnings = async (userId) => {
+export const claimEarnings = async (userId, userEmail) => {
     try {
-        if (!userId) {
-            logger.error('Cannot get user earnings: No user ID provided');
-            return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0 };
+        if (!userId || !userEmail) {
+            logger.error('Cannot claim earnings: Missing required parameters');
+            return { success: false, message: 'Missing required parameters' };
         }
 
         const client = getSwarmSupabase();
         if (!client) {
             logger.error('Supabase client is not initialized');
-            return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0 };
+            return { success: false, message: 'Supabase client not initialized' };
         }
 
-        // Calculate total earnings directly from earnings table
+        // Get all unclaimed earnings for this user
+        const { data: unclaimedEarnings, error: fetchError } = await client
+            .from('earnings')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('claimed', false)
+            .order('created_at', { ascending: true });
+
+        if (fetchError) {
+            logger.error('Error fetching unclaimed earnings:', fetchError);
+            return { success: false, message: 'Failed to fetch unclaimed earnings' };
+        }
+
+        if (!unclaimedEarnings || unclaimedEarnings.length === 0) {
+            return { success: false, message: 'No unclaimed earnings found' };
+        }
+
+        // Check if user has claimed in the last 10 minutes
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+        const recentClaim = unclaimedEarnings.find(earning => 
+            earning.last_claim_time && new Date(earning.last_claim_time) > tenMinutesAgo
+        );
+
+        if (recentClaim) {
+            const timeUntilNextClaim = new Date(recentClaim.last_claim_time).getTime() + (10 * 60 * 1000) - Date.now();
+            const minutesRemaining = Math.ceil(timeUntilNextClaim / (60 * 1000));
+            return { 
+                success: false, 
+                message: `Please wait ${minutesRemaining} minutes before claiming again` 
+            };
+        }
+
+        // Calculate total amount to claim
+        const totalAmount = unclaimedEarnings.reduce((sum, earning) => sum + Number(earning.amount), 0);
+
+        // Mark all unclaimed earnings as claimed
+        const earningIds = unclaimedEarnings.map(earning => earning.id);
+        const currentTime = new Date().toISOString();
+
+        const { error: updateError } = await client
+            .from('earnings')
+            .update({
+                claimed: true,
+                last_claim_time: currentTime,
+                updated_at: currentTime
+            })
+            .in('id', earningIds);
+
+        if (updateError) {
+            logger.error('Error updating earnings claim status:', updateError);
+            return { success: false, message: 'Failed to update earnings status' };
+        }
+
+        // Update earnings history to reflect claimed amount
+        const { data: latestHistory, error: historyError } = await client
+            .from('earnings_history')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('payout_status', 'pending')
+            .order('timestamp', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (historyError) {
+            logger.error('Error fetching earnings history:', historyError);
+        } else if (latestHistory) {
+            // Update existing record to reduce pending amount
+            const newPendingAmount = Math.max(0, latestHistory.amount - totalAmount);
+            const { error: updateHistoryError } = await client
+                .from('earnings_history')
+                .update({
+                    amount: newPendingAmount,
+                    timestamp: currentTime
+                })
+                .eq('id', latestHistory.id);
+
+            if (updateHistoryError) {
+                logger.error('Error updating earnings history:', updateHistoryError);
+            }
+        }
+
+        logger.log(`Successfully claimed ${totalAmount} NLOVE earnings for user ${userId}`);
+        return { success: true, claimedAmount: totalAmount };
+    } catch (error) {
+        logger.error('Error in claimEarnings:', error);
+        return { success: false, message: 'An error occurred while claiming earnings' };
+    }
+};
+
+/**
+ * Get user's claimable earnings and last claim time
+ * @param {string} userId - User's ID
+ * @returns {Promise<{claimableAmount: number, lastClaimTime: string | null, canClaim: boolean, timeUntilNextClaim: number}>}
+ */
+export const getClaimableEarnings = async (userId) => {
+    try {
+        if (!userId) {
+            return { claimableAmount: 0, lastClaimTime: null, canClaim: false, timeUntilNextClaim: 0 };
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            return { claimableAmount: 0, lastClaimTime: null, canClaim: false, timeUntilNextClaim: 0 };
+        }
+
+        // Get all unclaimed earnings
+        const { data: unclaimedEarnings, error: fetchError } = await client
+            .from('earnings')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('claimed', false)
+            .order('created_at', { ascending: false });
+
+        if (fetchError) {
+            logger.error('Error fetching unclaimed earnings:', fetchError);
+            return { claimableAmount: 0, lastClaimTime: null, canClaim: false, timeUntilNextClaim: 0 };
+        }
+
+        const claimableAmount = unclaimedEarnings?.reduce((sum, earning) => sum + Number(earning.amount), 0) || 0;
+
+        // Check if user can claim (10-minute cooldown)
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+        const recentClaim = unclaimedEarnings?.find(earning => 
+            earning.last_claim_time && new Date(earning.last_claim_time) > tenMinutesAgo
+        );
+
+        let canClaim = true;
+        let timeUntilNextClaim = 0;
+        let lastClaimTime = null;
+
+        if (recentClaim) {
+            canClaim = false;
+            lastClaimTime = recentClaim.last_claim_time;
+            const nextClaimTime = new Date(recentClaim.last_claim_time).getTime() + (10 * 60 * 1000);
+            timeUntilNextClaim = Math.max(0, nextClaimTime - Date.now());
+        }
+
+        return {
+            claimableAmount,
+            lastClaimTime,
+            canClaim: canClaim && claimableAmount > 0,
+            timeUntilNextClaim
+        };
+    } catch (error) {
+        logger.error('Error in getClaimableEarnings:', error);
+        return { claimableAmount: 0, lastClaimTime: null, canClaim: false, timeUntilNextClaim: 0 };
+    }
+};
+
+/**
+ * Get user's total earnings
+ * @param {string} userId - User ID from profile
+ * @returns {Promise<{totalEarnings: number, pendingEarnings: number, completedTasks: number, claimableEarnings: number}>}
+ */
+export const getUserEarnings = async (userId) => {
+    try {
+        if (!userId) {
+            logger.error('Cannot get user earnings: No user ID provided');
+            return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0, claimableEarnings: 0 };
+        }
+
+        const client = getSwarmSupabase();
+        if (!client) {
+            logger.error('Supabase client is not initialized');
+            return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0, claimableEarnings: 0 };
+        }
+
+        // Calculate total earnings directly from earnings table (all earnings)
         const { data: earningsData, error: earningsError } = await client
             .from('earnings')
-            .select('amount, earning_type')
+            .select('amount, earning_type, claimed')
             .eq('user_id', userId);
 
         if (earningsError) {
             logger.error('Error fetching earnings data:', earningsError);
-            return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0 };
+            return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0, claimableEarnings: 0 };
         }
 
         // Calculate total earnings from all earnings records
@@ -157,7 +329,11 @@ export const getUserEarnings = async (userId) => {
         // Count completed tasks from earnings records
         const completedTasks = earningsData?.filter(record => record.earning_type === 'task').length || 0;
 
-        // Get latest earnings history for pending amount
+        // Calculate claimable earnings (unclaimed earnings)
+        const claimableEarnings = earningsData?.filter(record => !record.claimed)
+            .reduce((sum, record) => sum + Number(record.amount), 0) || 0;
+
+        // Get latest earnings history for pending amount (legacy support)
         const { data: earningsHistory, error: historyError } = await client
             .from('earnings_history')
             .select('*')
@@ -169,20 +345,21 @@ export const getUserEarnings = async (userId) => {
 
         if (historyError) {
             logger.error('Error fetching earnings history:', historyError);
-            return { totalEarnings, pendingEarnings: 0, completedTasks };
+            return { totalEarnings, pendingEarnings: claimableEarnings, completedTasks, claimableEarnings };
         }
 
-        // Get pending earnings from history or default to 0
-        const pendingEarnings = earningsHistory?.amount || 0;
+        // Use claimable earnings as pending earnings for consistency
+        const pendingEarnings = claimableEarnings;
 
         return {
             totalEarnings,
             pendingEarnings,
-            completedTasks
+            completedTasks,
+            claimableEarnings
         };
     } catch (error) {
         logger.error('Error in getUserEarnings:', error);
-        return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0 };
+        return { totalEarnings: 0, pendingEarnings: 0, completedTasks: 0, claimableEarnings: 0 };
     }
 };
 
