@@ -302,7 +302,7 @@ export const generateProxyTasks = createAsyncThunk(
         
         // Generate random task count based on hardware tier
         const hardwareTier = state.node?.rewardTier || 'cpu';
-        const taskTypes: ('image' | 'text' | '3d' | 'video')[] = ['image', 'text', '3d', 'video'];
+        const taskTypes: ('image' | 'text' | 'three_d' | 'video')[] = ['image', 'text', 'three_d', 'video'];
         const tasks: AITask[] = [];
         
         // Generate 2-5 tasks

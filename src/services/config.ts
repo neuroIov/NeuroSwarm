@@ -30,7 +30,7 @@ export const TASK_PROCESSING_CONFIG = {
     EARNINGS_NLOVE: {
         image: 10,
         text: 5,
-        '3d': 15,
+        three_d: 15,
         video: 30,
     },
 
@@ -38,7 +38,7 @@ export const TASK_PROCESSING_CONFIG = {
     DISTRIBUTION: {
         image: 0.4,
         text: 0.5,
-        '3d': 0.07,
+        three_d: 0.07,
         video: 0.03
     },
 
