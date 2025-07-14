@@ -1307,6 +1307,13 @@ export const NodeControlPanel = () => {
     if (!userProfile?.id || unclaimedEarnings <= 0 || isClaiming) {
       return;
     }
+
+    // Prevent claiming if a node is active
+    if (isActive) {
+      toast.error('Please stop your active node before claiming rewards');
+      return;
+    }
+    
     try {
       setIsClaiming(true);
       await claimUnclaimedEarnings(userProfile.id);
@@ -1577,84 +1584,121 @@ export const NodeControlPanel = () => {
 
         
 
-        <div className="p-4 sm:p-6 flex flex-row items-center justify-between rounded-xl sm:rounded-2xl bg-gradient-to-r from-[#090C18] to-[#14273F] border border-[#1D5AB3] relative overflow-hidden gap-4">
+        <div 
+          className={`p-4 sm:p-6 flex flex-row items-center justify-between rounded-xl sm:rounded-2xl bg-gradient-to-r ${
+            unclaimedEarnings > 0 
+              ? isClaiming 
+                ? "from-[#1a2332] to-[#2a3441] border border-[#3a4451] transition-all duration-500 transform scale-[1.02] opacity-90" 
+                : isActive
+                  ? "from-[#1a2332] to-[#2a3441] border border-[#3a4451] opacity-90 transition-all duration-500 transform"
+                  : "from-[#1a2332] to-[#2a3441] border border-[#3a4451] cursor-pointer hover:scale-105 hover:shadow-xl transition-all duration-500 transform hover:rotate-1"
+              : "from-[#090C18] to-[#14273F] border border-[#1D5AB3]"
+          } relative overflow-hidden gap-4`}
+          onClick={unclaimedEarnings > 0 && !isClaiming && !isActive ? handleClaimEarnings : undefined}
+          style={{
+            transformStyle: "preserve-3d",
+            perspective: "1000px",
+            boxShadow: unclaimedEarnings > 0 ? "0 10px 30px -10px rgba(255, 215, 0, 0.3)" : "none",
+            cursor: unclaimedEarnings > 0 && !isClaiming && !isActive ? "pointer" : isActive && unclaimedEarnings > 0 ? "not-allowed" : "default"
+          }}
+        >
+          {isActive && unclaimedEarnings > 0 && (
+            <div className="absolute inset-0 bg-black/40 z-20 flex items-center justify-center">
+              <div className="bg-[#0A1A2F]/90 rounded-lg p-2 text-center max-w-[80%]">
+                <AlertTriangle className="w-5 h-5 text-amber-400 mx-auto mb-1" />
+                <p className="text-white/90 text-xs">Stop active node to claim rewards</p>
+              </div>
+            </div>
+          )}
+          
           <div className="flex items-center gap-4 z-10">
             <div className="flex items-center justify-center flex-shrink-0">
-              <img
-                src="/images/nlov-coin.png"
-                alt="coin"
-                className="w-11 h-11 object-contain z-10"
-              />
+              {isClaiming ? (
+                <div className="w-11 h-11 flex items-center justify-center">
+                  <Loader2 className="w-9 h-9 text-amber-300 animate-spin" />
+                </div>
+              ) : (
+                <img
+                  src="/images/nlov-coin.png"
+                  alt="coin"
+                  className={`w-11 h-11 object-contain z-10 ${
+                    unclaimedEarnings > 0 ? "animate-pulse" : ""
+                  }`}
+                  style={{
+                    transform: unclaimedEarnings > 0 ? "translateZ(10px)" : "none",
+                    transition: "transform 0.5s ease"
+                  }}
+                />
+              )}
             </div>
-            <span className="text-white/90 text-2xl  whitespace-nowrap">
-              Total Earnings
+            <span className="text-white/90 text-2xl whitespace-nowrap transition-all duration-500">
+              {unclaimedEarnings > 0 ? (
+                isClaiming ? "Claiming..." : isActive ? "Rewards Available" : "Claim Rewards"
+              ) : (
+                "Total Earnings"
+              )}
             </span>
           </div>
           <div className="flex items-baseline gap-2 z-10 flex-shrink-0">
             <span
-              className="font-medium lg:text-4xl md:text-3xl sm:text-2xl text-transparent bg-clip-text bg-gradient-to-b from-[#20A5EF] to-[#0361DA] leading-none"
+              className={`font-medium lg:text-4xl md:text-3xl sm:text-2xl ${
+                unclaimedEarnings > 0 
+                  ? isClaiming
+                    ? "text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-amber-500"
+                    : isActive
+                      ? "text-transparent bg-clip-text bg-gradient-to-r from-[#FFD700] to-[#FFA500]"
+                      : "text-transparent bg-clip-text bg-gradient-to-r from-[#FFD700] to-[#FFA500] animate-shimmer" 
+                  : "text-transparent bg-clip-text bg-gradient-to-b from-[#20A5EF] to-[#0361DA]"
+              } leading-none`}
               style={{
                 lineHeight: "1",
                 minWidth: "fit-content",
                 display: "inline-block",
+                backgroundSize: unclaimedEarnings > 0 ? "200% auto" : "100%",
+                animationDuration: "2s",
+                transform: unclaimedEarnings > 0 && !isActive ? "translateZ(15px)" : "none",
+                transition: "transform 0.5s ease"
               }}
             >
-              {parseFloat(totalEarnings.toFixed(2))}
+              {unclaimedEarnings > 0 
+                ? parseFloat(unclaimedEarnings.toFixed(2))
+                : parseFloat(totalEarnings.toFixed(2))}
             </span>
-            <span className="text-white/90 text-sm">SP</span>
+            <span className="text-white/90 text-sm">
+              {unclaimedEarnings > 0 ? "SP" : "SP"}
+            </span>
           </div>
-          <p className="absolute bottom-2 right-4 text-[10px] text-white/50 italic">*All Swarm Points will be converted to $NLOV after TGE</p>
+          
+          {unclaimedEarnings > 0 && !isClaiming && !isActive && (
+            <div className="absolute inset-0 bg-gradient-to-r from-[#FFD700]/10 to-[#FFA500]/10 z-0 animate-pulse"></div>
+          )}
+          
+          {isClaiming && (
+            <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-amber-700/5 z-0"></div>
+          )}
+          
+          {unclaimedEarnings > 0 && !isClaiming && !isActive && (
+            <>
+              <div className="absolute -bottom-2 -right-2 w-20 h-20 bg-gradient-to-tl from-[#FFD700]/30 to-transparent rounded-full blur-xl"></div>
+              <div className="absolute -top-2 -left-2 w-10 h-10 bg-gradient-to-br from-[#FFD700]/20 to-transparent rounded-full blur-md"></div>
+              <div className="absolute top-1/2 left-1/3 w-4 h-4 bg-white/10 rounded-full animate-float"></div>
+              <div className="absolute top-1/3 right-1/4 w-3 h-3 bg-white/10 rounded-full animate-float animation-delay-300"></div>
+            </>
+          )}
+          
+          {unclaimedEarnings > 0 ? (
+            isClaiming ? (
+              <p className="absolute bottom-2 right-4 text-[10px] text-white/70 italic">Processing your rewards...</p>
+            ) : isActive ? (
+              <p className="absolute bottom-2 right-4 text-[10px] text-white/70 italic">Stop node to claim rewards</p>
+            ) : (
+              <p className="absolute bottom-2 right-4 text-[10px] text-white/70 italic animate-pulse">Click to claim your rewards</p>
+            )
+          ) : (
+            <p className="absolute bottom-2 right-4 text-[10px] text-white/50 italic">*All Swarm Points will be converted to $NLOV after TGE</p>
+          )}
         </div>
 
-        {/* Unclaimed Earnings Section */}
-        {unclaimedEarnings > 0 && (
-          <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-[#1a2332] to-[#2a3441] border border-[#3a4451] relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center p-2 rounded-full bg-gradient-to-r from-[#FFD700] to-[#FFA500] shadow-lg">
-                  <Coins className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-white/70 text-sm">Unclaimed Earnings</p>
-                  <p className="text-white font-semibold text-lg">
-                    {unclaimedEarnings.toFixed(2)} NLOVE
-                  </p>
-                </div>
-              </div>
-              <Button
-                onClick={handleClaimEarnings}
-                disabled={isClaiming || unclaimedEarnings <= 0}
-                className="
-                  relative px-6 py-3 rounded-full
-                  bg-gradient-to-r from-[#FFD700] to-[#FFA500]
-                  hover:from-[#FFA500] to-[#FF8C00]
-                  text-white font-semibold
-                  shadow-lg hover:shadow-xl
-                  transition-all duration-300
-                  hover:scale-105
-                  disabled:opacity-50 disabled:cursor-not-allowed
-                  before:absolute before:inset-0 before:rounded-full
-                  before:bg-gradient-to-r before:from-[#FFD700] before:to-[#FFA500]
-                  before:blur-md before:opacity-60
-                  before:animate-pulse
-                  hover:before:opacity-80
-                "
-              >
-                {isClaiming ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    <ShinyText text="Claiming..." className="relative z-10 text-white/70" />
-                  </>
-                ) : (
-                  <>
-                    <Coins className="w-4 h-4 mr-2 relative z-10" />
-                    <ShinyText text="Claim Earnings" className="relative z-10 text-white/70" />
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
 
       <Dialog open={showScanDialog} onOpenChange={setShowScanDialog}>
