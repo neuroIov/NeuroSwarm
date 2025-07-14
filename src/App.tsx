@@ -250,13 +250,8 @@ const AppContent = () => {
         // Try to sync immediately
         dispatch(syncUptime());
 
-        // Display confirmation dialog
-        const message =
-          "If you reload or close this tab, the current process will be terminated. Are you sure?";
-        event.preventDefault();
-        event.returnValue = message; // Required for Chrome
-
-        return message; // For older browsers
+        // No confirmation dialog - just let the page close/refresh
+        // Note: We're keeping all the cleanup logic above
       }
     };
 

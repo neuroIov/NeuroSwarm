@@ -914,6 +914,8 @@ export const NodeControlPanel = () => {
           }
         }, 500);
 
+        window.location.reload();
+
         toast.info(`Node "${selectedNode?.name}" stopped`);
         
         // Fetch the latest uptime for this node after stopping
@@ -1129,13 +1131,8 @@ export const NodeControlPanel = () => {
           }
         }
 
-        // Display confirmation dialog
-        const message =
-          "If you reload or close this tab, the current process will be terminated. Are you sure?";
-        event.preventDefault();
-        event.returnValue = message; // Required for Chrome
-
-        return message; // For older browsers
+        // No confirmation dialog - just let the page close/refresh
+        // Note: We're keeping all the cleanup logic above
       }
     };
 
