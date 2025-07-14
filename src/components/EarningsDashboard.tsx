@@ -85,50 +85,26 @@ export const EarningsDashboard = () => {
       refreshInterval: 35000, // 35 seconds
     });
 
-  // Set a timeout for loading state
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-
-    if (loading) {
-      // If still loading after 20 seconds, show timeout error
-      timer = setTimeout(() => {
-        setLoadingTimeout(true);
-      }, 20000);
-    } else {
-      setLoadingTimeout(false);
-    }
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [loading]);
-
-  // Check wallet connection status
-  useEffect(() => {
-    // If wallet is not connected, consider it an error
-    if (walletAddress === null) {
-      setWalletError(true);
-    } else {
-      setWalletError(false);
-    }
-  }, [walletAddress]);
-
-  // Fetch streak data on component mount
-  useEffect(() => {
-    if (userId) {
-      fetchStreakData();
-    }
-  }, [userId, fetchStreakData]);
-
   // Process transactions into chart data based on selected period
   const chartData = useMemo<ChartDataPoint[]>(() => {
-    if (!transactions || transactions.length === 0) return [];
+    if (!transactions || transactions.length === 0) {
+      console.log('No transactions available for chart data');
+      return [];
+    }
+
+    console.log(`Processing ${transactions.length} transactions for ${chartPeriod} chart`);
 
     // Sort transactions by date
     const sortedTransactions = [...transactions].sort(
       (a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
+    
+    console.log('Transactions sorted by date:', sortedTransactions.map(t => ({
+      id: t.id,
+      date: t.created_at,
+      amount: t.amount
+    })));
 
     // Group transactions by date based on the selected period
     const groupedData = new Map<string, number>();
@@ -193,6 +169,8 @@ export const EarningsDashboard = () => {
       groupedData.set(groupKey, groupedData.get(groupKey) + Number(tx.amount));
     });
 
+    console.log('Grouped data by date:', Object.fromEntries(groupedData));
+
     // Map the data to chart format
     const chartResult: ChartDataPoint[] = labels.map((label) => {
       return {
@@ -203,6 +181,8 @@ export const EarningsDashboard = () => {
         highlight: false,
       };
     });
+
+    console.log('Final chart data format:', chartResult);
 
     // Find the day with maximum earnings and highlight it
     let maxEarningsIdx = 0;
@@ -241,6 +221,73 @@ export const EarningsDashboard = () => {
 
     return chartResult;
   }, [transactions, chartPeriod]);
+  
+  // Debug console logs to see backend data
+  useEffect(() => {
+    if (transactions && transactions.length > 0) {
+      console.log('Recent transactions from backend:', transactions);
+      
+      // Log the structure of the first transaction for debugging
+      if (transactions[0]) {
+        console.log('Sample transaction structure:', {
+          id: transactions[0].id,
+          amount: transactions[0].amount,
+          created_at: transactions[0].created_at,
+          transaction_hash: transactions[0].transaction_hash,
+          earning_type: transactions[0].earning_type,
+          task_id: transactions[0].task_id
+        });
+      }
+    }
+    
+    if (earnings) {
+      console.log('Earnings data structure:', {
+        totalEarnings: earnings.totalEarnings,
+        pendingEarnings: earnings.pendingEarnings,
+        completedTasks: earnings.completedTasks
+      });
+      
+      if (chartData && chartData.length > 0) {
+        console.log('Chart data calculated:', chartData);
+        console.log('Chart data sample:', chartData[0]);
+      }
+    }
+  }, [transactions, earnings, chartData]);
+
+  // Set a timeout for loading state
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+
+    if (loading) {
+      // If still loading after 20 seconds, show timeout error
+      timer = setTimeout(() => {
+        setLoadingTimeout(true);
+      }, 20000);
+    } else {
+      setLoadingTimeout(false);
+    }
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [loading]);
+
+  // Check wallet connection status
+  useEffect(() => {
+    // If wallet is not connected, consider it an error
+    if (walletAddress === null) {
+      setWalletError(true);
+    } else {
+      setWalletError(false);
+    }
+  }, [walletAddress]);
+
+  // Fetch streak data on component mount
+  useEffect(() => {
+    if (userId) {
+      fetchStreakData();
+    }
+  }, [userId, fetchStreakData]);
 
   // Handle period change for chart
   const handleChartPeriodChange = (value: string) => {
@@ -594,7 +641,8 @@ export const EarningsDashboard = () => {
         <div className="flex gap-2">
 {
 
-  false && <>          <Select value={timeRange} onValueChange={handleTimeRangeChange}>
+  /* Enable the debug button to view debugging information */
+  true && <>          <Select value={timeRange} onValueChange={handleTimeRangeChange}>
   <SelectTrigger className="w-[80px] h-8 m-0 bg-[#1D1D33] rounded-full ">
     <SelectValue placeholder="Time Range" />
   </SelectTrigger>
@@ -1064,7 +1112,7 @@ export const EarningsDashboard = () => {
                       {formatDate(tx.created_at)}
                     </span>
                     <span className="text-xs text-[#515194]">
-                      {tx.tasks?.type ? "Task completed" : "Referral reward"}
+                      {tx.earning_type === "task" ? "Task completed" : "Referral reward"}
                     </span>
                   </div>
 

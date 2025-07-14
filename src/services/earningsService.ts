@@ -277,6 +277,7 @@ export const getUserEarningsTransactions = async (userId, limit = 20, offset = 0
         }
 
         // Query earnings directly by user_id instead of wallet address
+        // Removing the nested tasks selection as there's no relationship defined in the database
         const { data: transactions, error } = await client
             .from('earnings')
             .select(`
@@ -286,12 +287,7 @@ export const getUserEarningsTransactions = async (userId, limit = 20, offset = 0
                 transaction_hash,
                 earning_type,
                 updated_at,
-                tasks (
-                    id,
-                    type,
-                    status,
-                    prompt
-                )
+                task_id
             `)
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
