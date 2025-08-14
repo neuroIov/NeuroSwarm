@@ -86,14 +86,14 @@ export function GoogleAnalytics({ GA_MEASUREMENT_ID }: GoogleAnalyticsProps) {
       document.addEventListener(event, updateActivity, { passive: true });
     });
 
-    // Track engagement every 30 seconds
+    // Track engagement every 60 seconds
     engagementInterval.current = setInterval(() => {
       const now = Date.now();
       const engagementTime = now - lastActivityTime.current;
       if (engagementTime > 0) {
         trackUserEngagement(engagementTime);
       }
-    }, 30000);
+    }, 60000);
 
     return () => {
       events.forEach((event) => {

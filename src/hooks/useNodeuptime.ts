@@ -205,7 +205,7 @@ export const useNodeUptime = () => {
           return updated;
         });
       }
-    }, 10000); // Check every 10 seconds
+    }, 30000); // Check every 30 seconds for better performance
   }, [saveToStorage]);
 
   // IMPROVED: Stop with better error handling and server sync
@@ -463,9 +463,9 @@ export const useNodeUptime = () => {
       }
     };
 
-    // Sync immediately on mount, then every 10 minutes
+    // Sync immediately on mount, then every 15 minutes
     syncAllDevices();
-    const periodicSyncInterval = setInterval(syncAllDevices, 10 * 60 * 1000);
+    const periodicSyncInterval = setInterval(syncAllDevices, 15 * 60 * 1000);
 
     return () => clearInterval(periodicSyncInterval);
   }, [user?.id, deviceUptimes, syncingDevices, syncDeviceUptime]);

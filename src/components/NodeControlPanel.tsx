@@ -163,6 +163,10 @@ export const NodeControlPanel = () => {
   const [syncingDeviceId, setSyncingDeviceId] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<number>(0);
 
+  // Prevent duplicate claims via double-click/race conditions
+  const claimInProgressRef = useRef(false);
+  const [isClaimingUi, setIsClaimingUi] = useState(false);
+
   // Helper function to get device icon
   const getDeviceIcon = (type: "desktop" | "laptop" | "tablet" | "mobile") => {
     switch (type) {
@@ -485,7 +489,7 @@ export const NodeControlPanel = () => {
       } catch (error) {
         console.error("❌ Error in uptime monitoring:", error);
       }
-    }, 5000); // Check every 5 seconds for immediate response
+    }, 15000); // Check every 15 seconds for optimized response
 
     return monitoringInterval;
   }, [
@@ -759,8 +763,8 @@ export const NodeControlPanel = () => {
       if (node.isActive || isDeviceRunning(selectedNodeId)) {
         const timeSinceLastSave = Date.now() - lastAutoSaveRef.current;
 
-        // FIX: Only auto-save if enough time has passed and not currently saving
-        if (timeSinceLastSave >= 45000 && !isSavingToDb) {
+        // Optimized: Only auto-save if enough time has passed and not currently saving
+        if (timeSinceLastSave >= 90000 && !isSavingToDb) {
           console.log(
             "🔄 Auto-save interval triggered - Session earnings:",
             sessionEarnings
@@ -768,7 +772,7 @@ export const NodeControlPanel = () => {
           saveSessionEarningsToDb(false);
         }
       }
-    }, 45000); // FIX: Reduced from 60s to 45s for better safety
+    }, 90000); // Optimized from 45s to 90s for better performance
 
     return () => {
       clearInterval(autoSaveInterval);
@@ -873,8 +877,8 @@ export const NodeControlPanel = () => {
     // Update immediately
     updateDisplayUptime();
 
-    // Update every second
-    const interval = setInterval(updateDisplayUptime, 1000);
+    // Update every 3 seconds for better performance
+    const interval = setInterval(updateDisplayUptime, 3000);
 
     return () => clearInterval(interval);
   }, [selectedNodeId, getCurrentUptime]);
@@ -1507,8 +1511,19 @@ export const NodeControlPanel = () => {
 
   // FIX: Enhanced claim reward handler with better error recovery
   const handleClaimReward = async () => {
+    // Local UI lock to prevent duplicate claims
+    if (claimInProgressRef.current || isClaimingReward) {
+      return;
+    }
+    claimInProgressRef.current = true;
+    setIsClaimingUi(true);
+
     const totalUnclaimedRewards = sessionEarnings + dbUnclaimedRewards;
-    if (totalUnclaimedRewards <= 0) return;
+    if (totalUnclaimedRewards <= 0) {
+      setIsClaimingUi(false);
+      claimInProgressRef.current = false;
+      return;
+    }
 
     try {
       console.log("💰 Starting reward claim process...");
@@ -1521,6 +1536,9 @@ export const NodeControlPanel = () => {
         alert(
           "❌ Cannot claim rewards while node is running. Please stop the node first."
         );
+        // Release UI lock on early exit
+        setIsClaimingUi(false);
+        claimInProgressRef.current = false;
         return;
       }
 
@@ -1561,25 +1579,15 @@ export const NodeControlPanel = () => {
         if (resetSuccess) {
           console.log("✅ Successfully claimed and reset all rewards");
         }
-
-        // Process referral rewards
-        try {
-          const { error } = await processReferralRewards(
-            user!.id,
-            finalDbRewards
-          );
-          if (error) {
-            console.error("⚠️ Error processing referral rewards:", error);
-          } else {
-            console.log("✅ Referral rewards processed successfully");
-          }
-        } catch (referralError) {
-          console.error("❌ Exception in referral processing:", referralError);
-        }
+        // Ensure UI is synced with server after claim
+        await fetchUnclaimedRewards();
       }
     } catch (error) {
       console.error("❌ Error in reward claiming process:", error);
       alert("❌ Failed to claim rewards. Please try again.");
+    } finally {
+      setIsClaimingUi(false);
+      claimInProgressRef.current = false;
     }
   };
 
@@ -2105,6 +2113,7 @@ export const NodeControlPanel = () => {
                     onClick={handleClaimReward}
                     disabled={
                       isClaimingReward ||
+                      isClaimingUi ||
                       isSavingToDb ||
                       sessionEarnings + dbUnclaimedRewards <= 0 ||
                       isLoadingUnclaimedRewards ||
@@ -2117,7 +2126,7 @@ export const NodeControlPanel = () => {
                         : "bg-green-600 hover:bg-green-700 hover:shadow-green-500/30 shadow-green-500"
                     }`}
                   >
-                    {isClaimingReward ? (
+                    {isClaimingReward || isClaimingUi ? (
                       <div className="flex items-center justify-center">
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Claiming...
