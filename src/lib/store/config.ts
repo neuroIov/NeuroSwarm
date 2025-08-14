@@ -86,7 +86,7 @@ export const TASK_CONFIG = {
     MIN_TASKS: 1,
     MAX_TASKS: 3, // Reduced from 5 to 3
     GENERATION_INTERVAL: 60000, // Increased to 60 seconds (was 30)
-    PROCESSING_INTERVAL: 5000,  // Increased to 5 seconds (was 1) - CRITICAL MEMORY FIX
+    PROCESSING_INTERVAL: 10000,  // Increased to 10 seconds (was 5) - OPTIMIZED FOR PERFORMANCE
     MAX_CONCURRENT_PROCESSING: 1, // Max tasks processing at once (only 1 task)
     PENDING_QUEUE_SIZE: 2 // Reduced from 4 to 2
   }

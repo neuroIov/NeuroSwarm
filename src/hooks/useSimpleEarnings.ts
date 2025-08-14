@@ -134,10 +134,10 @@ export const useSimpleEarnings = () => {
       loadUnclaimedRewards();
       loadTotalEarnings();
       
-      // Set up periodic refresh of unclaimed rewards (every 30 seconds)
+      // Set up periodic refresh of unclaimed rewards (every 60 seconds)
       const intervalId = setInterval(() => {
         loadUnclaimedRewards();
-      }, 30000);
+      }, 60000);
       
       return () => clearInterval(intervalId);
     }
