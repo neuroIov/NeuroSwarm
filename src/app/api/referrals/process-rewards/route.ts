@@ -16,27 +16,34 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { referred_user_id, earning_amount } = body;
+    const {  earning_amount } = body;
 
-    if (!referred_user_id) {
+    const userIdToProcess = session?.user?.id;
+
+    if (!userIdToProcess) {
       return NextResponse.json(
-        { error: 'Referred user ID is required' },
+        { error: 'Earning user ID is required' },
         { status: 400 }
       );
     }
 
-    if (earning_amount === undefined || earning_amount < 0) {
+    if (earning_amount === undefined || earning_amount <= 0) {
       return NextResponse.json(
-        { error: 'Valid earning amount is required' },
+        { error: 'Valid earning amount (greater than 0) is required' },
         { status: 400 }
       );
     }
 
-    // Call the RPC function server-side with correct parameters
-    const { error } = await supabase.rpc('process_referral_rewards', {
-      p_user_id: referred_user_id,
+    console.log('Processing rewards for user:', userIdToProcess, 'amount:', earning_amount);
+
+    // Call the RPC function - make sure function name matches exactly
+    const { data, error } = await supabase.rpc('process_referral_rewardsx', {
+      p_earning_user_id: userIdToProcess,
       p_earning_amount: earning_amount
     });
+
+    console.log("Processed data response:", data);
+    console.log("Error (if any):", error);
 
     if (error) {
       console.error('Error processing referral rewards:', error);
@@ -49,7 +56,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         success: true,
-        message: 'Referral rewards processed successfully'
+        message: 'Referral rewards processed successfully',
+        data: data || null
       },
       {
         headers: {
@@ -65,4 +73,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}

@@ -6,10 +6,8 @@ import {
   Users,
   CheckCircle,
   User,
-  Key,
   Clock,
   DollarSign,
-  ArrowRight,
   RefreshCw,
   AlertCircle,
   Share2,
@@ -17,26 +15,32 @@ import {
   X as CloseIcon,
   Link as LinkIcon,
   Lock,
+  Gift,
+  TrendingUp,
 } from "lucide-react";
-import { InfoTooltip } from "./InfoTooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ReferralStatCard } from "./ReferralStatCard";
 import { User as LucideUser } from "lucide-react";
 import { useReferrals } from "@/hooks/useRefferals";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEarnings } from "@/hooks/useEarnings";
-// Removed createClient import as we're using API routes instead
 import { motion, AnimatePresence } from "framer-motion";
 import { FaSquareXTwitter, FaWhatsapp, FaTelegram } from "react-icons/fa6";
-
-// External API endpoint constants are no longer needed as we use internal API routes
 
 interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
   referralLink: string | null;
+}
+
+interface UnclaimedReward {
+  reward_id: string;
+  referral_id: string;
+  reward_amount: number;
+  claimed_at: string | null;
+  referred_id: string;
+  referred_name: string;
+  referrer_id: string;
 }
 
 export const ReferralProgram = () => {
@@ -47,7 +51,7 @@ export const ReferralProgram = () => {
   const [referralError, setReferralError] = useState("");
   const [referralSuccess, setReferralSuccess] = useState(false);
   const [referralData, setReferralData] = useState<any>(null);
-  const [referralRewards, setReferralRewards] = useState<any[]>([]);
+  const [unclaimedRewards, setUnclaimedRewards] = useState<UnclaimedReward[]>([]);
   const [totalReferralEarnings, setTotalReferralEarnings] = useState(0);
   const [claimedRewards, setClaimedRewards] = useState(0);
   const [pendingRewards, setPendingRewards] = useState(0);
@@ -65,15 +69,14 @@ export const ReferralProgram = () => {
     isCreating,
     isFetching
   } = useReferrals();
-  const { claimTaskRewards } = useEarnings();
 
-  // Load referral data (with dependency optimization to prevent multiple calls)
+  // Load referral data
   useEffect(() => {
     if (user?.id && !isLoading) {
       loadReferralData();
       checkIfUserIsReferred();
     }
-  }, [user?.id]); // Remove functions from dependencies to prevent multiple calls
+  }, [user?.id]);
 
   const loadReferralData = async () => {
     setIsLoading(true);
@@ -82,22 +85,26 @@ export const ReferralProgram = () => {
       const { data: myReferrals } = await getMyReferrals(user!.id);
       setReferralData(myReferrals);
 
-      // Get referral data using API route
-      const response = await fetch('/api/referrals', {
+      // Get referral data using API route with cache busting
+      const response = await fetch(`/api/referrals?t=${Date.now()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         },
       });
 
       if (response.ok) {
         const referralApiData = await response.json();
-        setReferralRewards(referralApiData.unclaimedRewards || []);
+        console.log('Fresh referral data loaded:', referralApiData);
+        
+        setUnclaimedRewards(referralApiData.unclaimedRewards || []);
         setTotalReferralEarnings(referralApiData.totalReferralEarnings || 0);
         setClaimedRewards(referralApiData.claimedRewards || 0);
         setPendingRewards(referralApiData.pendingRewards || 0);
       } else {
-        console.error('Failed to load referral data from API');
+        console.error('Failed to load referral data from API:', response.status);
       }
 
     } catch (error) {
@@ -107,7 +114,6 @@ export const ReferralProgram = () => {
     }
   };
 
-  // Add function to check if user is referred
   const checkIfUserIsReferred = async () => {
     if (!user?.id) return;
 
@@ -135,15 +141,6 @@ export const ReferralProgram = () => {
     }
   };
 
-  // Add effect to check referral status
-  useEffect(() => {
-    if (user?.id) {
-      checkIfUserIsReferred();
-    }
-  }, [user?.id]);
-
-  // User profile is already available from AuthContext via destructuring above
-
   const userReferralCode = userProfile?.referral_code || null;
   const referralLink = userReferralCode && typeof window !== "undefined"
     ? `${window.location.origin}?ref=${userReferralCode}`
@@ -169,14 +166,11 @@ export const ReferralProgram = () => {
     }
   };
 
-  // Function to extract referral code from URL or return the input as-is
   const extractReferralCodeFromInput = (input: string): string => {
     if (!input.trim()) return '';
 
-    // Check if input looks like a URL
     if (input.includes('://') || input.includes('?ref=')) {
       try {
-        // Handle cases where input might not have protocol
         let urlString = input;
         if (!input.startsWith('http://') && !input.startsWith('https://')) {
           urlString = 'https://' + input;
@@ -189,7 +183,6 @@ export const ReferralProgram = () => {
           return refParam.trim();
         }
       } catch (error) {
-        // If URL parsing fails, try to extract using regex
         const refMatch = input.match(/[?&]ref=([^&\s]+)/i);
         if (refMatch && refMatch[1]) {
           return refMatch[1].trim().toUpperCase();
@@ -197,7 +190,6 @@ export const ReferralProgram = () => {
       }
     }
 
-    // If not a URL or no ref parameter found, return the input as-is (assuming it's a direct code)
     return input.trim().toUpperCase();
   };
 
@@ -224,7 +216,6 @@ export const ReferralProgram = () => {
         return;
       }
 
-      // Create referral relationship
       const { success, error: createError } = await createReferralRelationship(
         extractedCode,
         user!.id
@@ -237,7 +228,6 @@ export const ReferralProgram = () => {
       }
 
       if (success) {
-        // Add referral rewards
         const rewardsResponse = await fetch('/api/referrals/rewards', {
           method: 'POST',
           headers: {
@@ -254,14 +244,10 @@ export const ReferralProgram = () => {
           throw new Error(errorData.error || 'Failed to add referral rewards');
         }
 
-        // Show success message
         setReferralSuccess(true);
         setReferralError("");
-        // Clear the input
         setReferralCode("");
-        // Reload referral data
         await loadReferralData();
-        // Reset success message after 3 seconds
         setTimeout(() => {
           setReferralSuccess(false);
         }, 3000);
@@ -278,8 +264,7 @@ export const ReferralProgram = () => {
 
     setIsClaimingReward(true);
     try {
-      // Use the new referrals API to claim rewards
-      const response = await fetch('/api/referrals', {
+      const response = await fetch('/api/referrals/claim', {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -292,10 +277,33 @@ export const ReferralProgram = () => {
       const apiResult = await response.json();
 
       if (apiResult.success) {
+        // Update local state immediately
+        setUnclaimedRewards(prev => prev.filter(reward => reward.reward_id !== rewardId));
+        setPendingRewards(prev => prev - amount);
+        setClaimedRewards(prev => prev + amount);
+        
+        // Show success message
         setClaimSuccess(true);
         setTimeout(() => setClaimSuccess(false), 3000);
-        // Reload data to update UI
-        await loadReferralData();
+
+        // Multiple refresh attempts with increasing delays
+        const refreshData = async (attempt: number = 1) => {
+          try {
+            await loadReferralData();
+            console.log(`Data refresh attempt ${attempt} completed`);
+          } catch (error) {
+            console.error(`Data refresh attempt ${attempt} failed:`, error);
+            // Retry up to 3 times with increasing delays
+            if (attempt < 3) {
+              setTimeout(() => refreshData(attempt + 1), 1000 * attempt);
+            }
+          }
+        };
+
+        // Start refresh attempts after delays
+        setTimeout(() => refreshData(1), 1000);  // 1 second
+        setTimeout(() => refreshData(2), 3000);  // 3 seconds  
+        setTimeout(() => refreshData(3), 5000);  // 5 seconds
       } else {
         throw new Error(apiResult.error || "Failed to claim referral reward");
       }
@@ -306,19 +314,15 @@ export const ReferralProgram = () => {
     }
   };
 
-  // Open social share in a popup window
   const openSocialShare = (shareUrl: string) => {
     window.open(shareUrl, "_blank", "width=600,height=400");
   };
 
-  // Get sharing message for different platforms
   const getShareMessage = (platform: string) => {
     if (!referralLink) return null;
 
-    // Twitter message with emojis
     const twitterMessage = `🚀 NeuroSwarm Airdrop Confirmed!\nSecure your spot in the $NLOV Connect-to-Earn revolution 🌐\n💰 100M $NLOV tokens available\n📲 Connect your phone, laptop, or GPU — start earning in one click!\n🎯 Join before TGE\n🔗 ${referralLink}`;
 
-    // Encode messages for sharing
     const encodedTwitterMessage = encodeURIComponent(twitterMessage);
 
     switch (platform) {
@@ -329,7 +333,6 @@ export const ReferralProgram = () => {
     }
   };
 
-  // Add this new component for the share modal
   const ShareModal = ({ isOpen, onClose, referralLink }: ShareModalProps) => {
     const [isCopied, setIsCopied] = useState(false);
 
@@ -396,7 +399,6 @@ export const ReferralProgram = () => {
                 </h2>
               </div>
 
-              {/* How Referrals Work Section */}
               <div className="mb-6 p-4 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/20 rounded-xl mt-4">
                 <p className="text-blue-300 text-sm font-medium mb-2">How Referrals Work:</p>
                 <ul className="text-gray-300 text-xs space-y-2">
@@ -415,7 +417,6 @@ export const ReferralProgram = () => {
                 </ul>
               </div>
 
-              {/* Share buttons */}
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <motion.button
                   className="flex items-center justify-center gap-2 bg-[#0088CC] p-3 rounded-lg hover:bg-[#0088CC]/80"
@@ -438,7 +439,6 @@ export const ReferralProgram = () => {
                 </motion.button>
               </div>
 
-              {/* Copy link section */}
               <div className="bg-black/20 p-4 rounded-lg border border-blue-500/20">
                 <div className="flex items-center justify-between gap-2">
                   <input
@@ -467,6 +467,7 @@ export const ReferralProgram = () => {
       </AnimatePresence>
     );
   };
+
   return (
     <div className="space-y-6 sm:space-y-8 p-3 sm:p-6 rounded-3xl max-w-full overflow-x-hidden">
       {/* Stats Cards */}
@@ -596,7 +597,7 @@ export const ReferralProgram = () => {
         referralLink={referralLink}
       />
 
-      {/* Referral Code Input Section - Updated Logic */}
+      {/* Referral Code Input Section */}
       {userProfile?.id && !isReferred && (
         <div className="bg-[radial-gradient(ellipse_at_top_left,#0361DA_0%,#090C18_54%)] p-3 sm:p-6 rounded-2xl border border-[#0361DA]/80">
           <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 p-5 rounded-xl border border-blue-500/20">
@@ -654,7 +655,7 @@ export const ReferralProgram = () => {
         </div>
       )}
 
-      {/* Enhanced Already Referred Banner */}
+      {/* Already Referred Banner */}
       {userProfile?.id && isReferred && (
         <div className="bg-[radial-gradient(ellipse_at_top_left,#16a34a_0%,#0f172a_54%)] p-3 sm:p-6 rounded-2xl border border-green-500/40">
           <div className="bg-gradient-to-r from-green-600/10 to-emerald-600/10 p-5 rounded-xl border border-green-500/20">
@@ -672,7 +673,6 @@ export const ReferralProgram = () => {
               </div>
             </div>
 
-            {/* Social Sharing Section */}
             <div className="bg-black/20 p-4 rounded-lg border border-green-500/20">
               <div className="flex items-center gap-2 mb-3">
                 <Share2 className="w-4 h-4 text-green-400" />
@@ -680,7 +680,6 @@ export const ReferralProgram = () => {
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-                {/* Telegram Share */}
                 <motion.button
                   onClick={() => {
                     const message = `🚀 Join me on Kyahaiye and start earning SP! Use my referral code: ${userReferralCode} ${referralLink}`;
@@ -695,7 +694,6 @@ export const ReferralProgram = () => {
                   <span className="text-xs">Telegram</span>
                 </motion.button>
 
-                {/* WhatsApp Share */}
                 <motion.button
                   onClick={() => {
                     const message = `🚀 Join me on Kyahaiye and start earning SP! Use my referral code: ${userReferralCode} ${referralLink}`;
@@ -710,7 +708,6 @@ export const ReferralProgram = () => {
                   <span className="text-xs">WhatsApp</span>
                 </motion.button>
 
-                {/* Twitter Share */}
                 <motion.button
                   onClick={() => {
                     const message = `🚀 Join me on @Kyahaiye and start earning SP! 💰\n\nUse my referral code: ${userReferralCode}\n\n${referralLink}\n\n#Kyahaiye #EarnSP #ReferralProgram`;
@@ -725,7 +722,6 @@ export const ReferralProgram = () => {
                   <span className="text-xs">Twitter</span>
                 </motion.button>
 
-                {/* Copy Link */}
                 <motion.button
                   onClick={async () => {
                     if (referralLink) {
@@ -756,7 +752,6 @@ export const ReferralProgram = () => {
                 </motion.button>
               </div>
 
-              {/* Referral Link Display */}
               <div className="bg-black/30 p-3 rounded-lg border border-green-500/10">
                 <div className="flex items-center justify-between gap-2">
                   <input
@@ -844,20 +839,6 @@ export const ReferralProgram = () => {
                   <p className="text-[#515194]/80 text-xs sm:text-sm mt-1">
                     Available rewards ready to claim
                   </p>
-                  {pendingRewards > 0 && referralRewards.length > 0 && (
-                    <Button
-                      onClick={() => handleClaimReward(referralRewards[0]?.id, pendingRewards)}
-                      disabled={isClaimingReward}
-                      className="mt-3 w-full bg-amber-500 hover:bg-amber-600 text-white"
-                    >
-                      {isClaimingReward ? (
-                        <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                      ) : (
-                        <DollarSign className="w-4 h-4 mr-2" />
-                      )}
-                      <span>{isClaimingReward ? "Claiming..." : "Claim Rewards"}</span>
-                    </Button>
-                  )}
                 </div>
               </div>
             </div>
@@ -936,6 +917,99 @@ export const ReferralProgram = () => {
         </div>
       )}
 
+      {/* Unclaimed Rewards List */}
+      {userProfile?.id && unclaimedRewards.length > 0 && (
+        <div className="bg-[#161628] rounded-2xl p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-500/20 rounded-full p-2">
+                <Gift className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-medium">Unclaimed Rewards</h3>
+                <p className="text-[#515194] text-sm">
+                  Claim rewards from your referrals
+                </p>
+              </div>
+            </div>
+            <span className="text-amber-400 font-bold text-lg">
+              {pendingRewards.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })} SP
+            </span>
+          </div>
+
+          <div className="space-y-4">
+            {unclaimedRewards
+              .filter(reward => Number(reward.reward_amount) > 0)
+              .map((reward) => (
+                <motion.div
+                  key={reward.reward_id}
+                  className="bg-[#1E1E3F] rounded-xl p-4 border border-amber-500/20"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-amber-500/20 rounded-full p-2">
+                        <TrendingUp className="w-5 h-5 text-amber-400" />
+                      </div>
+                      <div>
+                        <h4 className="text-white font-medium">
+                          Reward from {reward.referred_name}
+                        </h4>
+                        <p className="text-[#515194] text-sm">
+                          Referral reward available to claim
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-amber-400 font-bold text-lg">
+                          {Number(reward.reward_amount).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })} SP
+                        </p>
+                        <p className="text-[#515194] text-xs">Available</p>
+                      </div>
+                      <Button
+                        onClick={() => handleClaimReward(reward.reward_id, Number(reward.reward_amount))}
+                        disabled={isClaimingReward}
+                        className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                      >
+                        {isClaimingReward ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <DollarSign className="w-4 h-4" />
+                        )}
+                        <span>{isClaimingReward ? "Claiming..." : "Claim"}</span>
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+          </div>
+
+          {claimSuccess && (
+            <motion.div
+              className="mt-4 p-4 bg-green-500/20 border border-green-500/40 rounded-xl"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-green-400" />
+                <p className="text-green-400 font-medium">
+                  Reward claimed successfully! Added to your earnings.
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      )}
+
       {/* Referral List */}
       {userProfile?.id && referralData?.referrals?.length > 0 && (
         <div className="bg-[#161628] rounded-2xl p-4 sm:p-6">
@@ -959,7 +1033,6 @@ export const ReferralProgram = () => {
                       <p className="text-[#515194] text-xs">
                         {ref.tier_level.replace('_', ' ').toUpperCase()}
                       </p>
-
                       <span className="text-[#515194]">•</span>
                       <p className="text-[#515194] text-xs">
                         Referred {new Date(ref.referred_at).toLocaleDateString()}
@@ -972,7 +1045,6 @@ export const ReferralProgram = () => {
           </div>
         </div>
       )}
-      <ShareModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} referralLink={referralLink} />
     </div>
   );
 };
